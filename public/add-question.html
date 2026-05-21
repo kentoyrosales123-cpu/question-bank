@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Add Question</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a class="active" href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Add Question</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <form class="card" id="questionForm">
+          <input id="subject" placeholder="Subject" required />
+          <input id="topic" placeholder="Topic" required />
+
+          <textarea
+            id="questionText"
+            placeholder="Question text"
+            required
+          ></textarea>
+
+          <input id="choiceA" placeholder="Choice A" required />
+          <input id="choiceB" placeholder="Choice B" required />
+          <input id="choiceC" placeholder="Choice C" required />
+          <input id="choiceD" placeholder="Choice D" required />
+
+          <select id="correctAnswer" required>
+            <option value="">Correct Answer</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+
+          <select id="difficulty" required>
+            <option value="">Difficulty</option>
+            <option value="Easy">Easy</option>
+            <option value="Average">Average</option>
+            <option value="Difficult">Difficult</option>
+          </select>
+
+          <textarea id="tableData" placeholder="Optional table data"></textarea>
+          <textarea
+            id="explanation"
+            placeholder="Explanation / Solution"
+          ></textarea>
+
+          <label>Optional Figure/Image</label>
+          <input id="image" type="file" accept="image/*" />
+
+          <button class="btn" type="submit">Save Question</button>
+          <p class="message" id="message"></p>
+        </form>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/add-question.js"></script>
+  </body>
+</html>

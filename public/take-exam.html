@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Take Exam</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1 id="examTitle">Take Exam</h1>
+          <button class="btn" onclick="downloadExamDocx()">
+            Download DOCX
+          </button>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <form id="takeExamForm"></form>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/take-exam.js"></script>
+  </body>
+</html>

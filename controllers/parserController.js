@@ -1,0 +1,273 @@
+const fs = require("fs");
+const path = require("path");
+const mammoth = require("mammoth");
+const pdfParse = require("pdf-parse");
+
+const Upload = require("../models/Upload");
+const Question = require("../models/Question");
+const ParsedQuestion = require("../models/ParsedQuestion");
+
+function detectDifficulty(text) {
+  const lower = text.toLowerCase();
+
+  if (
+    lower.includes("derive") ||
+    lower.includes("prove") ||
+    lower.includes("analyze") ||
+    lower.includes("calculate") ||
+    lower.includes("solve")
+  ) {
+    return "Difficult";
+  }
+
+  if (
+    lower.includes("explain") ||
+    lower.includes("determine") ||
+    lower.includes("compute")
+  ) {
+    return "Average";
+  }
+
+  return "Easy";
+}
+
+function parseQuestionsFromText(text) {
+  const cleaned = text
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ");
+
+  const blocks = cleaned.split(/\n(?=\d+[\).\s])/g);
+
+  const parsed = [];
+
+  for (const block of blocks) {
+    const lines = block
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) continue;
+
+    const joined = lines.join("\n");
+
+    const choiceA = joined.match(/A[\).]\s*(.*?)(?=\n?B[\).])/is);
+    const choiceB = joined.match(/B[\).]\s*(.*?)(?=\n?C[\).])/is);
+    const choiceC = joined.match(/C[\).]\s*(.*?)(?=\n?D[\).])/is);
+    const choiceD = joined.match(
+      /D[\).]\s*(.*?)(?=\n?(Answer|Ans\.|Correct|$))/is,
+    );
+    const answer = joined.match(
+      /(?:Answer|Ans\.|Correct Answer)[:\s]+([A-D])/i,
+    );
+
+    const questionOnly = joined
+      .replace(/A[\).][\s\S]*/i, "")
+      .replace(/^\d+[\).\s]*/, "")
+      .trim();
+
+    if (!questionOnly || !choiceA || !choiceB || !choiceC || !choiceD) {
+      continue;
+    }
+
+    parsed.push({
+      questionText: questionOnly,
+      choices: {
+        A: choiceA[1].trim(),
+        B: choiceB[1].trim(),
+        C: choiceC[1].trim(),
+        D: choiceD[1].trim(),
+      },
+      correctAnswer: answer ? answer[1].toUpperCase() : "",
+      difficulty: detectDifficulty(questionOnly),
+      explanation: "",
+    });
+  }
+
+  return parsed;
+}
+
+exports.parseUploadedQuestionnaire = async (req, res) => {
+  try {
+    const { uploadId, subject, topic } = req.body;
+
+    const upload = await Upload.findById(uploadId);
+
+    if (!upload) {
+      return res.status(404).json({
+        success: false,
+        message: "Uploaded file not found.",
+      });
+    }
+
+    const fullPath = path.join(__dirname, "..", upload.filePath);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({
+        success: false,
+        message: "Physical uploaded file not found.",
+      });
+    }
+
+    let extractedText = "";
+
+    if (upload.fileType.includes("wordprocessingml.document")) {
+      const result = await mammoth.extractRawText({ path: fullPath });
+      extractedText = result.value;
+    } else if (upload.fileType.includes("pdf")) {
+      const buffer = fs.readFileSync(fullPath);
+      const result = await pdfParse(buffer);
+      extractedText = result.text;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Image OCR is not included yet. Use DOCX or PDF for auto parsing.",
+      });
+    }
+
+    const parsedQuestions = parseQuestionsFromText(extractedText);
+
+    if (parsedQuestions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No valid multiple-choice questions detected. Make sure the file uses A. B. C. D. format.",
+      });
+    }
+
+    const saved = await ParsedQuestion.insertMany(
+      parsedQuestions.map((q) => ({
+        upload: upload._id,
+        subject,
+        topic,
+        questionText: q.questionText,
+        choices: q.choices,
+        correctAnswer: q.correctAnswer,
+        difficulty: q.difficulty,
+        explanation: q.explanation,
+      })),
+    );
+
+    res.json({
+      success: true,
+      message: `${saved.length} questions parsed successfully.`,
+      parsedQuestions: saved,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getParsedQuestions = async (req, res) => {
+  try {
+    const parsedQuestions = await ParsedQuestion.find()
+      .populate("upload", "originalName")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      parsedQuestions,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.approveParsedQuestion = async (req, res) => {
+  try {
+    const parsed = await ParsedQuestion.findById(req.params.id);
+
+    if (!parsed) {
+      return res.status(404).json({
+        success: false,
+        message: "Parsed question not found.",
+      });
+    }
+
+    if (!parsed.correctAnswer) {
+      return res.status(400).json({
+        success: false,
+        message: "Please set the correct answer before approving.",
+      });
+    }
+
+    const question = await Question.create({
+      subject: parsed.subject,
+      topic: parsed.topic,
+      questionText: parsed.questionText,
+      choices: parsed.choices,
+      correctAnswer: parsed.correctAnswer,
+      difficulty: parsed.difficulty,
+      explanation: parsed.explanation,
+      createdBy: req.user._id,
+    });
+
+    parsed.status = "Approved";
+    await parsed.save();
+
+    res.json({
+      success: true,
+      message: "Question approved and saved to question bank.",
+      question,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateParsedQuestion = async (req, res) => {
+  try {
+    const updated = await ParsedQuestion.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true },
+    );
+
+    res.json({
+      success: true,
+      message: "Parsed question updated.",
+      parsedQuestion: updated,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.rejectParsedQuestion = async (req, res) => {
+  try {
+    const parsed = await ParsedQuestion.findById(req.params.id);
+
+    if (!parsed) {
+      return res.status(404).json({
+        success: false,
+        message: "Parsed question not found.",
+      });
+    }
+
+    parsed.status = "Rejected";
+    await parsed.save();
+
+    res.json({
+      success: true,
+      message: "Parsed question rejected.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

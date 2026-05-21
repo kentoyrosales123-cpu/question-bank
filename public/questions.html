@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Question Bank</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a class="active" href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Questions</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="grid grid-4">
+            <input id="filterSubject" placeholder="Filter subject" />
+            <input id="filterTopic" placeholder="Filter topic" />
+            <select id="filterDifficulty">
+              <option value="">All Difficulty</option>
+              <option value="Easy">Easy</option>
+              <option value="Average">Average</option>
+              <option value="Difficult">Difficult</option>
+            </select>
+            <button class="btn" onclick="filterQuestions()">Filter</button>
+          </div>
+        </div>
+
+        <br />
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Topic</th>
+                <th>Question</th>
+                <th>Difficulty</th>
+                <th>Answer</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="questionsBody"></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/questions.js"></script>
+  </body>
+</html>

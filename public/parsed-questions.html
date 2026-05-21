@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Review Parsed Questions</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a class="active" href="/parsed-questions.html"
+          >Review Parsed Questions</a
+        >
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Review Parsed Questions</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <div id="parsedList"></div>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/parsed-questions.js"></script>
+  </body>
+</html>

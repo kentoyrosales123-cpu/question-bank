@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Upload Questionnaire</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a class="active" href="/upload.html">Upload Questionnaire</a>
+        <a href="/parsed-questions.html">Review Parsed Questions</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Upload Questionnaire</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <form class="card" id="uploadForm">
+          <p>
+            Upload DOCX or PDF questionnaire. After uploading, click Parse
+            Questions.
+          </p>
+          <input id="questionnaire" type="file" required />
+          <button class="btn" type="submit">Upload File</button>
+          <p class="message" id="uploadMessage"></p>
+        </form>
+
+        <br />
+
+        <div class="card">
+          <h2>Uploaded Files</h2>
+          <div id="uploadsList"></div>
+        </div>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/upload.js"></script>
+  </body>
+</html>

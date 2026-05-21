@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a class="active" href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Admin Dashboard</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <section class="grid grid-4">
+          <div class="card stat">
+            <h3>Total Users</h3>
+            <strong id="totalUsers">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Total Questions</h3>
+            <strong id="totalQuestions">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Easy</h3>
+            <strong id="easyQuestions">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Difficult</h3>
+            <strong id="difficultQuestions">0</strong>
+          </div>
+        </section>
+
+        <br />
+
+        <section class="grid grid-2">
+          <div class="card">
+            <h2>Recent Questions</h2>
+            <div id="recentQuestions"></div>
+          </div>
+
+          <div class="card">
+            <h2>Recent Exams</h2>
+            <div id="recentExams"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/dashboard.js"></script>
+  </body>
+</html>

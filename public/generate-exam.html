@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Generate Exam</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a class="active" href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <h1>Exam Generator</h1>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <form class="card" id="examForm">
+          <input id="title" placeholder="Exam title" />
+          <input id="subject" placeholder="Subject" required />
+          <input id="topic" placeholder="Topic optional" />
+
+          <input
+            id="totalItems"
+            type="number"
+            placeholder="Total items"
+            required
+          />
+          <input
+            id="easyCount"
+            type="number"
+            placeholder="Easy count"
+            value="0"
+          />
+          <input
+            id="averageCount"
+            type="number"
+            placeholder="Average count"
+            value="0"
+          />
+          <input
+            id="difficultCount"
+            type="number"
+            placeholder="Difficult count"
+            value="0"
+          />
+
+          <button class="btn" type="submit">Generate Exam</button>
+          <p class="message" id="examMessage"></p>
+        </form>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/generate-exam.js"></script>
+  </body>
+</html>
