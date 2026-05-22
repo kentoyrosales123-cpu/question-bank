@@ -5,9 +5,8 @@ async function loadParsedQuestions() {
   try {
     const data = await apiRequest("/parser");
 
-    document.getElementById("parsedList").innerHTML = data.parsedQuestions.filter(
-  q => q.status === "Pending"
-)
+    document.getElementById("parsedList").innerHTML = data.parsedQuestions
+      .filter((q) => q.status === "Pending")
       .map(
         (q) => `
         <div class="card question-card" id="parsed_card_${q._id}">
@@ -15,6 +14,17 @@ async function loadParsedQuestions() {
 
           <input id="subject_${q._id}" value="${escapeHTML(q.subject)}">
           <input id="topic_${q._id}" value="${escapeHTML(q.topic)}">
+
+          ${
+            q.image && q.image.contentType
+              ? `<img
+  class="question-image"
+  src="/api/parser/${q._id}/image"
+  style="max-width: 420px; display: block; margin: 15px 0; border-radius: 10px;"
+  onerror="console.log('BROKEN IMAGE URL:', this.src); this.style.border='2px solid red';"
+>`
+              : ""
+          }
 
           <textarea id="questionText_${q._id}">${escapeHTML(q.questionText)}</textarea>
 

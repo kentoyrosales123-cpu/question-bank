@@ -24,7 +24,15 @@ async function loadExam() {
         <div class="card question-card">
           <h3>${index + 1}. ${q.questionText}</h3>
 
-          ${q.image && q.image.contentType ? `<img class="question-image" src="/api/questions/${q._id}/image">` : ""}
+          ${
+            q.image && q.image.contentType
+              ? `<img
+        class="question-image"
+        src="/api/questions/${q._id}/image"
+        style="max-width:300px;display:block;margin:15px 0;border-radius:10px;"
+      >`
+              : ""
+          }
           ${q.tableData ? `<pre>${q.tableData}</pre>` : ""}
 
           ${["A", "B", "C", "D"]

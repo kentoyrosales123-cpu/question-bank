@@ -27,6 +27,10 @@ const parsedQuestionSchema = new mongoose.Schema(
       default: "Average",
     },
     explanation: { type: String, default: "" },
+    image: {
+      data: Buffer,
+      contentType: String,
+    },
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],

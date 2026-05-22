@@ -25,7 +25,7 @@ async function loadResult() {
             <h3>${index + 1}. ${q.questionText}</h3>
             ${
               q.image && q.image.contentType
-                ? `<img class="question-image" src="/api/questions/${q._id}/image">`
+                ? `<img class="question-image" src="/questions/${q._id}/image">`
                 : ""
             }
 

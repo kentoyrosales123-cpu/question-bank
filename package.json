@@ -16,6 +16,7 @@
   "author": "M Digital Solution",
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "docx": "^9.6.1",

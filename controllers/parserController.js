@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const mammoth = require("mammoth");
 const pdfParse = require("pdf-parse");
+const AdmZip = require("adm-zip");
 
 const Upload = require("../models/Upload");
 const Question = require("../models/Question");
@@ -29,6 +30,54 @@ function detectDifficulty(text) {
   }
 
   return "Easy";
+}
+
+function extractDocxImages(filePath) {
+  const zip = new AdmZip(filePath);
+  const entries = zip.getEntries();
+
+  const images = [];
+
+  console.log("TOTAL DOCX ENTRIES:", entries.length);
+
+  entries.forEach((entry) => {
+    if (entry.entryName.startsWith("word/media/")) {
+      const ext = path.extname(entry.entryName).toLowerCase();
+
+      let contentType = "image/png";
+
+      if (ext === ".jpg" || ext === ".jpeg") {
+        contentType = "image/jpeg";
+      }
+
+      if (ext === ".png") {
+        contentType = "image/png";
+      }
+
+      if (ext === ".webp") {
+        contentType = "image/webp";
+      }
+
+      // FIX: convert to Node Buffer
+      const imageBuffer = Buffer.from(entry.getData());
+
+      console.log("FOUND IMAGE:", entry.entryName);
+
+      console.log("BUFFER SIZE:", imageBuffer.length);
+
+      // skip empty images
+      if (imageBuffer.length > 100) {
+        images.push({
+          data: imageBuffer,
+          contentType,
+        });
+      }
+    }
+  });
+
+  console.log("TOTAL VALID IMAGES:", images.length);
+
+  return images;
 }
 
 function parseQuestionsFromText(text) {
@@ -111,9 +160,16 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
     let extractedText = "";
 
+    let extractedImages = [];
+
     if (upload.fileType.includes("wordprocessingml.document")) {
-      const result = await mammoth.extractRawText({ path: fullPath });
+      const result = await mammoth.extractRawText({
+        path: fullPath,
+      });
+
       extractedText = result.value;
+
+      extractedImages = extractDocxImages(fullPath);
     } else if (upload.fileType.includes("pdf")) {
       const buffer = fs.readFileSync(fullPath);
       const result = await pdfParse(buffer);
@@ -136,17 +192,38 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
+    let imageIndex = 0;
+
     const saved = await ParsedQuestion.insertMany(
-      parsedQuestions.map((q) => ({
-        upload: upload._id,
-        subject,
-        topic,
-        questionText: q.questionText,
-        choices: q.choices,
-        correctAnswer: q.correctAnswer,
-        difficulty: q.difficulty,
-        explanation: q.explanation,
-      })),
+      parsedQuestions.map((q) => {
+        const lowerText = q.questionText.toLowerCase();
+
+        const needsFigure =
+          lowerText.includes("figure") ||
+          lowerText.includes("diagram") ||
+          lowerText.includes("shown below") ||
+          lowerText.includes("refer to") ||
+          lowerText.includes("see figure");
+
+        let image = undefined;
+
+        if (needsFigure && extractedImages[imageIndex]) {
+          image = extractedImages[imageIndex];
+          imageIndex++;
+        }
+
+        return {
+          upload: upload._id,
+          subject,
+          topic,
+          questionText: q.questionText,
+          choices: q.choices,
+          correctAnswer: q.correctAnswer,
+          difficulty: q.difficulty,
+          explanation: q.explanation,
+          image,
+        };
+      }),
     );
 
     res.json({
@@ -206,6 +283,9 @@ exports.approveParsedQuestion = async (req, res) => {
       correctAnswer: parsed.correctAnswer,
       difficulty: parsed.difficulty,
       explanation: parsed.explanation,
+
+      image: parsed.image,
+
       createdBy: req.user._id,
     });
 
@@ -269,5 +349,21 @@ exports.rejectParsedQuestion = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+
+exports.getParsedQuestionImage = async (req, res) => {
+  try {
+    const parsed = await ParsedQuestion.findById(req.params.id).select("image");
+
+    if (!parsed || !parsed.image || !parsed.image.data) {
+      return res.status(404).send("Image not found");
+    }
+
+    res.set("Content-Type", parsed.image.contentType);
+
+    res.send(parsed.image.data);
+  } catch (error) {
+    res.status(500).send("Failed to load image");
   }
 };

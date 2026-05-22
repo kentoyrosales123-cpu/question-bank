@@ -12,15 +12,27 @@ const {
 } = require("../controllers/questionController");
 
 const { protect, adminOnly } = require("../middleware/authMiddleware");
-const upload = require("../middleware/uploadMiddleware");
+const imageUpload = require("../middleware/imageUploadMiddleware");
 
 router.get("/", protect, getQuestions);
 router.get("/filter", protect, filterQuestions);
 router.get("/:id/image", getQuestionImage);
 router.get("/:id", protect, getQuestion);
 
-router.post("/", protect, adminOnly, upload.single("image"), createQuestion);
-router.put("/:id", protect, adminOnly, upload.single("image"), updateQuestion);
+router.post(
+  "/",
+  protect,
+  adminOnly,
+  imageUpload.single("image"),
+  createQuestion,
+);
+router.put(
+  "/:id",
+  protect,
+  adminOnly,
+  imageUpload.single("image"),
+  updateQuestion,
+);
 router.delete("/:id", protect, adminOnly, deleteQuestion);
 
 module.exports = router;
