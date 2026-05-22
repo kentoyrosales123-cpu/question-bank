@@ -23,6 +23,11 @@ async function loadResult() {
         return `
           <div class="card question-card">
             <h3>${index + 1}. ${q.questionText}</h3>
+            ${
+              q.image && q.image.contentType
+                ? `<img class="question-image" src="/api/questions/${q._id}/image">`
+                : ""
+            }
 
             <p>Your Answer: 
               <strong class="${answer?.isCorrect ? "correct" : "wrong"}">

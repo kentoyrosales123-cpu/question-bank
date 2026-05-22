@@ -5,6 +5,7 @@ const {
   createQuestion,
   getQuestions,
   getQuestion,
+  getQuestionImage,
   updateQuestion,
   deleteQuestion,
   filterQuestions,
@@ -15,6 +16,7 @@ const upload = require("../middleware/uploadMiddleware");
 
 router.get("/", protect, getQuestions);
 router.get("/filter", protect, filterQuestions);
+router.get("/:id/image", getQuestionImage);
 router.get("/:id", protect, getQuestion);
 
 router.post("/", protect, adminOnly, upload.single("image"), createQuestion);

@@ -33,7 +33,12 @@ exports.createQuestion = async (req, res) => {
       });
     }
 
-    const image = req.file ? `/uploads/${req.file.filename}` : "";
+    const image = req.file
+      ? {
+          data: req.file.buffer,
+          contentType: req.file.mimetype,
+        }
+      : undefined;
 
     const question = await Question.create({
       subject,
@@ -69,6 +74,7 @@ exports.createQuestion = async (req, res) => {
 exports.getQuestions = async (req, res) => {
   try {
     const questions = await Question.find()
+      .select("-image.data")
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
 
@@ -87,7 +93,9 @@ exports.getQuestions = async (req, res) => {
 
 exports.getQuestion = async (req, res) => {
   try {
-    const question = await Question.findById(req.params.id);
+    const question = await Question.findById(req.params.id).select(
+      "-image.data",
+    );
 
     if (!question) {
       return res.status(404).json({
@@ -105,6 +113,21 @@ exports.getQuestion = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+
+exports.getQuestionImage = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id).select("image");
+
+    if (!question || !question.image || !question.image.data) {
+      return res.status(404).send("Image not found");
+    }
+
+    res.set("Content-Type", question.image.contentType);
+    res.send(question.image.data);
+  } catch (error) {
+    res.status(500).send("Failed to load image");
   }
 };
 
@@ -133,14 +156,19 @@ exports.updateQuestion = async (req, res) => {
       difficulty: req.body.difficulty || question.difficulty,
       explanation: req.body.explanation || question.explanation,
       tableData: req.body.tableData || question.tableData,
-      image: req.file ? `/uploads/${req.file.filename}` : question.image,
+      image: req.file
+        ? {
+            data: req.file.buffer,
+            contentType: req.file.mimetype,
+          }
+        : question.image,
     };
 
     const updatedQuestion = await Question.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true },
-    );
+    ).select("-image.data");
 
     res.json({
       success: true,
@@ -190,7 +218,9 @@ exports.filterQuestions = async (req, res) => {
     if (topic) filter.topic = new RegExp(topic, "i");
     if (difficulty) filter.difficulty = difficulty;
 
-    const questions = await Question.find(filter).sort({ createdAt: -1 });
+    const questions = await Question.find(filter)
+      .select("-image.data")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,

@@ -44,8 +44,8 @@ const questionSchema = new mongoose.Schema(
     },
 
     image: {
-      type: String,
-      default: "",
+      data: Buffer,
+      contentType: String,
     },
 
     tableData: {

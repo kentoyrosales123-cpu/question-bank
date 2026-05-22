@@ -1,8 +1,7 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 
-const { Document, Packer, Paragraph, TextRun } = require("docx");
-
+const { Document, Packer, Paragraph, TextRun, ImageRun } = require("docx");
 const getRandomQuestions = async (subject, topic, difficulty, count) => {
   const match = {
     subject,
@@ -102,7 +101,10 @@ exports.generateExam = async (req, res) => {
       user: req.user._id,
     });
 
-    const populatedExam = await Exam.findById(exam._id).populate("questions");
+    const populatedExam = await Exam.findById(exam._id).populate({
+      path: "questions",
+      select: "-image.data",
+    });
 
     res.status(201).json({
       success: true,
@@ -178,8 +180,14 @@ exports.submitExam = async (req, res) => {
 exports.getExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id)
-      .populate("questions")
-      .populate("answers.question");
+      .populate({
+        path: "questions",
+        select: "-image.data",
+      })
+      .populate({
+        path: "answers.question",
+        select: "-image.data",
+      });
 
     if (!exam) {
       return res.status(404).json({
@@ -242,15 +250,45 @@ exports.downloadExamDocx = async (req, res) => {
         }),
       );
 
+      // IMAGE
+      if (q.image && q.image.data) {
+        let imageType = "png";
+
+        if (
+          q.image.contentType === "image/jpeg" ||
+          q.image.contentType === "image/jpg"
+        ) {
+          imageType = "jpg";
+        }
+
+        if (q.image.contentType === "image/png") {
+          imageType = "png";
+        }
+
+        children.push(
+          new Paragraph({
+            children: [
+              new ImageRun({
+                data: q.image.data,
+                type: imageType,
+                transformation: {
+                  width: 400,
+                  height: 250,
+                },
+              }),
+            ],
+          }),
+        );
+      }
+
+      if (q.tableData) {
+        children.push(new Paragraph(q.tableData));
+      }
+
       children.push(new Paragraph(`A. ${q.choices.A}`));
       children.push(new Paragraph(`B. ${q.choices.B}`));
       children.push(new Paragraph(`C. ${q.choices.C}`));
       children.push(new Paragraph(`D. ${q.choices.D}`));
-      children.push(new Paragraph(`Answer: ${q.correctAnswer || ""}`));
-
-      if (q.explanation) {
-        children.push(new Paragraph(`Explanation: ${q.explanation}`));
-      }
 
       children.push(new Paragraph(""));
     });

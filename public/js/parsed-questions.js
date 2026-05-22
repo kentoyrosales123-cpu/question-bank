@@ -5,8 +5,9 @@ async function loadParsedQuestions() {
   try {
     const data = await apiRequest("/parser");
 
-    document.getElementById("parsedList").innerHTML = data.parsedQuestions
-      .filter((q) => q.status === "Pending")
+    document.getElementById("parsedList").innerHTML = data.parsedQuestions.filter(
+  q => q.status === "Pending"
+)
       .map(
         (q) => `
         <div class="card question-card" id="parsed_card_${q._id}">
