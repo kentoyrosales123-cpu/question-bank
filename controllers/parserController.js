@@ -11,25 +11,96 @@ const ParsedQuestion = require("../models/ParsedQuestion");
 function detectDifficulty(text) {
   const lower = text.toLowerCase();
 
-  if (
-    lower.includes("derive") ||
-    lower.includes("prove") ||
-    lower.includes("analyze") ||
-    lower.includes("calculate") ||
-    lower.includes("solve")
-  ) {
-    return "Difficult";
+  let score = 0;
+
+  // EASY QUESTIONS
+  const easyKeywords = [
+    "what is",
+    "define",
+    "identify",
+    "state",
+    "which of the following",
+    "true or false",
+  ];
+
+  easyKeywords.forEach((word) => {
+    if (lower.includes(word)) {
+      score += 1;
+    }
+  });
+
+  // AVERAGE QUESTIONS
+  const averageKeywords = [
+    "determine",
+    "find",
+    "compute",
+    "calculate",
+    "solve",
+    "obtain",
+  ];
+
+  averageKeywords.forEach((word) => {
+    if (lower.includes(word)) {
+      score += 2;
+    }
+  });
+
+  // DIFFICULT QUESTIONS
+  const difficultKeywords = [
+    "derive",
+    "prove",
+    "analyze",
+    "evaluate",
+    "design",
+    "justify",
+    "compare",
+    "troubleshoot",
+  ];
+
+  difficultKeywords.forEach((word) => {
+    if (lower.includes(word)) {
+      score += 3;
+    }
+  });
+
+  // LONG QUESTIONS = HARDER
+  if (lower.length > 150) score += 2;
+  if (lower.length > 250) score += 3;
+
+  // MANY NUMBERS = COMPUTATION
+  const numbers = lower.match(/\d+/g);
+
+  if (numbers && numbers.length >= 3) {
+    score += 2;
   }
 
-  if (
-    lower.includes("explain") ||
-    lower.includes("determine") ||
-    lower.includes("compute")
-  ) {
+  // FIGURES/TABLES/CIRCUITS
+  const technicalKeywords = [
+    "figure",
+    "diagram",
+    "table",
+    "graph",
+    "circuit",
+    "waveform",
+    "network",
+  ];
+
+  technicalKeywords.forEach((word) => {
+    if (lower.includes(word)) {
+      score += 2;
+    }
+  });
+
+  // FINAL DECISION
+  if (score <= 2) {
+    return "Easy";
+  }
+
+  if (score <= 6) {
     return "Average";
   }
 
-  return "Easy";
+  return "Difficult";
 }
 
 function extractDocxImages(filePath) {
