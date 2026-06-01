@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Profile</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout profile-page">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a class="active" href="/profile.html">Profile</a>
+        <a href="/users.html">Users</a>
+        <a href="/reports.html">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main profile-main">
+        <div class="admin-topbar">
+          <div>
+            <h1>My Profile</h1>
+            <p class="muted-text">
+              View and manage your account information and activity.
+            </p>
+          </div>
+          <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+        </div>
+
+        <section class="profile-grid">
+          <aside class="card profile-summary-card">
+            <div class="profile-photo-shell">
+              <img id="profilePhoto" alt="Profile picture" class="profile-photo hidden" />
+              <div id="profileInitials" class="profile-initials">U</div>
+              <button class="camera-button" type="button" onclick="showProfileEditor()">+</button>
+            </div>
+
+            <h2 id="profileName">User</h2>
+            <p id="profileEmail" class="muted-text"></p>
+            <span id="profileRoleBadge" class="badge easy">Professor</span>
+
+            <div class="profile-meta-list">
+              <p><span>Member Since</span><strong id="summaryJoined">-</strong></p>
+              <p><span>Last Active</span><strong class="online-dot">Online</strong></p>
+            </div>
+
+            <form id="profileImageForm" class="profile-upload-zone hidden">
+              <label>
+                <span class="field-label">Update Profile Picture</span>
+                <input id="profileImage" name="profileImage" type="file" accept="image/*" required />
+              </label>
+              <div class="upload-drop">
+                <strong>Upload image</strong>
+                <span>JPG, PNG, WEBP up to 5MB</span>
+              </div>
+              <button class="btn" type="submit">Update Picture</button>
+              <button class="btn secondary" type="button" onclick="hideProfileEditor()">Cancel</button>
+              <p class="message" id="profileMessage"></p>
+            </form>
+          </aside>
+
+          <div class="profile-content-grid">
+            <section class="card profile-details-card">
+              <div class="section-heading">
+                <h2>Account Details</h2>
+                <button class="btn secondary" type="button" onclick="showProfileEditor()">Edit Profile</button>
+              </div>
+              <div class="profile-detail-grid">
+                <div>
+                  <span class="field-label">Full Name</span>
+                  <strong id="detailName">-</strong>
+                </div>
+                <div>
+                  <span class="field-label">Email</span>
+                  <strong id="detailEmail">-</strong>
+                </div>
+                <div>
+                  <span class="field-label">Role</span>
+                  <strong id="detailRole">-</strong>
+                </div>
+                <div>
+                  <span class="field-label">Email Status</span>
+                  <strong id="detailVerified">-</strong>
+                </div>
+                <div>
+                  <span class="field-label">Joined</span>
+                  <strong id="detailJoined">-</strong>
+                </div>
+                <div>
+                  <span class="field-label">Last Updated</span>
+                  <strong id="detailUpdated">-</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="card profile-activity-card">
+              <h2>Exam Activity</h2>
+              <div class="profile-activity-grid">
+              <div class="profile-stat purple">
+                <span>Total Exams</span>
+                <strong id="profileTotalExams">0</strong>
+                <small>generated exams</small>
+              </div>
+            </div>
+          </section>
+
+            <section class="profile-bottom-grid">
+              <div class="card profile-recent-card">
+                <div class="section-heading">
+                  <h2>Recent Activity</h2>
+                  <button class="btn secondary" type="button" onclick="openActivityModal()">
+                    View All
+                  </button>
+                </div>
+                <div id="profileRecentActivity"></div>
+              </div>
+
+              <div class="card profile-actions-card">
+                <h2 class="quick-actions-title">Quick Actions</h2>
+                <div class="quick-action-grid">
+                  <a class="admin-profile-action" href="/add-question.html">
+                    <span class="quick-action-icon add-icon"></span>
+                    <strong>Add Question</strong>
+                    <span>Create a new question</span>
+                  </a>
+                  <a class="admin-profile-action" href="/upload.html">
+                    <span class="quick-action-icon upload-icon"></span>
+                    <strong>Upload Questionnaire</strong>
+                    <span>Import questions</span>
+                  </a>
+                  <a href="/generate-exam.html">
+                    <span class="quick-action-icon exam-icon"></span>
+                    <strong>Generate Exam</strong>
+                    <span>Create new exam</span>
+                  </a>
+                  <a class="admin-profile-action" href="/reports.html">
+                    <span class="quick-action-icon report-icon"></span>
+                    <strong>View Reports</strong>
+                    <span>Check system reports</span>
+                  </a>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <div class="modal hidden" id="profileActivityModal">
+          <div class="modal-panel profile-activity-modal">
+            <div class="modal-header">
+              <h2>All Generated Exams</h2>
+              <button class="btn secondary" type="button" onclick="closeActivityModal()">
+                Close
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Exam</th>
+                    <th>Subject</th>
+                    <th>Items</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="profileActivityBody"></tbody>
+              </table>
+            </div>
+            <p class="message" id="profileActivityMessage"></p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/profile.js"></script>
+  </body>
+</html>

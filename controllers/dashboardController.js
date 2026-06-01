@@ -127,3 +127,64 @@ exports.downloadActivityLog = async (req, res) => {
     });
   }
 };
+
+exports.getReportsSummary = async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalQuestions,
+      totalExams,
+      submittedExams,
+      easyQuestions,
+      averageQuestions,
+      difficultQuestions,
+      recentActivity,
+    ] = await Promise.all([
+      User.countDocuments(),
+      Question.countDocuments(),
+      Exam.countDocuments(),
+      Exam.countDocuments({ submitted: true }),
+      Question.countDocuments({ difficulty: "Easy" }),
+      Question.countDocuments({ difficulty: "Average" }),
+      Question.countDocuments({ difficulty: "Difficult" }),
+      ActivityLog.find()
+        .populate("user", "name email role")
+        .sort({ createdAt: -1 })
+        .limit(25),
+    ]);
+
+    const activityCounts = await ActivityLog.aggregate([
+      {
+        $group: {
+          _id: "$action",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    res.json({
+      success: true,
+      report: {
+        totalUsers,
+        totalQuestions,
+        totalExams,
+        submittedExams,
+        pendingExams: totalExams - submittedExams,
+        easyQuestions,
+        averageQuestions,
+        difficultQuestions,
+        loginCount:
+          activityCounts.find((item) => item._id === "login")?.count || 0,
+        generatedExamCount:
+          activityCounts.find((item) => item._id === "generate_exam")?.count ||
+          0,
+        recentActivity,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

@@ -47,6 +47,15 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
+
+    profileImage: {
+      data: {
+        type: Buffer,
+        select: false,
+      },
+      contentType: String,
+      uploadedAt: Date,
+    },
   },
   { timestamps: true },
 );

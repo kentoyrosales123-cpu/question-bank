@@ -71,6 +71,7 @@ function syncDashboardLinks() {
     "/upload.html",
     "/parsed-questions.html",
     "/users.html",
+    "/reports.html",
   ].forEach((href) => {
     document.querySelectorAll(`a[href="${href}"]`).forEach((link) => {
       link.classList.add("hidden");

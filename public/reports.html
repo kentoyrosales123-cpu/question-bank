@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Reports</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout reports-page">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a href="/profile.html">Profile</a>
+        <a href="/users.html">Users</a>
+        <a class="active" href="/reports.html">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="admin-topbar">
+          <div>
+            <h1>Reports</h1>
+            <p class="muted-text">
+              Monitor users, questions, generated exams, and system activity.
+            </p>
+          </div>
+          <div class="admin-tools">
+            <button class="btn secondary report-download" type="button" onclick="downloadActivityLog()">
+              Download Activity Excel
+            </button>
+            <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+          </div>
+        </div>
+
+        <section class="dashboard-stats reports-stats">
+          <div class="card metric-card metric-users report-metric">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Total Users</h3>
+              <strong id="reportUsers">0</strong>
+              <small>registered accounts <span>vs last 30 days</span></small>
+            </div>
+          </div>
+          <div class="card metric-card metric-questions report-metric">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Total Questions</h3>
+              <strong id="reportQuestions">0</strong>
+              <small>question bank items <span>vs last 30 days</span></small>
+            </div>
+          </div>
+          <div class="card metric-card metric-easy report-metric">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Generated Exams</h3>
+              <strong id="reportExams">0</strong>
+              <small>created exams <span>vs last 30 days</span></small>
+            </div>
+          </div>
+          <div class="card metric-card metric-difficult report-metric">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Activity Events</h3>
+              <strong id="reportActivity">0</strong>
+              <small>logins and generated exams <span>vs last 30 days</span></small>
+            </div>
+          </div>
+        </section>
+
+        <section class="dashboard-insights">
+          <div class="card difficulty-panel report-card">
+            <h2>Questions by Difficulty</h2>
+            <div class="difficulty-summary">
+              <div class="dashboard-donut report-donut" id="reportDifficultyDonut">
+                <div class="donut-center">
+                  <span id="reportDonutTotal">0</span>
+                  <small>Total</small>
+                </div>
+              </div>
+              <div>
+                <p><span class="dot easy-dot"></span> Easy <strong id="reportEasy">0</strong></p>
+                <p><span class="dot average-dot"></span> Average <strong id="reportAverage">0</strong></p>
+                <p><span class="dot difficult-dot"></span> Difficult <strong id="reportDifficult">0</strong></p>
+              </div>
+            </div>
+            <div class="summary-note">
+              <strong>Total Questions</strong>
+              <span id="reportQuestionTotal">0</span>
+            </div>
+          </div>
+
+          <div class="card difficulty-panel report-card">
+            <h2>Exam Status</h2>
+            <div class="report-stack">
+              <p><i class="status-icon generated-icon"></i><span>Generated Exams</span><strong id="reportGenerated">0</strong></p>
+              <p><i class="status-icon submitted-icon"></i><span>Submitted Exams</span><strong id="reportSubmitted">0</strong></p>
+              <p><i class="status-icon pending-icon"></i><span>Pending Exams</span><strong id="reportPending">0</strong></p>
+              <p><i class="status-icon login-icon"></i><span>User Logins</span><strong id="reportLogins">0</strong></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="card activity-monitor-card report-activity-card">
+          <div class="section-heading">
+            <h2>Recent Activity</h2>
+            <button class="btn" type="button" onclick="downloadActivityLog()">
+              Download Excel
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Activity</th>
+                  <th>Details</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="reportsActivityBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/reports.js"></script>
+  </body>
+</html>
