@@ -27,10 +27,15 @@
 
         <form class="card" id="uploadForm">
           <p>
-            Upload DOCX or PDF questionnaire. After uploading, click Parse
-            Questions.
+            Upload DOCX, PDF, or image questionnaire. After uploading, click
+            Parse Questions.
           </p>
-          <input id="questionnaire" type="file" required />
+          <input
+            id="questionnaire"
+            type="file"
+            accept=".docx,.pdf,image/jpeg,image/png,image/webp"
+            required
+          />
           <button class="btn" type="submit">Upload File</button>
           <p class="message" id="uploadMessage"></p>
         </form>

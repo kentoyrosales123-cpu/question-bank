@@ -62,6 +62,9 @@ async function parseUpload(uploadId) {
   }
 
   try {
+    document.getElementById(`parseMsg_${uploadId}`).textContent =
+      "Parsing questions. Image OCR can take a moment...";
+
     const data = await apiRequest("/parser/parse", "POST", {
       uploadId,
       subject,

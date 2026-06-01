@@ -3,10 +3,16 @@ const path = require("path");
 const mammoth = require("mammoth");
 const pdfParse = require("pdf-parse");
 const AdmZip = require("adm-zip");
+const { createWorker } = require("tesseract.js");
 
 const Upload = require("../models/Upload");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
+
+const OCR_LANG_PATH = path.join(
+  path.dirname(require.resolve("@tesseract.js-data/eng")),
+  "4.0.0",
+);
 
 function detectDifficulty(text) {
   const lower = text.toLowerCase();
@@ -151,13 +157,35 @@ function extractDocxImages(filePath) {
   return images;
 }
 
+function isImageFile(fileType) {
+  return ["image/jpeg", "image/png", "image/jpg", "image/webp"].includes(
+    fileType,
+  );
+}
+
+async function extractTextFromImage(filePath) {
+  const worker = await createWorker("eng", 1, {
+    langPath: OCR_LANG_PATH,
+  });
+
+  try {
+    const {
+      data: { text },
+    } = await worker.recognize(filePath);
+
+    return text;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 function parseQuestionsFromText(text) {
   const cleaned = text
     .replace(/\r/g, "")
     .replace(/\t/g, " ")
     .replace(/[ ]{2,}/g, " ");
 
-  const blocks = cleaned.split(/\n(?=\d+[\).\s])/g);
+  const blocks = cleaned.split(/\n(?=(?:QUESTION\s*)?\d+[:).\s])/gi);
 
   const parsed = [];
 
@@ -183,7 +211,7 @@ function parseQuestionsFromText(text) {
 
     const questionOnly = joined
       .replace(/A[\).][\s\S]*/i, "")
-      .replace(/^\d+[\).\s]*/, "")
+      .replace(/^(?:QUESTION\s*)?\d+[:).\s]*/i, "")
       .trim();
 
     if (!questionOnly || !choiceA || !choiceB || !choiceC || !choiceD) {
@@ -245,11 +273,13 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       const buffer = fs.readFileSync(fullPath);
       const result = await pdfParse(buffer);
       extractedText = result.text;
+    } else if (isImageFile(upload.fileType)) {
+      extractedText = await extractTextFromImage(fullPath);
     } else {
       return res.status(400).json({
         success: false,
         message:
-          "Image OCR is not included yet. Use DOCX or PDF for auto parsing.",
+          "Unsupported file type. Use DOCX, PDF, JPG, PNG, or WEBP for auto parsing.",
       });
     }
 
@@ -264,6 +294,8 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
     }
 
     let imageIndex = 0;
+    const shouldAttachImagesByOrder =
+      extractedImages.length > 0 && extractedImages.length === parsedQuestions.length;
 
     const saved = await ParsedQuestion.insertMany(
       parsedQuestions.map((q) => {
@@ -278,7 +310,10 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
         let image = undefined;
 
-        if (needsFigure && extractedImages[imageIndex]) {
+        if (
+          (needsFigure || shouldAttachImagesByOrder) &&
+          extractedImages[imageIndex]
+        ) {
           image = extractedImages[imageIndex];
           imageIndex++;
         }
