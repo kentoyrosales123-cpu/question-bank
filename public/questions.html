@@ -13,6 +13,11 @@
         <a href="/add-question.html">Add Question</a>
         <a href="/upload.html">Upload Questionnaire</a>
         <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a href="/users.html">Users</a>
+        <a href="/dashboard.html#activityBody">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
         <a onclick="logout()">Logout</a>
       </aside>
 
@@ -54,6 +59,18 @@
             </thead>
             <tbody id="questionsBody"></tbody>
           </table>
+        </div>
+
+        <div class="modal hidden" id="questionModal">
+          <div class="modal-panel">
+            <div class="modal-header">
+              <h2 id="questionModalTitle">Question Details</h2>
+              <button class="btn secondary" type="button" onclick="closeQuestionModal()">
+                Close
+              </button>
+            </div>
+            <div id="questionDetails"></div>
+          </div>
         </div>
       </main>
     </div>

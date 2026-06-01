@@ -17,6 +17,21 @@ The system supports:
 - Randomized exam generation
 - DOCX download for exam papers and answer keys
 
+## Email Verification Setup
+
+Registration uses a 6-digit OTP email verification code. Configure these environment variables before production use:
+
+```text
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_email@example.com
+SMTP_PASS=your_email_password_or_app_password
+SMTP_FROM=Question Bank <your_email@example.com>
+```
+
+If SMTP settings are not configured, the server prints the OTP in the console for local development testing.
+
 ## 1. Account Registration
 
 ### How to Register
@@ -26,6 +41,9 @@ The system supports:
 3. Enter a valid email address.
 4. Enter a password.
 5. Click `Register`.
+6. Check your email for the 6-digit verification code.
+7. Enter the code on the registration page.
+8. Click `Verify Email`.
 
 ### Required Fields
 
@@ -44,8 +62,9 @@ The system also supports an `admin` role. Admin accounts can access protected ad
 After successful registration:
 
 1. The account is created.
-2. The system stores your login session.
-3. You are allowed to enter the system based on your assigned role.
+2. A verification code is sent to your email address.
+3. After you verify the code, the system stores your login session.
+4. You are allowed to enter the system based on your assigned role.
 
 ### Common Registration Errors
 
@@ -53,6 +72,9 @@ After successful registration:
 | --- | --- | --- |
 | Name, email, and password are required | One or more required fields were left blank | Complete all required fields |
 | Email already registered | The email is already used by another account | Use a different email or log in with the existing account |
+| Email and verification code are required | The OTP verification form is incomplete | Enter the 6-digit code sent to your email |
+| Invalid verification code | The OTP does not match the latest code | Re-enter the code or request a new one |
+| Verification code expired | The OTP is older than the allowed verification window | Click `Resend Code` and use the new OTP |
 | Invalid email format | The email address is not valid | Enter a valid email address |
 | Server error | Temporary server or database issue | Try again or contact the administrator |
 
@@ -79,6 +101,8 @@ After successful login:
 3. You are redirected to the appropriate system page.
 4. Your access depends on your role.
 
+Accounts must verify their email address before login is allowed.
+
 ### If Login Fails
 
 If login fails:
@@ -95,9 +119,15 @@ Common login error:
 Invalid email or password.
 ```
 
+```text
+Please verify your email before logging in.
+```
+
 ## 3. Dashboard Overview
 
 The dashboard gives administrators a quick summary of system activity.
+
+Regular users have a separate `My Dashboard` page. It shows their generated exams, completed exams, pending exams, average score, recent exam activity, and quick links to generate an exam or browse questions.
 
 ### Main Dashboard Sections
 

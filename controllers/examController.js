@@ -1,5 +1,6 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
+const { logActivity } = require("../services/activityLogger");
 
 const {
   Document,
@@ -141,6 +142,22 @@ exports.generateExam = async (req, res) => {
       select: "-image.data",
     });
 
+    await logActivity(req, {
+      user: req.user,
+      action: "generate_exam",
+      description: `Generated exam: ${exam.title}`,
+      metadata: {
+        exam: exam._id,
+        title: exam.title,
+        subject,
+        topic,
+        totalItems,
+        easyCount,
+        averageCount,
+        difficultCount,
+      },
+    });
+
     res.status(201).json({
       success: true,
       message: "Exam generated successfully.",
@@ -255,6 +272,56 @@ exports.getExam = async (req, res) => {
     res.json({
       success: true,
       exam,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getMyExamSummary = async (req, res) => {
+  try {
+    const [totalExams, submittedExams, recentExams, scoreSummary] =
+      await Promise.all([
+        Exam.countDocuments({ user: req.user._id }),
+        Exam.countDocuments({ user: req.user._id, submitted: true }),
+        Exam.find({ user: req.user._id })
+          .select("title subject topic totalItems score submitted createdAt updatedAt")
+          .sort({ createdAt: -1 })
+          .limit(10),
+        Exam.aggregate([
+          {
+            $match: {
+              user: req.user._id,
+              submitted: true,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalScore: { $sum: "$score" },
+              totalItems: { $sum: "$totalItems" },
+            },
+          },
+        ]),
+      ]);
+
+    const totals = scoreSummary[0] || { totalScore: 0, totalItems: 0 };
+
+    res.json({
+      success: true,
+      summary: {
+        totalExams,
+        submittedExams,
+        pendingExams: totalExams - submittedExams,
+        averageScore:
+          totals.totalItems > 0
+            ? Math.round((totals.totalScore / totals.totalItems) * 100)
+            : 0,
+        recentExams,
+      },
     });
   } catch (error) {
     res.status(500).json({

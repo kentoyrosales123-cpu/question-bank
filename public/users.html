@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Users</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a class="active" href="/users.html">Users</a>
+        <a href="/dashboard.html#activityBody">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="admin-topbar">
+          <div>
+            <h1>User Management</h1>
+            <p class="muted-text">
+              Review registered users, update roles, and remove accounts.
+            </p>
+          </div>
+
+          <div class="admin-tools">
+            <label class="search-box">
+              <span>Search</span>
+              <input id="userSearch" placeholder="Search users..." />
+            </label>
+            <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+          </div>
+        </div>
+
+        <section class="dashboard-stats">
+          <div class="card metric-card metric-users">
+            <div class="metric-icon">U</div>
+            <div>
+              <h3>Total Users</h3>
+              <strong id="totalUsers">0</strong>
+              <small>registered accounts</small>
+            </div>
+          </div>
+
+          <div class="card metric-card metric-questions">
+            <div class="metric-icon">A</div>
+            <div>
+              <h3>Admins</h3>
+              <strong id="adminUsers">0</strong>
+              <small>system managers</small>
+            </div>
+          </div>
+
+          <div class="card metric-card metric-easy">
+            <div class="metric-icon">P</div>
+            <div>
+              <h3>Professors</h3>
+              <strong id="regularUsers">0</strong>
+              <small>regular users</small>
+            </div>
+          </div>
+
+          <div class="card metric-card metric-difficult">
+            <div class="metric-icon">V</div>
+            <div>
+              <h3>Verified</h3>
+              <strong id="verifiedUsers">0</strong>
+              <small>email verified</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Registered Users</h2>
+            <p class="message" id="usersMessage"></p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Registered</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/users.js"></script>
+  </body>
+</html>

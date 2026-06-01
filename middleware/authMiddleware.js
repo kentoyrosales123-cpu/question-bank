@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { isAllowedEmail } = require("../config/loginAccess");
 
 const protect = async (req, res, next) => {
   try {
@@ -27,6 +28,13 @@ const protect = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: "User not found.",
+      });
+    }
+
+    if (!isAllowedEmail(req.user.email)) {
+      return res.status(403).json({
+        success: false,
+        message: "This system is restricted to the authorized account only.",
       });
     }
 

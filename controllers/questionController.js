@@ -144,20 +144,25 @@ exports.updateQuestion = async (req, res) => {
       });
     }
 
+    const getBodyValue = (field, fallback) =>
+      Object.prototype.hasOwnProperty.call(req.body, field)
+        ? req.body[field]
+        : fallback;
+
     const updateData = {
-      subject: req.body.subject || question.subject,
-      topic: req.body.topic || question.topic,
-      questionText: req.body.questionText || question.questionText,
+      subject: getBodyValue("subject", question.subject),
+      topic: getBodyValue("topic", question.topic),
+      questionText: getBodyValue("questionText", question.questionText),
       choices: {
-        A: req.body.choiceA || question.choices.A,
-        B: req.body.choiceB || question.choices.B,
-        C: req.body.choiceC || question.choices.C,
-        D: req.body.choiceD || question.choices.D,
+        A: getBodyValue("choiceA", question.choices.A),
+        B: getBodyValue("choiceB", question.choices.B),
+        C: getBodyValue("choiceC", question.choices.C),
+        D: getBodyValue("choiceD", question.choices.D),
       },
-      correctAnswer: req.body.correctAnswer || question.correctAnswer,
-      difficulty: req.body.difficulty || question.difficulty,
-      explanation: req.body.explanation || question.explanation,
-      tableData: req.body.tableData || question.tableData,
+      correctAnswer: getBodyValue("correctAnswer", question.correctAnswer),
+      difficulty: getBodyValue("difficulty", question.difficulty),
+      explanation: getBodyValue("explanation", question.explanation),
+      tableData: getBodyValue("tableData", question.tableData),
       tables: req.body.tables ? JSON.parse(req.body.tables) : question.tables,
       image: req.file
         ? {

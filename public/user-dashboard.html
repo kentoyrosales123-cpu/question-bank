@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+  <head>
+    <title>User Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a class="active" href="/user-dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="welcomeTitle">My Dashboard</h1>
+            <p class="muted-text">Track your generated exams and results.</p>
+          </div>
+          <button class="btn secondary" onclick="toggleTheme()">
+            Toggle Theme
+          </button>
+        </div>
+
+        <section class="grid grid-4">
+          <div class="card stat">
+            <h3>Total Exams</h3>
+            <strong id="totalExams">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Completed</h3>
+            <strong id="submittedExams">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Pending</h3>
+            <strong id="pendingExams">0</strong>
+          </div>
+          <div class="card stat">
+            <h3>Average Score</h3>
+            <strong id="averageScore">0%</strong>
+          </div>
+        </section>
+
+        <br />
+
+        <section class="grid grid-2">
+          <div class="card">
+            <h2>Quick Actions</h2>
+            <div class="action-row">
+              <a class="btn" href="/generate-exam.html">Generate Exam</a>
+              <a class="btn secondary" href="/questions.html">Browse Questions</a>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Recent Exams</h2>
+            <div id="recentUserExams"></div>
+          </div>
+        </section>
+
+        <p class="message wrong" id="dashboardMessage"></p>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/user-dashboard.js"></script>
+  </body>
+</html>

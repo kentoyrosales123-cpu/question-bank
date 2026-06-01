@@ -13,7 +13,24 @@
         <input id="email" type="email" placeholder="Email" required />
         <input id="password" type="password" placeholder="Password" required />
 
-        <button class="btn" type="submit">Register</button>
+        <button class="btn" id="registerButton" type="submit">Register</button>
+
+        <div class="hidden" id="verificationPanel">
+          <input
+            id="otp"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            placeholder="6-digit verification code"
+          />
+          <button class="btn success" id="verifyEmailButton" type="button">
+            Verify Email
+          </button>
+          <button class="btn secondary" id="resendOtpButton" type="button">
+            Resend Code
+          </button>
+        </div>
 
         <p>Already have an account? <a href="/login.html">Login</a></p>
         <p class="message wrong" id="authMessage"></p>

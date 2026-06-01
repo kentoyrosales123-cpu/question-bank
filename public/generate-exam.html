@@ -13,50 +13,125 @@
         <a href="/add-question.html">Add Question</a>
         <a href="/upload.html">Upload Questionnaire</a>
         <a class="active" href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a href="/users.html">Users</a>
+        <a href="/dashboard.html#activityBody">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
         <a onclick="logout()">Logout</a>
       </aside>
 
       <main class="main">
         <div class="topbar">
-          <h1>Exam Generator</h1>
+          <div>
+            <h1>Generate Exam</h1>
+            <p class="muted-text">
+              Create a customized exam by selecting subject, topic, number of
+              items and difficulty distribution.
+            </p>
+          </div>
           <button class="btn secondary" onclick="toggleTheme()">
             Toggle Theme
           </button>
         </div>
 
-        <form class="card" id="examForm">
-          <input id="title" placeholder="Exam title" />
-          <input id="subject" placeholder="Subject" required />
-          <input id="topic" placeholder="Topic optional" />
+        <div class="exam-builder">
+          <form class="card exam-card" id="examForm">
+            <section class="form-section">
+              <h2><span class="section-icon">D</span> Exam Information</h2>
 
-          <input
-            id="totalItems"
-            type="number"
-            placeholder="Total items"
-            required
-          />
-          <input
-            id="easyCount"
-            type="number"
-            placeholder="Easy count"
-            value="0"
-          />
-          <input
-            id="averageCount"
-            type="number"
-            placeholder="Average count"
-            value="0"
-          />
-          <input
-            id="difficultCount"
-            type="number"
-            placeholder="Difficult count"
-            value="0"
-          />
+              <div class="field-grid two">
+                <label>
+                  <span class="field-label">Exam Title *</span>
+                  <input id="title" placeholder="Enter exam title" />
+                </label>
 
-          <button class="btn" type="submit">Generate Exam</button>
-          <p class="message" id="examMessage"></p>
-        </form>
+                <label>
+                  <span class="field-label">Subject *</span>
+                  <input id="subject" placeholder="Select subject" required />
+                </label>
+              </div>
+
+              <label>
+                <span class="field-label">Topic (Optional)</span>
+                <input
+                  id="topic"
+                  placeholder="Enter topic (e.g., Algebra, Trigonometry, Calculus)"
+                />
+              </label>
+            </section>
+
+            <section class="form-section">
+              <h2><span class="section-icon gear">S</span> Exam Configuration</h2>
+
+              <div class="field-grid">
+                <label>
+                  <span class="field-label">Total Items *</span>
+                  <div class="stepper">
+                    <button type="button" onclick="adjustTotalItems(-1)">-</button>
+                    <input
+                      id="totalItems"
+                      type="number"
+                      placeholder="Total items"
+                      value="20"
+                      required
+                    />
+                    <button type="button" onclick="adjustTotalItems(1)">+</button>
+                  </div>
+                  <small>Total number of questions in the exam</small>
+                </label>
+              </div>
+
+              <h3 class="subsection-title">Difficulty Distribution</h3>
+              <div class="difficulty-grid">
+                <label class="difficulty-card easy-card">
+                  <span>Easy <strong id="easyPercent">30%</strong></span>
+                  <input id="easyCount" type="number" value="6" />
+                  <small>questions</small>
+                </label>
+
+                <label class="difficulty-card average-card">
+                  <span>Medium <strong id="averagePercent">50%</strong></span>
+                  <input id="averageCount" type="number" value="10" />
+                  <small>questions</small>
+                </label>
+
+                <label class="difficulty-card difficult-card">
+                  <span>Hard <strong id="difficultPercent">20%</strong></span>
+                  <input id="difficultCount" type="number" value="4" />
+                  <small>questions</small>
+                </label>
+              </div>
+            </section>
+
+            <button class="btn generate-btn" type="submit">Generate Exam</button>
+            <p class="message" id="examMessage"></p>
+          </form>
+
+          <aside class="card exam-summary">
+            <h2><span class="section-icon">D</span> Exam Summary</h2>
+            <div class="summary-list">
+              <p><span>Total Questions</span><strong id="summaryTotal">20</strong></p>
+              <p><span>Subject</span><strong id="summarySubject">Not selected</strong></p>
+              <p><span>Topic</span><strong id="summaryTopic">All topics</strong></p>
+            </div>
+
+            <h3>Difficulty Breakdown</h3>
+            <div class="difficulty-summary">
+              <div class="donut-chart"></div>
+              <div>
+                <p><span class="dot easy-dot"></span> Easy <strong id="summaryEasy">6 questions</strong></p>
+                <p><span class="dot average-dot"></span> Medium <strong id="summaryAverage">10 questions</strong></p>
+                <p><span class="dot difficult-dot"></span> Hard <strong id="summaryDifficult">4 questions</strong></p>
+              </div>
+            </div>
+
+            <div class="summary-note">
+              Questions will be randomly selected from the question bank based
+              on your criteria.
+            </div>
+          </aside>
+        </div>
       </main>
     </div>
 

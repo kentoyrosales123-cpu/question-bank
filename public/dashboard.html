@@ -13,52 +13,144 @@
         <a href="/add-question.html">Add Question</a>
         <a href="/upload.html">Upload Questionnaire</a>
         <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
+        <a href="/users.html">Users</a>
+        <a href="#activityBody">Reports</a>
+        <a class="settings-link" href="#settings">Settings</a>
+        <div class="nav-divider"></div>
         <a onclick="logout()">Logout</a>
       </aside>
 
       <main class="main">
-        <div class="topbar">
-          <h1>Admin Dashboard</h1>
-          <button class="btn secondary" onclick="toggleTheme()">
-            Toggle Theme
-          </button>
+        <div class="admin-topbar">
+          <div>
+            <h1>Admin Dashboard</h1>
+            <p class="muted-text" id="adminWelcome">
+              Welcome back. Here's what's happening with your question bank.
+            </p>
+          </div>
+
+          <div class="admin-tools">
+            <label class="search-box">
+              <span>Search</span>
+              <input id="dashboardSearch" placeholder="Search..." />
+            </label>
+            <button class="icon-btn" type="button" onclick="toggleTheme()">
+              T
+            </button>
+            <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+          </div>
         </div>
 
-        <section class="grid grid-4">
-          <div class="card stat">
-            <h3>Total Users</h3>
-            <strong id="totalUsers">0</strong>
+        <section class="dashboard-stats">
+          <div class="card metric-card metric-users">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Total Users</h3>
+              <strong id="totalUsers">0</strong>
+              <small>registered accounts</small>
+            </div>
           </div>
-          <div class="card stat">
-            <h3>Total Questions</h3>
-            <strong id="totalQuestions">0</strong>
-          </div>
-          <div class="card stat">
-            <h3>Easy</h3>
-            <strong id="easyQuestions">0</strong>
-          </div>
-          <div class="card stat">
-            <h3>Difficult</h3>
-            <strong id="difficultQuestions">0</strong>
+
+          <div class="card metric-card metric-questions">
+            <div class="metric-icon"></div>
+            <div>
+              <h3>Total Questions</h3>
+              <strong id="totalQuestions">0</strong>
+              <small>available items</small>
+            </div>
           </div>
         </section>
 
-        <br />
-
-        <section class="grid grid-3">
-          <div class="card">
-            <h2>Recent Questions</h2>
+        <section class="dashboard-panels">
+          <div class="card dashboard-panel">
+            <div class="panel-heading">
+              <h2>Recent Questions</h2>
+              <a href="/questions.html">View All</a>
+            </div>
             <div id="recentQuestions"></div>
+            <a class="panel-footer" href="/questions.html">View All Questions</a>
           </div>
 
-          <div class="card">
-            <h2>Recent Exams</h2>
+          <div class="card dashboard-panel">
+            <div class="panel-heading">
+              <h2>Recent Exams</h2>
+              <a href="/generate-exam.html">View All</a>
+            </div>
             <div id="recentExams"></div>
+            <a class="panel-footer" href="/generate-exam.html">View All Exams</a>
           </div>
 
-          <div class="card">
-            <h2>Registered Users</h2>
+          <div class="card dashboard-panel">
+            <div class="panel-heading">
+              <h2>Registered Users</h2>
+              <a href="#activityBody">View All</a>
+            </div>
             <div id="registeredUsers"></div>
+            <a class="panel-footer" href="#activityBody">View All Users</a>
+          </div>
+        </section>
+
+        <section class="dashboard-insights">
+          <div class="card activity-overview">
+            <div class="panel-heading">
+              <h2>Activity Overview</h2>
+              <span class="soft-select">Last 30 Days</span>
+            </div>
+            <div class="chart-legend">
+              <span><i class="blue-line"></i> Questions Added</span>
+              <span><i class="green-line"></i> Exams Generated</span>
+            </div>
+            <div class="line-chart">
+              <div class="chart-grid"></div>
+              <div class="line-path blue-path"></div>
+              <div class="line-path green-path"></div>
+              <div class="chart-axis">
+                <span>Week 1</span>
+                <span>Week 2</span>
+                <span>Week 3</span>
+                <span>Week 4</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card difficulty-panel">
+            <h2>Questions by Difficulty</h2>
+            <div class="difficulty-summary">
+              <div class="dashboard-donut" id="difficultyDonut"></div>
+              <div>
+                <p><span class="dot easy-dot"></span> Easy <strong id="easyBreakdown">0</strong></p>
+                <p><span class="dot average-dot"></span> Average <strong id="averageBreakdown">0</strong></p>
+                <p><span class="dot difficult-dot"></span> Difficult <strong id="difficultBreakdown">0</strong></p>
+              </div>
+            </div>
+            <div class="summary-note">
+              <strong>Total Questions</strong>
+              <span id="difficultyTotal">0</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card activity-monitor-card">
+          <div class="section-heading">
+            <h2>Activity Monitor</h2>
+            <button class="btn" type="button" onclick="downloadActivityLog()">
+              Download Excel
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Activity</th>
+                  <th>Details</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="activityBody"></tbody>
+            </table>
           </div>
         </section>
       </main>
