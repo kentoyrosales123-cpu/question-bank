@@ -8,8 +8,6 @@ const {
 const { logActivity } = require("../services/activityLogger");
 const {
   normalizeEmail,
-  isAllowedEmail,
-  isAllowedPassword,
 } = require("../config/loginAccess");
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -68,13 +66,6 @@ exports.register = async (req, res) => {
       });
     }
 
-    if (!isAllowedEmail(normalizedEmail) || !isAllowedPassword(password)) {
-      return res.status(403).json({
-        success: false,
-        message: "This system is restricted to the authorized account only.",
-      });
-    }
-
     const existingUser = await User.findOne({ email: normalizedEmail }).select(
       "+emailVerificationOtpHash +emailVerificationOtpExpires +emailVerificationLastSentAt",
     );
@@ -124,13 +115,6 @@ exports.verifyEmail = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Email and verification code are required.",
-      });
-    }
-
-    if (!isAllowedEmail(normalizedEmail)) {
-      return res.status(403).json({
-        success: false,
-        message: "This system is restricted to the authorized account only.",
       });
     }
 
@@ -219,13 +203,6 @@ exports.resendVerification = async (req, res) => {
       });
     }
 
-    if (!isAllowedEmail(normalizedEmail)) {
-      return res.status(403).json({
-        success: false,
-        message: "This system is restricted to the authorized account only.",
-      });
-    }
-
     const user = await User.findOne({ email: normalizedEmail }).select(
       "+emailVerificationLastSentAt",
     );
@@ -282,13 +259,6 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    if (!isAllowedEmail(normalizedEmail)) {
-      return res.status(403).json({
-        success: false,
-        message: "This system is restricted to the authorized account only.",
-      });
-    }
-
     const user = await User.findOne({ email: normalizedEmail }).select(
       "+passwordResetLastSentAt",
     );
@@ -335,20 +305,6 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Email, reset code, and new password are required.",
-      });
-    }
-
-    if (!isAllowedEmail(normalizedEmail)) {
-      return res.status(403).json({
-        success: false,
-        message: "This system is restricted to the authorized account only.",
-      });
-    }
-
-    if (!isAllowedPassword(password)) {
-      return res.status(403).json({
-        success: false,
-        message: "New password must match the authorized account password.",
       });
     }
 
@@ -410,13 +366,6 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const normalizedEmail = normalizeEmail(email);
-
-    if (!isAllowedEmail(normalizedEmail) || !isAllowedPassword(password)) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
-    }
 
     const user = await User.findOne({ email: normalizedEmail });
 

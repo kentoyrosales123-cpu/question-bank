@@ -4,6 +4,7 @@ const path = require("path");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
+const seedDefaultAdmin = require("./services/defaultAdmin");
 
 const authRoutes = require("./routes/authRoutes");
 const questionRoutes = require("./routes/questionRoutes");
@@ -14,7 +15,12 @@ const parserRoutes = require("./routes/parserRoutes");
 
 const app = express();
 
-connectDB();
+connectDB()
+  .then(seedDefaultAdmin)
+  .catch((error) => {
+    console.error("Startup failed:", error.message);
+    process.exit(1);
+  });
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
