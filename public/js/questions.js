@@ -8,11 +8,11 @@ async function loadQuestions(endpoint = "/questions") {
       .map(
         (q) => `
       <tr>
-        <td>${q.subject}</td>
-        <td>${q.topic}</td>
-        <td>${q.questionText.substring(0, 80)}...</td>
-        <td><span class="badge ${q.difficulty.toLowerCase()}">${q.difficulty}</span></td>
-        <td>${q.correctAnswer}</td>
+        <td>${escapeHTML(q.subject)}</td>
+        <td>${escapeHTML(q.topic)}</td>
+        <td>${escapeHTML(q.questionText.substring(0, 80))}...</td>
+        <td><span class="badge ${escapeHTML(q.difficulty.toLowerCase())}">${escapeHTML(q.difficulty)}</span></td>
+        <td>${escapeHTML(q.correctAnswer)}</td>
         <td>
           ${getUser()?.role === "admin" ? `<button class="btn danger" onclick="deleteQuestion('${q._id}')">Delete</button>` : ""}
         </td>

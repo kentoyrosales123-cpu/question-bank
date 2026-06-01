@@ -28,10 +28,10 @@ async function loadUploads() {
       .map(
         (file) => `
         <div class="card question-card">
-          <h3>${file.originalName}</h3>
-          <p>${file.fileType}</p>
+          <h3>${escapeHTML(file.originalName)}</h3>
+          <p>${escapeHTML(file.fileType)}</p>
 
- <a class="btn secondary" href="${file.filePath}" target="_blank">Open File</a>
+ <a class="btn secondary" href="${escapeHTML(file.filePath)}" target="_blank">Open File</a>
 <button class="btn danger" onclick="deleteUpload('${file._id}')">Delete File</button>
           <br><br>
 
@@ -48,7 +48,7 @@ async function loadUploads() {
       )
       .join("");
   } catch (error) {
-    document.getElementById("uploadsList").innerHTML = error.message;
+    document.getElementById("uploadsList").textContent = error.message;
   }
 }
 

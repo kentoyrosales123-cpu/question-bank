@@ -30,6 +30,8 @@ app.use("/api/uploads", uploadRoutes);
 app.use("/api/parser", parserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
+app.use("/api/users", require("./routes/userRoutes"));
+
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });

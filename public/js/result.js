@@ -22,22 +22,22 @@ async function loadResult() {
 
         return `
           <div class="card question-card">
-            <h3>${index + 1}. ${q.questionText}</h3>
+            <h3>${index + 1}. ${escapeHTML(q.questionText)}</h3>
             ${
               q.image && q.image.contentType
-                ? `<img class="question-image" src="/questions/${q._id}/image">`
+                ? `<img class="question-image" src="/api/questions/${q._id}/image">`
                 : ""
             }
 
             <p>Your Answer: 
               <strong class="${answer?.isCorrect ? "correct" : "wrong"}">
-                ${answer?.selectedAnswer || "No answer"}
+                ${escapeHTML(answer?.selectedAnswer || "No answer")}
               </strong>
             </p>
 
-            <p>Correct Answer: <strong>${q.correctAnswer}</strong></p>
+            <p>Correct Answer: <strong>${escapeHTML(q.correctAnswer)}</strong></p>
 
-            <p><strong>Explanation:</strong> ${q.explanation || "No explanation provided."}</p>
+            <p><strong>Explanation:</strong> ${escapeHTML(q.explanation || "No explanation provided.")}</p>
           </div>
         `;
       })

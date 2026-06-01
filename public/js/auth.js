@@ -19,6 +19,14 @@ function logout() {
   location.href = "/login.html";
 }
 
+function escapeHTML(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function protectPage() {
   if (!getToken()) {
     location.href = "/login.html";
@@ -93,7 +101,6 @@ if (registerForm) {
       name: document.getElementById("name").value,
       email: document.getElementById("email").value,
       password: document.getElementById("password").value,
-      role: document.getElementById("role").value,
     };
 
     try {

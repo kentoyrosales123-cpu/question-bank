@@ -22,7 +22,7 @@ async function loadExam() {
         .map(
           (q, index) => `
         <div class="card question-card">
-          <h3>${index + 1}. ${q.questionText}</h3>
+          <h3>${index + 1}. ${escapeHTML(q.questionText)}</h3>
 
           ${
             q.image && q.image.contentType
@@ -33,14 +33,14 @@ async function loadExam() {
       >`
               : ""
           }
-          ${q.tableData ? `<pre>${q.tableData}</pre>` : ""}
+          ${q.tableData ? `<pre>${escapeHTML(q.tableData)}</pre>` : ""}
 
           ${["A", "B", "C", "D"]
             .map(
               (letter) => `
             <label class="choice">
               <input type="radio" name="q_${q._id}" value="${letter}">
-              ${letter}. ${q.choices[letter]}
+              ${letter}. ${escapeHTML(q.choices[letter])}
             </label>
           `,
             )

@@ -2,6 +2,14 @@ const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 
 const { Document, Packer, Paragraph, TextRun, ImageRun } = require("docx");
+
+const canAccessExam = (exam, user) => {
+  if (!exam || !user) return false;
+  if (user.role === "admin") return true;
+
+  return exam.user && exam.user.toString() === user._id.toString();
+};
+
 const getRandomQuestions = async (subject, topic, difficulty, count) => {
   const match = {
     subject,
@@ -34,11 +42,28 @@ exports.generateExam = async (req, res) => {
       Number(easyCount || 0) +
       Number(averageCount || 0) +
       Number(difficultCount || 0);
+    const counts = [
+      Number(totalItems),
+      Number(easyCount || 0),
+      Number(averageCount || 0),
+      Number(difficultCount || 0),
+    ];
 
     if (!subject || !totalItems) {
       return res.status(400).json({
         success: false,
         message: "Subject and total items are required.",
+      });
+    }
+
+    if (
+      counts.some((count) => !Number.isInteger(count) || count < 0) ||
+      Number(totalItems) < 1
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Item counts must be whole numbers and total items must be at least 1.",
       });
     }
 
@@ -123,12 +148,26 @@ exports.submitExam = async (req, res) => {
   try {
     const { examId, answers } = req.body;
 
+    if (!examId || !Array.isArray(answers)) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam ID and answers are required.",
+      });
+    }
+
     const exam = await Exam.findById(examId).populate("questions");
 
     if (!exam) {
       return res.status(404).json({
         success: false,
         message: "Exam not found.",
+      });
+    }
+
+    if (!canAccessExam(exam, req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this exam.",
       });
     }
 
@@ -196,6 +235,13 @@ exports.getExam = async (req, res) => {
       });
     }
 
+    if (!canAccessExam(exam, req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this exam.",
+      });
+    }
+
     res.json({
       success: true,
       exam,
@@ -216,6 +262,13 @@ exports.downloadExamDocx = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Exam not found.",
+      });
+    }
+
+    if (!canAccessExam(exam, req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this exam.",
       });
     }
 

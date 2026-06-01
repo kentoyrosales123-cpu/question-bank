@@ -28,6 +28,11 @@ exports.getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
+    const registeredUsers = await User.find()
+      .select("name email role createdAt")
+      .sort({ createdAt: -1 })
+      .limit(20);
+
     res.json({
       success: true,
       stats: {
@@ -38,6 +43,7 @@ exports.getDashboardStats = async (req, res) => {
         difficultQuestions,
         recentQuestions,
         recentExams,
+        registeredUsers,
       },
     });
   } catch (error) {
