@@ -254,7 +254,124 @@ exports.getExam = async (req, res) => {
   }
 };
 
-exports.downloadExamDocx = async (req, res) => {
+const getDocxImageType = (contentType) => {
+  if (contentType === "image/jpeg" || contentType === "image/jpg") {
+    return "jpg";
+  }
+
+  return "png";
+};
+
+const sanitizeFileName = (name) =>
+  `${name || "generated-exam"}.docx`.replace(/[^a-z0-9.]/gi, "_").toLowerCase();
+
+const buildExamDocxBuffer = async (exam, options = {}) => {
+  const { includeAnswerKey = false } = options;
+  const children = [];
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: includeAnswerKey
+            ? `${exam.title || "Generated Exam"} - Answer Key`
+            : exam.title || "Generated Exam",
+          bold: true,
+          size: 32,
+        }),
+      ],
+    }),
+  );
+
+  children.push(new Paragraph(`Subject: ${exam.subject}`));
+  children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
+  children.push(new Paragraph(`Total Items: ${exam.totalItems}`));
+  children.push(new Paragraph(""));
+
+  exam.questions.forEach((q, index) => {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${index + 1}. ${q.questionText}`,
+            bold: true,
+          }),
+        ],
+      }),
+    );
+
+    if (q.image && q.image.data) {
+      children.push(
+        new Paragraph({
+          children: [
+            new ImageRun({
+              data: q.image.data,
+              type: getDocxImageType(q.image.contentType),
+              transformation: {
+                width: 400,
+                height: 250,
+              },
+            }),
+          ],
+        }),
+      );
+    }
+
+    if (q.tableData) {
+      children.push(new Paragraph(q.tableData));
+    }
+
+    children.push(new Paragraph(`A. ${q.choices.A}`));
+    children.push(new Paragraph(`B. ${q.choices.B}`));
+    children.push(new Paragraph(`C. ${q.choices.C}`));
+    children.push(new Paragraph(`D. ${q.choices.D}`));
+
+    if (includeAnswerKey) {
+      const answerText = q.correctAnswer
+        ? `${q.correctAnswer}. ${q.choices[q.correctAnswer] || ""}`
+        : "No answer set";
+
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Answer: ${answerText}`,
+              bold: true,
+            }),
+          ],
+        }),
+      );
+
+      if (q.explanation) {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `Explanation: ${q.explanation}`,
+              }),
+            ],
+          }),
+        );
+      }
+    }
+
+    children.push(new Paragraph(""));
+  });
+
+  const doc = new Document({
+    sections: [
+      {
+        children,
+      },
+    ],
+  });
+
+  return Packer.toBuffer(doc);
+};
+
+const sendExamDocx = async (req, res, options = {}) => {
+  const { includeAnswerKey = false } = options;
+
   try {
     const exam = await Exam.findById(req.params.id).populate("questions");
 
@@ -272,93 +389,12 @@ exports.downloadExamDocx = async (req, res) => {
       });
     }
 
-    const children = [];
-
-    children.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: exam.title || "Generated Exam",
-            bold: true,
-            size: 32,
-          }),
-        ],
-      }),
+    const buffer = await buildExamDocxBuffer(exam, { includeAnswerKey });
+    const fileName = sanitizeFileName(
+      includeAnswerKey
+        ? `${exam.title || "generated-exam"}-answer-key`
+        : `${exam.title || "generated-exam"}-no-answer`,
     );
-
-    children.push(new Paragraph(`Subject: ${exam.subject}`));
-    children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
-    children.push(new Paragraph(`Total Items: ${exam.totalItems}`));
-    children.push(new Paragraph(""));
-
-    exam.questions.forEach((q, index) => {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${index + 1}. ${q.questionText}`,
-              bold: true,
-            }),
-          ],
-        }),
-      );
-
-      // IMAGE
-      if (q.image && q.image.data) {
-        let imageType = "png";
-
-        if (
-          q.image.contentType === "image/jpeg" ||
-          q.image.contentType === "image/jpg"
-        ) {
-          imageType = "jpg";
-        }
-
-        if (q.image.contentType === "image/png") {
-          imageType = "png";
-        }
-
-        children.push(
-          new Paragraph({
-            children: [
-              new ImageRun({
-                data: q.image.data,
-                type: imageType,
-                transformation: {
-                  width: 400,
-                  height: 250,
-                },
-              }),
-            ],
-          }),
-        );
-      }
-
-      if (q.tableData) {
-        children.push(new Paragraph(q.tableData));
-      }
-
-      children.push(new Paragraph(`A. ${q.choices.A}`));
-      children.push(new Paragraph(`B. ${q.choices.B}`));
-      children.push(new Paragraph(`C. ${q.choices.C}`));
-      children.push(new Paragraph(`D. ${q.choices.D}`));
-
-      children.push(new Paragraph(""));
-    });
-
-    const doc = new Document({
-      sections: [
-        {
-          children,
-        },
-      ],
-    });
-
-    const buffer = await Packer.toBuffer(doc);
-
-    const fileName = `${exam.title || "generated-exam"}.docx`
-      .replace(/[^a-z0-9]/gi, "_")
-      .toLowerCase();
 
     res.setHeader(
       "Content-Type",
@@ -374,4 +410,12 @@ exports.downloadExamDocx = async (req, res) => {
       message: error.message,
     });
   }
+};
+
+exports.downloadExamDocx = async (req, res) => {
+  await sendExamDocx(req, res, { includeAnswerKey: false });
+};
+
+exports.downloadAnswerKeyDocx = async (req, res) => {
+  await sendExamDocx(req, res, { includeAnswerKey: true });
 };

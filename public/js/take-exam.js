@@ -87,6 +87,17 @@ document
 loadExam();
 
 async function downloadExamDocx() {
+  await downloadExamFile("download-docx", "generated_exam_no_answer.docx");
+}
+
+async function downloadAnswerKeyDocx() {
+  await downloadExamFile(
+    "download-answer-key-docx",
+    "generated_exam_answer_key.docx",
+  );
+}
+
+async function downloadExamFile(endpoint, fileName) {
   const examId = localStorage.getItem("current_exam_id");
 
   if (!examId) {
@@ -95,7 +106,7 @@ async function downloadExamDocx() {
   }
 
   try {
-    const res = await fetch(`/api/exams/${examId}/download-docx`, {
+    const res = await fetch(`/api/exams/${examId}/${endpoint}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${getToken()}`,
@@ -112,7 +123,7 @@ async function downloadExamDocx() {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "generated_exam.docx";
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
 
