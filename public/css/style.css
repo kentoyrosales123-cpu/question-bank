@@ -285,6 +285,230 @@ th {
   font-weight: 700;
 }
 
+.review-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 170px)) minmax(240px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+.review-toolbar input {
+  margin: 0;
+  min-height: 58px;
+}
+
+.review-stat {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.review-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.review-stat strong {
+  font-size: 24px;
+}
+
+.review-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.review-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.review-card-header h2 {
+  font-size: 17px;
+  line-height: 1.45;
+  margin: 8px 0 0;
+}
+
+.review-card-kicker,
+.review-card-flags,
+.review-warnings,
+.review-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-card-kicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-pill,
+.mini-badge,
+.review-warnings span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-pill {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.mini-badge {
+  background: #eef2ff;
+  color: #3730a3;
+  white-space: nowrap;
+}
+
+.mini-badge.warning,
+.review-warnings span {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.review-warnings {
+  padding: 12px 20px 0;
+}
+
+.review-card-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 34%) minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+.review-assets {
+  min-width: 0;
+}
+
+.review-image,
+.asset-placeholder {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: block;
+}
+
+.review-image {
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.asset-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.08);
+  font-weight: 700;
+}
+
+.asset-error::after {
+  content: "Image failed to load";
+  display: block;
+  color: var(--danger);
+  font-weight: 800;
+  margin-top: 8px;
+}
+
+.review-editor {
+  min-width: 0;
+}
+
+.field-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.field-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.question-textarea {
+  min-height: 84px;
+}
+
+.explanation-textarea {
+  min-height: 76px;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.choice-field {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.choice-prefix {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.choice-field input {
+  border-radius: 0 8px 8px 0;
+}
+
+.review-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.review-actions .message {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty-state h2 {
+  color: var(--text);
+  margin-top: 0;
+}
+
 .correct {
   color: var(--success);
 }
@@ -311,5 +535,20 @@ th {
   .grid-4,
   .grid-2 {
     grid-template-columns: 1fr;
+  }
+
+  .review-toolbar,
+  .review-card-body,
+  .field-grid.two,
+  .choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review-card-header {
+    display: block;
+  }
+
+  .review-card-flags {
+    margin-top: 12px;
   }
 }
