@@ -48,6 +48,21 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    passwordResetOtpHash: {
+      type: String,
+      select: false,
+    },
+
+    passwordResetOtpExpires: {
+      type: Date,
+      select: false,
+    },
+
+    passwordResetLastSentAt: {
+      type: Date,
+      select: false,
+    },
+
     profileImage: {
       data: {
         type: Buffer,

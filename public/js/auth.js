@@ -236,3 +236,74 @@ if (loginForm) {
     }
   });
 }
+
+const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+
+if (forgotPasswordForm) {
+  const emailInput = document.getElementById("email");
+  const sendResetCodeButton = document.getElementById("sendResetCodeButton");
+  const resetPasswordPanel = document.getElementById("resetPasswordPanel");
+  const resetPasswordButton = document.getElementById("resetPasswordButton");
+  const resendResetCodeButton = document.getElementById("resendResetCodeButton");
+
+  const requestResetCode = async () => {
+    const data = await apiRequest("/auth/forgot-password", "POST", {
+      email: emailInput.value,
+    });
+
+    sendResetCodeButton.classList.add("hidden");
+    resetPasswordPanel.classList.remove("hidden");
+    emailInput.disabled = true;
+    setMessage("authMessage", data.message, false);
+    document.getElementById("resetOtp").focus();
+  };
+
+  forgotPasswordForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (!resetPasswordPanel.classList.contains("hidden")) {
+      resetPasswordButton.click();
+      return;
+    }
+
+    try {
+      await requestResetCode();
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+
+  resetPasswordButton.addEventListener("click", async () => {
+    const password = document.getElementById("newPassword").value;
+    const confirmPassword = document.getElementById("confirmPassword").value;
+
+    if (password !== confirmPassword) {
+      setMessage("authMessage", "Passwords do not match.");
+      return;
+    }
+
+    try {
+      const data = await apiRequest("/auth/reset-password", "POST", {
+        email: emailInput.value,
+        otp: document.getElementById("resetOtp").value,
+        password,
+      });
+
+      setMessage("authMessage", data.message, false);
+
+      setTimeout(() => {
+        location.href = "/login.html";
+      }, 1200);
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+
+  resendResetCodeButton.addEventListener("click", async () => {
+    try {
+      await requestResetCode();
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+}

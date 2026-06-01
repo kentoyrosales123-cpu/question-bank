@@ -1,7 +1,10 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const { sendVerificationOtp } = require("../services/emailService");
+const {
+  sendVerificationOtp,
+  sendPasswordResetOtp,
+} = require("../services/emailService");
 const { logActivity } = require("../services/activityLogger");
 const {
   normalizeEmail,
@@ -38,6 +41,19 @@ const setAndSendVerificationOtp = async (user) => {
 
   await user.save();
   await sendVerificationOtp({ to: user.email, name: user.name, otp });
+};
+
+const setAndSendPasswordResetOtp = async (user) => {
+  const otp = createOtp();
+
+  user.passwordResetOtpHash = await bcrypt.hash(otp, 10);
+  user.passwordResetOtpExpires = new Date(
+    Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+  );
+  user.passwordResetLastSentAt = new Date();
+
+  await user.save();
+  await sendPasswordResetOtp({ to: user.email, name: user.name, otp });
 };
 
 exports.register = async (req, res) => {
@@ -245,6 +261,142 @@ exports.resendVerification = async (req, res) => {
     res.json({
       success: true,
       message: "Verification code resent.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    if (!isAllowedEmail(normalizedEmail)) {
+      return res.status(403).json({
+        success: false,
+        message: "This system is restricted to the authorized account only.",
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      "+passwordResetLastSentAt",
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found.",
+      });
+    }
+
+    const lastSentAt = user.passwordResetLastSentAt?.getTime() || 0;
+    const secondsSinceLastSend = (Date.now() - lastSentAt) / 1000;
+
+    if (secondsSinceLastSend < OTP_RESEND_SECONDS) {
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${Math.ceil(
+          OTP_RESEND_SECONDS - secondsSinceLastSend,
+        )} seconds before requesting another reset code.`,
+      });
+    }
+
+    await setAndSendPasswordResetOtp(user);
+
+    res.json({
+      success: true,
+      message: "Password reset code sent to your email.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, otp, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!email || !otp || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, reset code, and new password are required.",
+      });
+    }
+
+    if (!isAllowedEmail(normalizedEmail)) {
+      return res.status(403).json({
+        success: false,
+        message: "This system is restricted to the authorized account only.",
+      });
+    }
+
+    if (!isAllowedPassword(password)) {
+      return res.status(403).json({
+        success: false,
+        message: "New password must match the authorized account password.",
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      "+passwordResetOtpHash +passwordResetOtpExpires",
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found.",
+      });
+    }
+
+    if (
+      !user.passwordResetOtpHash ||
+      !user.passwordResetOtpExpires ||
+      user.passwordResetOtpExpires < new Date()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset code expired. Request a new code.",
+      });
+    }
+
+    const isOtpValid = await bcrypt.compare(String(otp), user.passwordResetOtpHash);
+
+    if (!isOtpValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reset code.",
+      });
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.isEmailVerified = true;
+    user.passwordResetOtpHash = undefined;
+    user.passwordResetOtpExpires = undefined;
+    user.passwordResetLastSentAt = undefined;
+    user.emailVerificationOtpHash = undefined;
+    user.emailVerificationOtpExpires = undefined;
+    user.emailVerificationLastSentAt = undefined;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password reset successfully. You can now log in.",
     });
   } catch (error) {
     res.status(500).json({

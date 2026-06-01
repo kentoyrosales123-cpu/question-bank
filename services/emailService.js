@@ -44,4 +44,27 @@ const sendVerificationOtp = async ({ to, name, otp }) => {
   });
 };
 
-module.exports = { sendVerificationOtp };
+const sendPasswordResetOtp = async ({ to, name, otp }) => {
+  if (!hasSmtpConfig()) {
+    console.log(`[password reset] OTP for ${to}: ${otp}`);
+    return;
+  }
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+
+  await createTransporter().sendMail({
+    from,
+    to,
+    subject: "Reset your Question Bank password",
+    text: `Hello ${name},\n\nYour Question Bank password reset code is ${otp}. It expires in 10 minutes.\n\nIf you did not request this reset, you can ignore this email.`,
+    html: `
+      <p>Hello ${escapeHTML(name)},</p>
+      <p>Your Question Bank password reset code is:</p>
+      <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${otp}</p>
+      <p>This code expires in 10 minutes.</p>
+      <p>If you did not request this reset, you can ignore this email.</p>
+    `,
+  });
+};
+
+module.exports = { sendVerificationOtp, sendPasswordResetOtp };
