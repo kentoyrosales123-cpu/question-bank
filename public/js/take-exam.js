@@ -33,6 +33,7 @@ async function loadExam() {
       >`
               : ""
           }
+          ${renderQuestionTables(q.tables)}
           ${q.tableData ? `<pre>${escapeHTML(q.tableData)}</pre>` : ""}
 
           ${["A", "B", "C", "D"]
@@ -85,6 +86,36 @@ document
   });
 
 loadExam();
+
+function renderQuestionTables(tables) {
+  if (!Array.isArray(tables) || tables.length === 0) {
+    return "";
+  }
+
+  return tables
+    .map(
+      (table) => `
+        <div class="question-table-wrap">
+          <table class="question-table">
+            <tbody>
+              ${(table.rows || [])
+                .map(
+                  (row) => `
+                    <tr>
+                      ${(row || [])
+                        .map((cell) => `<td>${escapeHTML(cell)}</td>`)
+                        .join("")}
+                    </tr>
+                  `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `,
+    )
+    .join("");
+}
 
 async function downloadExamDocx() {
   await downloadExamFile("download-docx", "generated_exam_no_answer.docx");

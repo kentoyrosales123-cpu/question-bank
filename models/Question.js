@@ -20,16 +20,16 @@ const questionSchema = new mongoose.Schema(
     },
 
     choices: {
-      A: { type: String, required: true },
-      B: { type: String, required: true },
-      C: { type: String, required: true },
-      D: { type: String, required: true },
+      A: { type: String, default: "" },
+      B: { type: String, default: "" },
+      C: { type: String, default: "" },
+      D: { type: String, default: "" },
     },
 
     correctAnswer: {
       type: String,
-      enum: ["A", "B", "C", "D"],
-      required: true,
+      enum: ["A", "B", "C", "D", ""],
+      default: "",
     },
 
     difficulty: {
@@ -52,6 +52,12 @@ const questionSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    tables: [
+      {
+        rows: [[String]],
+      },
+    ],
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

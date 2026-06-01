@@ -31,6 +31,11 @@ const parsedQuestionSchema = new mongoose.Schema(
       data: Buffer,
       contentType: String,
     },
+    tables: [
+      {
+        rows: [[String]],
+      },
+    ],
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],

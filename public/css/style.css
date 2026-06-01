@@ -246,6 +246,26 @@ th {
   border: 1px solid var(--border);
 }
 
+.question-table-wrap {
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.question-table {
+  width: auto;
+  min-width: 360px;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.question-table td,
+.question-table th {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
 .choice {
   display: block;
   padding: 12px;

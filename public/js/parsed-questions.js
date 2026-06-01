@@ -28,6 +28,8 @@ async function loadParsedQuestions() {
 
           <textarea id="questionText_${q._id}">${escapeHTML(q.questionText)}</textarea>
 
+          ${renderQuestionTables(q.tables)}
+
           <input id="choiceA_${q._id}" value="${escapeHTML(q.choices.A)}">
           <input id="choiceB_${q._id}" value="${escapeHTML(q.choices.B)}">
           <input id="choiceC_${q._id}" value="${escapeHTML(q.choices.C)}">
@@ -130,6 +132,36 @@ function escapeHTML(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function renderQuestionTables(tables) {
+  if (!Array.isArray(tables) || tables.length === 0) {
+    return "";
+  }
+
+  return tables
+    .map(
+      (table) => `
+        <div class="question-table-wrap">
+          <table class="question-table">
+            <tbody>
+              ${(table.rows || [])
+                .map(
+                  (row) => `
+                    <tr>
+                      ${(row || [])
+                        .map((cell) => `<td>${escapeHTML(cell)}</td>`)
+                        .join("")}
+                    </tr>
+                  `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 loadParsedQuestions();

@@ -28,6 +28,8 @@ async function loadResult() {
                 ? `<img class="question-image" src="/api/questions/${q._id}/image">`
                 : ""
             }
+            ${renderQuestionTables(q.tables)}
+            ${q.tableData ? `<pre>${escapeHTML(q.tableData)}</pre>` : ""}
 
             <p>Your Answer: 
               <strong class="${answer?.isCorrect ? "correct" : "wrong"}">
@@ -48,3 +50,33 @@ async function loadResult() {
 }
 
 loadResult();
+
+function renderQuestionTables(tables) {
+  if (!Array.isArray(tables) || tables.length === 0) {
+    return "";
+  }
+
+  return tables
+    .map(
+      (table) => `
+        <div class="question-table-wrap">
+          <table class="question-table">
+            <tbody>
+              ${(table.rows || [])
+                .map(
+                  (row) => `
+                    <tr>
+                      ${(row || [])
+                        .map((cell) => `<td>${escapeHTML(cell)}</td>`)
+                        .join("")}
+                    </tr>
+                  `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `,
+    )
+    .join("");
+}

@@ -14,6 +14,7 @@ exports.createQuestion = async (req, res) => {
       difficulty,
       explanation,
       tableData,
+      tables,
     } = req.body;
 
     if (
@@ -54,6 +55,7 @@ exports.createQuestion = async (req, res) => {
       difficulty,
       explanation,
       tableData,
+      tables: tables ? JSON.parse(tables) : [],
       image,
       createdBy: req.user._id,
     });
@@ -156,6 +158,7 @@ exports.updateQuestion = async (req, res) => {
       difficulty: req.body.difficulty || question.difficulty,
       explanation: req.body.explanation || question.explanation,
       tableData: req.body.tableData || question.tableData,
+      tables: req.body.tables ? JSON.parse(req.body.tables) : question.tables,
       image: req.file
         ? {
             data: req.file.buffer,

@@ -1,7 +1,17 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 
-const { Document, Packer, Paragraph, TextRun, ImageRun } = require("docx");
+const {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  ImageRun,
+  Table,
+  TableCell,
+  TableRow,
+  WidthType,
+} = require("docx");
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -265,6 +275,30 @@ const getDocxImageType = (contentType) => {
 const sanitizeFileName = (name) =>
   `${name || "generated-exam"}.docx`.replace(/[^a-z0-9.]/gi, "_").toLowerCase();
 
+const buildDocxTables = (tables = []) =>
+  tables
+    .filter((table) => Array.isArray(table.rows) && table.rows.length > 0)
+    .map(
+      (table) =>
+        new Table({
+          width: {
+            size: 100,
+            type: WidthType.PERCENTAGE,
+          },
+          rows: table.rows.map(
+            (row) =>
+              new TableRow({
+                children: row.map(
+                  (cell) =>
+                    new TableCell({
+                      children: [new Paragraph(String(cell || ""))],
+                    }),
+                ),
+              }),
+          ),
+        }),
+    );
+
 const buildExamDocxBuffer = async (exam, options = {}) => {
   const { includeAnswerKey = false } = options;
   const children = [];
@@ -320,6 +354,11 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
     if (q.tableData) {
       children.push(new Paragraph(q.tableData));
     }
+
+    buildDocxTables(q.tables).forEach((table) => {
+      children.push(table);
+      children.push(new Paragraph(""));
+    });
 
     children.push(new Paragraph(`A. ${q.choices.A}`));
     children.push(new Paragraph(`B. ${q.choices.B}`));

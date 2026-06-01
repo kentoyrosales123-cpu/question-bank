@@ -157,6 +157,230 @@ function extractDocxImages(filePath) {
   return images;
 }
 
+function decodeXml(value = "") {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function normalizeDocxText(value = "") {
+  return value
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function extractParagraphText(xml) {
+  const textParts = [];
+  const textRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+  let match;
+
+  while ((match = textRegex.exec(xml))) {
+    textParts.push(decodeXml(match[1]));
+  }
+
+  return normalizeDocxText(
+    textParts
+      .join("")
+      .replace(/<w:tab\b[^>]*\/>/g, " ")
+      .replace(/<w:br\b[^>]*\/>/g, "\n"),
+  );
+}
+
+function extractTableRows(xml) {
+  const rows = [];
+  const rowRegex = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+  let rowMatch;
+
+  while ((rowMatch = rowRegex.exec(xml))) {
+    const rowXml = rowMatch[0];
+    const row = [];
+    const cellRegex = /<w:tc\b[\s\S]*?<\/w:tc>/g;
+    let cellMatch;
+
+    while ((cellMatch = cellRegex.exec(rowXml))) {
+      const cellText = extractParagraphText(cellMatch[0])
+        .replace(/\n/g, " ")
+        .replace(/[ ]{2,}/g, " ")
+        .trim();
+
+      row.push(cellText);
+    }
+
+    if (row.some(Boolean)) {
+      rows.push(row);
+    }
+  }
+
+  const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+
+  if (rows.length === 0 || maxColumns < 2) {
+    return [];
+  }
+
+  return rows;
+}
+
+function getDocxImageContentType(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return "image/jpeg";
+  }
+
+  if (ext === ".webp") {
+    return "image/webp";
+  }
+
+  return "image/png";
+}
+
+function getDocxRelationships(zip) {
+  const rels = {};
+  const relsEntry = zip.getEntry("word/_rels/document.xml.rels");
+
+  if (!relsEntry) {
+    return rels;
+  }
+
+  const relsXml = relsEntry.getData().toString("utf8");
+  const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*>/g;
+  let match;
+
+  while ((match = relRegex.exec(relsXml))) {
+    const [, id, target] = match;
+    const normalizedTarget = target.startsWith("/")
+      ? target.replace(/^\//, "")
+      : `word/${target}`.replace(/\/[^/]+\/\.\.\//g, "/");
+
+    rels[id] = normalizedTarget;
+  }
+
+  return rels;
+}
+
+function getDocxImageMap(zip) {
+  const rels = getDocxRelationships(zip);
+  const imagesByRelId = {};
+
+  Object.entries(rels).forEach(([relId, target]) => {
+    if (!target.startsWith("word/media/")) {
+      return;
+    }
+
+    const entry = zip.getEntry(target);
+
+    if (!entry) {
+      return;
+    }
+
+    const imageBuffer = Buffer.from(entry.getData());
+
+    if (imageBuffer.length <= 100) {
+      return;
+    }
+
+    imagesByRelId[relId] = {
+      data: imageBuffer,
+      contentType: getDocxImageContentType(target),
+    };
+  });
+
+  return imagesByRelId;
+}
+
+function extractParagraphImage(xml, imagesByRelId) {
+  const imageMatch = xml.match(/r:embed="([^"]+)"/);
+
+  if (!imageMatch) {
+    return undefined;
+  }
+
+  return imagesByRelId[imageMatch[1]];
+}
+
+function extractDocxBodyBlocks(filePath) {
+  const zip = new AdmZip(filePath);
+  const documentEntry = zip.getEntry("word/document.xml");
+
+  if (!documentEntry) {
+    return { blocks: [], fallbackImages: [] };
+  }
+
+  const documentXml = documentEntry.getData().toString("utf8");
+  const bodyMatch = documentXml.match(/<w:body\b[^>]*>([\s\S]*?)<\/w:body>/);
+
+  if (!bodyMatch) {
+    return { blocks: [], fallbackImages: [] };
+  }
+
+  const bodyXml = bodyMatch[1];
+  const blocks = [];
+  const tagRegex = /<(\/?)w:(p|tbl)\b[^>]*?>/g;
+  const stack = [];
+  let blockStart = -1;
+  let blockType = "";
+  let match;
+
+  while ((match = tagRegex.exec(bodyXml))) {
+    const isClosing = match[1] === "/";
+    const tagName = match[2];
+
+    if (!isClosing) {
+      if (stack.length === 0) {
+        blockStart = match.index;
+        blockType = tagName === "p" ? "paragraph" : "table";
+      }
+
+      stack.push(tagName);
+      continue;
+    }
+
+    if (stack.length === 0) {
+      continue;
+    }
+
+    stack.pop();
+
+    if (stack.length === 0 && blockStart >= 0) {
+      blocks.push({
+        type: blockType,
+        xml: bodyXml.slice(blockStart, tagRegex.lastIndex),
+      });
+      blockStart = -1;
+      blockType = "";
+    }
+  }
+
+  const imagesByRelId = getDocxImageMap(zip);
+
+  return {
+    blocks: blocks.map((block) => {
+      if (block.type === "paragraph") {
+        return {
+          type: block.type,
+          text: extractParagraphText(block.xml),
+          image: extractParagraphImage(block.xml, imagesByRelId),
+        };
+      }
+
+      return {
+        type: block.type,
+        rows: extractTableRows(block.xml),
+      };
+    }),
+    fallbackImages: extractDocxImages(filePath),
+  };
+}
+
 function isImageFile(fileType) {
   return ["image/jpeg", "image/png", "image/jpg", "image/webp"].includes(
     fileType,
@@ -214,21 +438,125 @@ function parseQuestionsFromText(text) {
       .replace(/^(?:QUESTION\s*)?\d+[:).\s]*/i, "")
       .trim();
 
-    if (!questionOnly || !choiceA || !choiceB || !choiceC || !choiceD) {
+    if (!questionOnly || (!choiceA && !choiceB)) {
       continue;
     }
 
     parsed.push({
       questionText: questionOnly,
       choices: {
-        A: choiceA[1].trim(),
-        B: choiceB[1].trim(),
-        C: choiceC[1].trim(),
-        D: choiceD[1].trim(),
+        A: choiceA ? choiceA[1].trim() : "",
+        B: choiceB ? choiceB[1].trim() : "",
+        C: choiceC ? choiceC[1].trim() : "",
+        D: choiceD ? choiceD[1].trim() : "",
       },
       correctAnswer: answer ? answer[1].toUpperCase() : "",
       difficulty: detectDifficulty(questionOnly),
       explanation: "",
+      tables: [],
+    });
+  }
+
+  return parsed;
+}
+
+function choiceCount(question) {
+  return Object.values(question.choices || {}).filter(Boolean).length;
+}
+
+function shouldSaveParsedQuestion(question) {
+  return Boolean(question && question.questionText && choiceCount(question) >= 2);
+}
+
+function parseDocxQuestions(filePath) {
+  const { blocks, fallbackImages } = extractDocxBodyBlocks(filePath);
+  const parsed = [];
+  let currentQuestion = null;
+
+  const saveCurrentQuestion = () => {
+    if (shouldSaveParsedQuestion(currentQuestion)) {
+      parsed.push(currentQuestion);
+    }
+  };
+
+  blocks.forEach((block) => {
+    if (block.type === "table") {
+      if (
+        currentQuestion &&
+        choiceCount(currentQuestion) < 4 &&
+        block.rows.length > 0
+      ) {
+        currentQuestion.tables.push({ rows: block.rows });
+      }
+
+      return;
+    }
+
+    if (block.image && currentQuestion && !currentQuestion.image) {
+      currentQuestion.image = block.image;
+    }
+
+    if (!block.text) {
+      return;
+    }
+
+    const questionMatch = block.text.match(
+      /^(?:QUESTION\s*)?\d+[:).\s]+(.+)/i,
+    );
+
+    if (questionMatch) {
+      saveCurrentQuestion();
+      currentQuestion = {
+        questionText: questionMatch[1].trim(),
+        choices: {
+          A: "",
+          B: "",
+          C: "",
+          D: "",
+        },
+        correctAnswer: "",
+        difficulty: detectDifficulty(questionMatch[1].trim()),
+        explanation: "",
+        tables: [],
+        image: block.image,
+      };
+      return;
+    }
+
+    const choiceMatch = block.text.match(/^([a-d])[\).]\s*(.+)/i);
+
+    if (choiceMatch && currentQuestion) {
+      currentQuestion.choices[choiceMatch[1].toUpperCase()] =
+        choiceMatch[2].trim();
+      return;
+    }
+
+    const answerMatch = block.text.match(
+      /^(?:Answer|Ans\.|Correct Answer)[:\s]+([A-D])/i,
+    );
+
+    if (answerMatch && currentQuestion) {
+      currentQuestion.correctAnswer = answerMatch[1].toUpperCase();
+      return;
+    }
+
+    if (currentQuestion && choiceCount(currentQuestion) === 0) {
+      currentQuestion.questionText = `${currentQuestion.questionText}\n${block.text}`;
+      currentQuestion.difficulty = detectDifficulty(currentQuestion.questionText);
+    }
+  });
+
+  saveCurrentQuestion();
+
+  const inlineImageCount = parsed.filter((question) => question.image).length;
+
+  if (
+    inlineImageCount === 0 &&
+    fallbackImages.length > 0 &&
+    fallbackImages.length === parsed.length
+  ) {
+    parsed.forEach((question, index) => {
+      question.image = fallbackImages[index];
     });
   }
 
@@ -260,15 +588,10 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
     let extractedText = "";
 
     let extractedImages = [];
+    let parsedQuestions = [];
 
     if (upload.fileType.includes("wordprocessingml.document")) {
-      const result = await mammoth.extractRawText({
-        path: fullPath,
-      });
-
-      extractedText = result.value;
-
-      extractedImages = extractDocxImages(fullPath);
+      parsedQuestions = parseDocxQuestions(fullPath);
     } else if (upload.fileType.includes("pdf")) {
       const buffer = fs.readFileSync(fullPath);
       const result = await pdfParse(buffer);
@@ -283,7 +606,9 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
-    const parsedQuestions = parseQuestionsFromText(extractedText);
+    if (parsedQuestions.length === 0 && extractedText) {
+      parsedQuestions = parseQuestionsFromText(extractedText);
+    }
 
     if (parsedQuestions.length === 0) {
       return res.status(400).json({
@@ -308,9 +633,10 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           lowerText.includes("refer to") ||
           lowerText.includes("see figure");
 
-        let image = undefined;
+        let image = q.image;
 
         if (
+          !image &&
           (needsFigure || shouldAttachImagesByOrder) &&
           extractedImages[imageIndex]
         ) {
@@ -327,6 +653,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           correctAnswer: q.correctAnswer,
           difficulty: q.difficulty,
           explanation: q.explanation,
+          tables: q.tables || [],
           image,
         };
       }),
@@ -389,6 +716,7 @@ exports.approveParsedQuestion = async (req, res) => {
       correctAnswer: parsed.correctAnswer,
       difficulty: parsed.difficulty,
       explanation: parsed.explanation,
+      tables: parsed.tables || [],
 
       image: parsed.image,
 
