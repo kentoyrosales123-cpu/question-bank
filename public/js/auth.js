@@ -67,8 +67,8 @@ function syncDashboardLinks() {
   }
 
   [
+    "/questions.html",
     "/add-question.html",
-    "/upload.html",
     "/parsed-questions.html",
     "/users.html",
     "/reports.html",

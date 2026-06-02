@@ -21,20 +21,68 @@ const canAccessExam = (exam, user) => {
   return exam.user && exam.user.toString() === user._id.toString();
 };
 
-const getRandomQuestions = async (subject, topic, difficulty, count) => {
+const normalizeSelection = (value) => {
+  const values = Array.isArray(value) ? value : [value];
+
+  return values
+    .flatMap((item) => String(item || "").split(","))
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const formatSelectionLabel = (values, fallback = "") =>
+  values.length > 0 ? values.join(", ") : fallback;
+
+const getRandomQuestions = async (subjects, topics, difficulty, count) => {
+  if (Number(count) <= 0) {
+    return [];
+  }
+
   const match = {
-    subject,
     difficulty,
   };
 
-  if (topic) {
-    match.topic = topic;
+  if (subjects.length > 0) {
+    match.subject = { $in: subjects };
+  }
+
+  if (topics.length > 0) {
+    match.topic = { $in: topics };
   }
 
   return Question.aggregate([
     { $match: match },
     { $sample: { size: Number(count) } },
   ]);
+};
+
+exports.getExamOptions = async (req, res) => {
+  try {
+    const options = await Question.aggregate([
+      {
+        $group: {
+          _id: "$subject",
+          topics: { $addToSet: "$topic" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.json({
+      success: true,
+      subjects: options
+        .filter((item) => item._id)
+        .map((item) => ({
+          subject: item._id,
+          topics: item.topics.filter(Boolean).sort(),
+        })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 exports.generateExam = async (req, res) => {
@@ -48,6 +96,8 @@ exports.generateExam = async (req, res) => {
       averageCount,
       difficultCount,
     } = req.body;
+    const subjects = normalizeSelection(req.body.subjects || subject);
+    const topics = normalizeSelection(req.body.topics || topic);
 
     const total =
       Number(easyCount || 0) +
@@ -60,10 +110,10 @@ exports.generateExam = async (req, res) => {
       Number(difficultCount || 0),
     ];
 
-    if (!subject || !totalItems) {
+    if (subjects.length === 0 || !totalItems) {
       return res.status(400).json({
         success: false,
-        message: "Subject and total items are required.",
+        message: "At least one subject and total items are required.",
       });
     }
 
@@ -87,22 +137,22 @@ exports.generateExam = async (req, res) => {
     }
 
     const easyQuestions = await getRandomQuestions(
-      subject,
-      topic,
+      subjects,
+      topics,
       "Easy",
       easyCount,
     );
 
     const averageQuestions = await getRandomQuestions(
-      subject,
-      topic,
+      subjects,
+      topics,
       "Average",
       averageCount,
     );
 
     const difficultQuestions = await getRandomQuestions(
-      subject,
-      topic,
+      subjects,
+      topics,
       "Difficult",
       difficultCount,
     );
@@ -127,8 +177,8 @@ exports.generateExam = async (req, res) => {
 
     const exam = await Exam.create({
       title: title || "Generated Exam",
-      subject,
-      topic,
+      subject: formatSelectionLabel(subjects),
+      topic: formatSelectionLabel(topics),
       totalItems,
       easyCount,
       averageCount,
@@ -149,8 +199,8 @@ exports.generateExam = async (req, res) => {
       metadata: {
         exam: exam._id,
         title: exam.title,
-        subject,
-        topic,
+        subjects,
+        topics,
         totalItems,
         easyCount,
         averageCount,

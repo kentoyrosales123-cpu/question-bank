@@ -13,12 +13,11 @@ const upload = require("../middleware/uploadMiddleware");
 router.post(
   "/questionnaire",
   protect,
-  adminOnly,
   upload.single("questionnaire"),
   uploadQuestionnaire,
 );
 
-router.get("/", protect, adminOnly, getUploads);
-router.delete("/:id", protect, adminOnly, deleteUpload);
+router.get("/", protect, getUploads);
+router.delete("/:id", protect, deleteUpload);
 
 module.exports = router;

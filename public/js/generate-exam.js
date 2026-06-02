@@ -1,5 +1,7 @@
 protectPage();
 
+let examOptionData = [];
+
 const summaryFields = [
   "title",
   "subject",
@@ -18,6 +20,16 @@ function getNumber(id) {
   return Number(document.getElementById(id).value || 0);
 }
 
+function getSelectedValues(id) {
+  return Array.from(document.getElementById(id).selectedOptions || []).map(
+    (option) => option.value,
+  );
+}
+
+function formatSelection(values, fallback) {
+  return values.length > 0 ? values.join(", ") : fallback;
+}
+
 function formatPercent(count, total) {
   return total > 0 ? `${Math.round((count / total) * 100)}%` : "0%";
 }
@@ -33,13 +45,14 @@ function updateExamSummary() {
   const easy = getNumber("easyCount");
   const average = getNumber("averageCount");
   const difficult = getNumber("difficultCount");
-  const subject = document.getElementById("subject").value.trim();
-  const topic = document.getElementById("topic").value.trim();
+  const subjects = getSelectedValues("subject");
+  const topics = getSelectedValues("topic");
 
   document.getElementById("summaryTotal").textContent = totalItems || 0;
   document.getElementById("summarySubject").textContent =
-    subject || "Not selected";
-  document.getElementById("summaryTopic").textContent = topic || "All topics";
+    formatSelection(subjects, "Not selected");
+  document.getElementById("summaryTopic").textContent =
+    formatSelection(topics, "All topics");
   document.getElementById("summaryEasy").textContent = `${easy} questions`;
   document.getElementById("summaryAverage").textContent = `${average} questions`;
   document.getElementById("summaryDifficult").textContent =
@@ -59,18 +72,73 @@ function updateExamSummary() {
   );
 }
 
+function renderOptions(selectId, values, placeholder) {
+  const select = document.getElementById(selectId);
+
+  select.innerHTML =
+    values.length > 0
+      ? values
+          .map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`)
+          .join("")
+      : `<option disabled>${escapeHTML(placeholder)}</option>`;
+}
+
+function updateTopicOptions() {
+  const selectedSubjects = getSelectedValues("subject");
+  const topics = examOptionData
+    .filter(
+      (item) =>
+        selectedSubjects.length === 0 ||
+        selectedSubjects.includes(item.subject),
+    )
+    .flatMap((item) => item.topics || []);
+
+  renderOptions("topic", [...new Set(topics)].sort(), "No topics available");
+  updateExamSummary();
+}
+
+async function loadExamOptions() {
+  try {
+    const data = await apiRequest("/exams/options");
+    examOptionData = data.subjects || [];
+
+    renderOptions(
+      "subject",
+      examOptionData.map((item) => item.subject),
+      "No subjects available",
+    );
+    updateTopicOptions();
+  } catch (error) {
+    document.getElementById("examMessage").textContent =
+      `Unable to load subjects and topics: ${error.message}`;
+    document.getElementById("examMessage").classList.add("wrong");
+  }
+}
+
+document.getElementById("subject").addEventListener("change", updateTopicOptions);
+document.getElementById("topic").addEventListener("change", updateExamSummary);
+
 document.getElementById("examForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const subjects = getSelectedValues("subject");
+  const topics = getSelectedValues("topic");
 
   const body = {
     title: document.getElementById("title").value,
-    subject: document.getElementById("subject").value,
-    topic: document.getElementById("topic").value,
+    subjects,
+    topics,
     totalItems: Number(document.getElementById("totalItems").value),
     easyCount: Number(document.getElementById("easyCount").value),
     averageCount: Number(document.getElementById("averageCount").value),
     difficultCount: Number(document.getElementById("difficultCount").value),
   };
+
+  if (subjects.length === 0) {
+    document.getElementById("examMessage").textContent =
+      "Select at least one subject.";
+    document.getElementById("examMessage").classList.add("wrong");
+    return;
+  }
 
   try {
     const data = await apiRequest("/exams/generate", "POST", body);
@@ -87,6 +155,7 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   }
 });
 
+loadExamOptions();
 updateExamSummary();
 
 async function downloadGeneratedExam(endpoint) {

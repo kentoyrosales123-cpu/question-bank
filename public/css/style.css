@@ -2746,8 +2746,8 @@ body.dark .activity-strip-item small {
     padding-bottom: 0;
   }
 
-  .student-exam-date {
-    white-space: normal;
+.student-exam-date {
+  white-space: normal;
   }
 
   .grid-4,
@@ -2783,6 +2783,16 @@ body.dark .activity-strip-item small {
   .review-card-flags {
     margin-top: 12px;
   }
+}
+
+.exam-card select[multiple] {
+  min-height: 118px;
+  padding: 10px;
+}
+
+.exam-card select[multiple] option {
+  border-radius: 6px;
+  padding: 8px;
 }
 
 /* University of Mindanao final theme overrides */

@@ -49,16 +49,18 @@
 
                 <label>
                   <span class="field-label">Subject *</span>
-                  <input id="subject" placeholder="Select subject" required />
+                  <select id="subject" multiple required></select>
+                  <small>Hold Ctrl or Cmd to select more than one subject.</small>
                 </label>
               </div>
 
               <label>
-                <span class="field-label">Topic (Optional)</span>
-                <input
+                <span class="field-label">Topics (Optional)</span>
+                <select
                   id="topic"
-                  placeholder="Enter topic (e.g., Algebra, Trigonometry, Calculus)"
-                />
+                  multiple
+                ></select>
+                <small>Leave blank to include all topics from the selected subjects.</small>
               </label>
             </section>
 

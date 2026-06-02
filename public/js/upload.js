@@ -1,5 +1,7 @@
 protectPage();
-adminOnlyPage();
+
+const currentUser = getUser();
+const isAdmin = currentUser && currentUser.role === "admin";
 
 document.getElementById("uploadForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -32,7 +34,7 @@ async function loadUploads() {
           <p>${escapeHTML(file.fileType)}</p>
 
  <a class="btn secondary" href="${escapeHTML(file.filePath)}" target="_blank">Open File</a>
-<button class="btn danger" onclick="deleteUpload('${file._id}')">Delete File</button>
+${isAdmin ? `<button class="btn danger" onclick="deleteUpload('${file._id}')">Delete File</button>` : ""}
           <br><br>
 
           <input id="subject_${file._id}" placeholder="Subject e.g. Electronics Engineering">
@@ -73,9 +75,15 @@ async function parseUpload(uploadId) {
 
     document.getElementById(`parseMsg_${uploadId}`).textContent = data.message;
 
-    setTimeout(() => {
-      location.href = "/parsed-questions.html";
-    }, 1000);
+    if (isAdmin) {
+      setTimeout(() => {
+        location.href = "/parsed-questions.html";
+      }, 1000);
+      return;
+    }
+
+    document.getElementById(`parseMsg_${uploadId}`).textContent =
+      `${data.message} Your parsed questions were sent for admin review.`;
   } catch (error) {
     document.getElementById(`parseMsg_${uploadId}`).textContent = error.message;
   }

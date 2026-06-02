@@ -576,6 +576,16 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
+    const isOwner =
+      upload.uploadedBy && upload.uploadedBy.toString() === req.user._id.toString();
+
+    if (req.user.role !== "admin" && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this uploaded file.",
+      });
+    }
+
     const fullPath = path.join(__dirname, "..", upload.filePath);
 
     if (!fs.existsSync(fullPath)) {

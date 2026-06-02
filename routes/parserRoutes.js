@@ -12,7 +12,7 @@ const {
 
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 
-router.post("/parse", protect, adminOnly, parseUploadedQuestionnaire);
+router.post("/parse", protect, parseUploadedQuestionnaire);
 router.get("/", protect, adminOnly, getParsedQuestions);
 
 // image route must be before /:id routes and before module.exports

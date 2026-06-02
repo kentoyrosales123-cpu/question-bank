@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   generateExam,
+  getExamOptions,
   getExam,
   getMyExamSummary,
   downloadExamDocx,
@@ -13,6 +14,7 @@ const { protect } = require("../middleware/authMiddleware");
 
 router.post("/generate", protect, generateExam);
 router.get("/my/summary", protect, getMyExamSummary);
+router.get("/options", protect, getExamOptions);
 router.get("/:id/download-docx", protect, downloadExamDocx);
 router.get("/:id/download-answer-key-docx", protect, downloadAnswerKeyDocx);
 router.get("/:id", protect, getExam);
