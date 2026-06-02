@@ -386,12 +386,11 @@ exports.login = async (req, res) => {
     }
 
     if (user.isEmailVerified === false) {
-      user.isEmailVerified = true;
-      user.emailVerificationOtpHash = undefined;
-      user.emailVerificationOtpExpires = undefined;
-      user.emailVerificationLastSentAt = undefined;
-
-      await user.save();
+      return res.status(403).json({
+        success: false,
+        requiresVerification: true,
+        message: "Please verify your email before logging in.",
+      });
     }
 
     await logActivity(req, {
