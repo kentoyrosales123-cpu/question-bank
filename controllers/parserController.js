@@ -781,12 +781,11 @@ exports.rejectParsedQuestion = async (req, res) => {
       });
     }
 
-    parsed.status = "Rejected";
-    await parsed.save();
+    await parsed.deleteOne();
 
     res.json({
       success: true,
-      message: "Parsed question rejected.",
+      message: "Parsed question rejected and deleted.",
     });
   } catch (error) {
     res.status(500).json({

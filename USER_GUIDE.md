@@ -13,9 +13,12 @@ The system supports:
 - Automatic parsing of multiple-choice questions
 - DOCX table parsing for tables placed between the question text and choices
 - Review and approval of parsed questions
+- Bulk approval and rejection of parsed questions
 - Question management
 - Randomized exam generation
 - DOCX download for exam papers and answer keys
+- Item analysis upload from Excel or CSV student results
+- Item analysis reports and Excel export
 
 ## Email Verification Setup
 
@@ -27,10 +30,18 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your_email@example.com
 SMTP_PASS=your_email_password_or_app_password
-SMTP_FROM=Question Bank <your_email@example.com>
+SMTP_FROM="Question Bank <your_email@example.com>"
 ```
 
 If SMTP settings are not configured, the server prints the OTP in the console for local development testing.
+
+The default administrator account can also be prepared through environment variables:
+
+```text
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=your_secure_admin_password
+ADMIN_NAME=System Administrator
+```
 
 ## 1. Account Registration
 
@@ -55,7 +66,7 @@ If SMTP settings are not configured, the server prints the OTP in the console fo
 
 The current registration page does not show a role selector. New accounts are automatically created as regular `user` accounts.
 
-The system also supports an `admin` role. Admin accounts can access protected admin features such as uploads, parsed-question review, approval, and dashboard management. Admin role assignment must be handled by an existing administrator or directly in the database/system setup.
+The system also supports `professor`, `student`, `admin`, and `super_admin` roles. Role assignment is handled by an administrator from the user management page or directly during system setup.
 
 ### After Successful Registration
 
@@ -162,18 +173,23 @@ The sidebar menu provides access to the main system pages:
 - `Upload Questionnaire`: Upload a DOCX, PDF, or image file for parsing.
 - `Review Parsed Questions`: Review questions extracted from uploaded files.
 - `Generate Exam`: Create a randomized exam from approved/saved questions.
+- `Item Analysis`: Upload student results and generate item analysis reports.
+- `Profile`: View profile details, generated exams, and download generated exam files.
+- `Users`: Manage user roles and accounts. Admin access only.
+- `Reports`: View system reports and activity. Admin access only.
 - `Logout`: End the current session.
 
 ### User Roles
 
-The system currently supports two roles:
+The system currently supports these roles:
 
 | Role | Description |
 | --- | --- |
-| user | Regular account. Can log in and access allowed user features. |
-| admin | Administrator account. Can upload questionnaires, review parsed questions, approve/reject questions, manage questions, and generate exams. |
-
-There is no separate `professor` or `super admin` role in the current system.
+| user | Regular teacher/professor-style account. Can generate exams and access allowed user features. |
+| professor | Teacher account. Can generate exams and access item analysis tools. |
+| student | Student account. Has limited access and cannot access teacher/admin tools such as upload, exam generation, or item analysis upload. |
+| admin | Administrator account. Can upload questionnaires, review parsed questions, approve/reject questions, manage questions, manage users, view reports, generate exams, and access item analysis. |
+| super_admin | Highest administrator account. Has admin-level access and can also retain protected administrative privileges. |
 
 ## 4. Uploading Questions
 
@@ -213,6 +229,7 @@ After upload:
 
 Parsed questions appear on the `Review Parsed Questions` page. Each parsed question can show:
 
+- A selection checkbox for bulk approval or rejection
 - Subject
 - Topic
 - Attached image, if detected
@@ -234,6 +251,25 @@ Parsed questions appear on the `Review Parsed Questions` page. Each parsed quest
 6. Edit any incorrect fields.
 7. Save the edit.
 8. Approve or reject the parsed question.
+
+### Bulk Review Actions
+
+The `Review Parsed Questions` page supports bulk actions for visible pending questions.
+
+To approve or reject multiple parsed questions:
+
+1. Go to `Review Parsed Questions`.
+2. Use the search box if you want to narrow the visible list.
+3. Check the selection box on each parsed question you want to include.
+4. Or click `Select visible` to select all currently visible parsed questions.
+5. Click `Approve Selected` or `Reject Selected`.
+
+For bulk approval, every selected question must have:
+
+- Complete choices A, B, C, and D
+- A selected correct answer
+
+If one or more selected questions are incomplete, the system shows an error and does not approve that group until the missing information is fixed.
 
 ## 5. Rules for Making DOCX Files Parsable
 
@@ -475,7 +511,7 @@ For table-based questions:
 
 ### Delete or Remove Incorrect Questions
 
-Incorrect parsed questions can be removed from the workflow by clicking `Reject`.
+Incorrect parsed questions can be removed by clicking `Reject`. Rejecting a parsed question deletes it from the parsed-question database collection.
 
 Saved questions in the question bank can be managed from the `Questions` page.
 
@@ -504,9 +540,24 @@ An admin should review each pending question before approval:
 
 Click `Approve to Question Bank` to save the parsed question into the main question bank.
 
+To approve multiple visible questions at once:
+
+1. Select the questions.
+2. Confirm all selected questions have complete choices and a correct answer.
+3. Click `Approve Selected`.
+
+The system saves the current edits for each selected question before approving it.
+
 ### Reject Questions
 
 Click `Reject` if the question is incorrect, incomplete, duplicated, or should not be added.
+
+To reject multiple visible questions at once:
+
+1. Select the questions.
+2. Click `Reject Selected`.
+
+Rejected questions are deleted from the parsed-question database collection and removed from the pending review list.
 
 ### Approved Questions and Exam Generation
 
@@ -568,7 +619,96 @@ PDF export is not currently shown as a supported download option in the system i
 
 Tables included in questions appear below the question text and before the choices in the exam view and generated DOCX files.
 
-## 12. Common Parsing Problems and Fixes
+## 12. Item Analysis
+
+Item analysis helps teachers review student performance per item after an exam.
+
+### Who Can Access Item Analysis
+
+Item analysis is available to:
+
+- `admin`
+- `super_admin`
+- `professor`
+- `user`
+
+Student accounts cannot access the item analysis upload page.
+
+### How to Upload Item Analysis Results
+
+1. Go to `Item Analysis`.
+2. Enter the exam title.
+3. Enter the subject.
+4. Enter the section.
+5. Optionally enter the semester and school year.
+6. Enter the number of items.
+7. Upload the Excel or CSV result file.
+8. Optionally enter a manual answer key or upload an answer key file.
+9. Click `Upload and Analyze`.
+
+After upload, the system creates an item analysis record and opens the item analysis report page.
+
+### Required Result File Format
+
+The result file must contain these columns:
+
+```text
+Student Name | Student ID | Section | Item 1 | Item 2 | ... | Total Score
+```
+
+Accepted item values:
+
+| Value | Meaning |
+| --- | --- |
+| `1` or `C` | Correct |
+| `0` or `W` | Wrong |
+| blank | Treated as wrong |
+
+The `Total Score` column may be blank. If it is blank, the system computes the score from the item values.
+
+### Downloading the Item Analysis Template
+
+1. Enter the number of items on the `Item Analysis` upload page.
+2. Click `Download Template`.
+3. Fill in the downloaded Excel template.
+4. Upload it as the result file.
+
+### Using a Generated Exam Answer Key
+
+The item analysis upload page includes a `Generated Exam Answer Key` section.
+
+Teachers can:
+
+1. Select one of their generated exams.
+2. Click `Download Answer Key` to download the answer-key DOCX.
+3. Click `Use Exam Details` to copy the selected exam title, subject, and item count into the item analysis form.
+
+### Item Analysis Report
+
+The item analysis report shows:
+
+- Total students
+- Number of items
+- Average score
+- Highest score
+- Lowest score
+- Item difficulty index
+- Difficulty interpretation
+- Discrimination index
+- Discrimination interpretation
+- Recommendation per item
+
+### Exporting Item Analysis
+
+Open an item analysis report and click the export/download action to download the Excel item analysis report.
+
+The export includes:
+
+- Summary
+- Item analysis table
+- Student scores
+
+## 13. Common Parsing Problems and Fixes
 
 | Problem | Cause | Fix |
 | --- | --- | --- |
@@ -587,7 +727,7 @@ Tables included in questions appear below the question text and before the choic
 | One question parsed instead of many | Questions are written as headings or labels that do not split cleanly | Use simple numbering such as `1.`, `2.`, `3.` |
 | Image appears on the wrong question | Images are not ordered or placed consistently | Use one inline image per question and keep image order the same as question order |
 
-## 13. Best Practices
+## 14. Best Practices
 
 1. Use the system's DOCX template.
 2. Keep formatting simple.
