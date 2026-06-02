@@ -40,7 +40,6 @@ async function loadExam() {
             .map(
               (letter) => `
             <label class="choice">
-              <input type="radio" name="q_${q._id}" value="${letter}">
               ${letter}. ${escapeHTML(q.choices[letter])}
             </label>
           `,
@@ -49,41 +48,11 @@ async function loadExam() {
         </div>
       `,
         )
-        .join("") +
-      `<button class="btn success" type="submit">Submit Exam</button>`;
+        .join("");
   } catch (error) {
     alert(error.message);
   }
 }
-
-document
-  .getElementById("takeExamForm")
-  .addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const answers = currentExam.questions.map((q) => {
-      const selected = document.querySelector(
-        `input[name="q_${q._id}"]:checked`,
-      );
-
-      return {
-        questionId: q._id,
-        selectedAnswer: selected ? selected.value : "",
-      };
-    });
-
-    try {
-      const data = await apiRequest("/exams/submit", "POST", {
-        examId: currentExam._id,
-        answers,
-      });
-
-      localStorage.setItem("result_exam_id", data.result._id);
-      location.href = "/result.html";
-    } catch (error) {
-      alert(error.message);
-    }
-  });
 
 loadExam();
 

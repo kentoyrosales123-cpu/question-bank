@@ -283,43 +283,32 @@ exports.getExam = async (req, res) => {
 
 exports.getMyExamSummary = async (req, res) => {
   try {
-    const [totalExams, submittedExams, recentExams, scoreSummary] =
-      await Promise.all([
-        Exam.countDocuments({ user: req.user._id }),
-        Exam.countDocuments({ user: req.user._id, submitted: true }),
-        Exam.find({ user: req.user._id })
-          .select("title subject topic totalItems score submitted createdAt updatedAt")
-          .sort({ createdAt: -1 })
-          .limit(10),
-        Exam.aggregate([
-          {
-            $match: {
-              user: req.user._id,
-              submitted: true,
-            },
+    const [totalExams, recentExams, itemSummary] = await Promise.all([
+      Exam.countDocuments({ user: req.user._id }),
+      Exam.find({ user: req.user._id })
+        .select("title subject topic totalItems createdAt updatedAt")
+        .sort({ createdAt: -1 })
+        .limit(10),
+      Exam.aggregate([
+        {
+          $match: {
+            user: req.user._id,
           },
-          {
-            $group: {
-              _id: null,
-              totalScore: { $sum: "$score" },
-              totalItems: { $sum: "$totalItems" },
-            },
+        },
+        {
+          $group: {
+            _id: null,
+            totalItems: { $sum: "$totalItems" },
           },
-        ]),
-      ]);
-
-    const totals = scoreSummary[0] || { totalScore: 0, totalItems: 0 };
+        },
+      ]),
+    ]);
 
     res.json({
       success: true,
       summary: {
         totalExams,
-        submittedExams,
-        pendingExams: totalExams - submittedExams,
-        averageScore:
-          totals.totalItems > 0
-            ? Math.round((totals.totalScore / totals.totalItems) * 100)
-            : 0,
+        totalItems: itemSummary[0]?.totalItems || 0,
         recentExams,
       },
     });

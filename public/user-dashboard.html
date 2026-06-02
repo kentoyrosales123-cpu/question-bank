@@ -11,55 +11,117 @@
         <a class="active" href="/user-dashboard.html">Dashboard</a>
         <a href="/questions.html">Questions</a>
         <a href="/generate-exam.html">Generate Exam</a>
+        <div class="nav-divider"></div>
         <a href="/profile.html">Profile</a>
         <a onclick="logout()">Logout</a>
       </aside>
 
-      <main class="main">
-        <div class="topbar">
+      <main class="main user-dashboard-main">
+        <div class="topbar user-dashboard-topbar">
           <div>
             <h1 id="welcomeTitle">My Dashboard</h1>
-            <p class="muted-text">Track your generated exams and results.</p>
+            <p class="muted-text">
+              Track your generated exams and stay on top of your study materials.
+            </p>
           </div>
           <button class="btn secondary" onclick="toggleTheme()">
             Toggle Theme
           </button>
         </div>
 
-        <section class="grid grid-4">
-          <div class="card stat">
-            <h3>Total Exams</h3>
-            <strong id="totalExams">0</strong>
-          </div>
-          <div class="card stat">
-            <h3>Completed</h3>
-            <strong id="submittedExams">0</strong>
-          </div>
-          <div class="card stat">
-            <h3>Pending</h3>
-            <strong id="pendingExams">0</strong>
-          </div>
-          <div class="card stat">
-            <h3>Average Score</h3>
-            <strong id="averageScore">0%</strong>
-          </div>
-        </section>
-
-        <br />
-
-        <section class="grid grid-2">
-          <div class="card">
-            <h2>Quick Actions</h2>
-            <div class="action-row">
-              <a class="btn" href="/generate-exam.html">Generate Exam</a>
-              <a class="btn secondary" href="/questions.html">Browse Questions</a>
+        <section class="user-summary-grid">
+          <div class="user-metric-card">
+            <span class="user-metric-icon document-icon"></span>
+            <div>
+              <h3>Total Exams</h3>
+              <strong id="totalExams">0</strong>
+              <small>All time generated</small>
             </div>
           </div>
 
-          <div class="card">
-            <h2>Recent Exams</h2>
+          <div class="user-metric-card">
+            <span class="user-metric-icon download-icon"></span>
+            <div>
+              <h3>Available Downloads</h3>
+              <strong id="downloadableExams">0</strong>
+              <small>Ready to download</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="user-dashboard-grid">
+          <div class="user-panel">
+            <h2 class="user-panel-title quick-title">Quick Actions</h2>
+            <div class="student-action-grid">
+              <a class="student-action generate-action" href="/generate-exam.html">
+                <span class="student-action-icon document-plus-icon"></span>
+                <strong>Generate Exam</strong>
+                <small>Create a new exam from question bank</small>
+                <span class="student-action-button">Generate Now</span>
+              </a>
+
+              <a class="student-action browse-action" href="/questions.html">
+                <span class="student-action-icon search-action-icon"></span>
+                <strong>Browse Questions</strong>
+                <small>Search and explore available questions</small>
+                <span class="student-action-button green">Browse Now</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="user-panel">
+            <div class="user-panel-heading">
+              <h2 class="user-panel-title recent-title">Recent Exams</h2>
+              <a class="btn secondary compact-btn" href="/profile.html">View All</a>
+            </div>
             <div id="recentUserExams"></div>
           </div>
+        </section>
+
+        <section class="user-activity-strip">
+          <div class="activity-strip-item">
+            <span class="strip-icon complete-strip-icon"></span>
+            <div>
+              <small>Generated</small>
+              <strong id="stripGenerated">0</strong>
+              <span>Created exams</span>
+            </div>
+          </div>
+
+          <div class="activity-strip-item">
+            <span class="strip-icon download-strip-icon"></span>
+            <div>
+              <small>Downloads</small>
+              <strong id="stripDownloads">0</strong>
+              <span>Available files</span>
+            </div>
+          </div>
+
+          <div class="activity-strip-item">
+            <span class="strip-icon question-strip-icon"></span>
+            <div>
+              <small>Total Items</small>
+              <strong id="stripItems">0</strong>
+              <span>Questions generated</span>
+            </div>
+          </div>
+
+          <div class="activity-strip-item">
+            <span class="strip-icon clock-strip-icon"></span>
+            <div>
+              <small>Last Activity</small>
+              <strong id="lastActivity">No activity</strong>
+              <span>Most recent exam</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="user-tip-card">
+          <span class="tip-icon"></span>
+          <p>
+            <strong>Tip:</strong> Generate exams and download both versions to
+            create study sets and answer-key reviewers.
+          </p>
         </section>
 
         <p class="message wrong" id="dashboardMessage"></p>

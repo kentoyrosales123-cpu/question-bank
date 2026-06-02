@@ -75,10 +75,58 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   try {
     const data = await apiRequest("/exams/generate", "POST", body);
     localStorage.setItem("current_exam_id", data.exam._id);
-    location.href = "/take-exam.html";
+    document.getElementById("examMessage").textContent =
+      "Exam generated successfully. You can preview or download it now.";
+    document.getElementById("examMessage").classList.remove("wrong");
+    document.getElementById("examMessage").classList.add("correct");
+    document.getElementById("generatedExamActions").classList.remove("hidden");
   } catch (error) {
     document.getElementById("examMessage").textContent = error.message;
+    document.getElementById("examMessage").classList.add("wrong");
+    document.getElementById("examMessage").classList.remove("correct");
   }
 });
 
 updateExamSummary();
+
+async function downloadGeneratedExam(endpoint) {
+  const examId = localStorage.getItem("current_exam_id");
+
+  if (!examId) {
+    document.getElementById("examMessage").textContent = "Generate an exam first.";
+    document.getElementById("examMessage").classList.add("wrong");
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/exams/${examId}/${endpoint}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || "Download failed.");
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download =
+      endpoint === "download-answer-key-docx"
+        ? "generated_exam_answer_key.docx"
+        : "generated_exam_no_answer_key.docx";
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    document.getElementById("examMessage").textContent = error.message;
+    document.getElementById("examMessage").classList.add("wrong");
+  }
+}

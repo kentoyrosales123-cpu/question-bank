@@ -4,25 +4,31 @@ userOnlyPage();
 const user = getUser();
 
 if (user) {
-  document.getElementById("welcomeTitle").textContent = `Welcome, ${user.name}`;
+  document.getElementById("welcomeTitle").textContent = `Welcome back, ${user.name}!`;
 }
 
 async function loadUserDashboard() {
   try {
     const data = await apiRequest("/exams/my/summary");
     const summary = data.summary;
+    const lastExam = summary.recentExams[0];
 
     document.getElementById("totalExams").textContent = summary.totalExams;
-    document.getElementById("submittedExams").textContent =
-      summary.submittedExams;
-    document.getElementById("pendingExams").textContent = summary.pendingExams;
-    document.getElementById("averageScore").textContent =
-      `${summary.averageScore}%`;
+    document.getElementById("downloadableExams").textContent = summary.totalExams;
+    document.getElementById("stripGenerated").textContent = summary.totalExams;
+    document.getElementById("stripDownloads").textContent = summary.totalExams;
+    document.getElementById("stripItems").textContent = summary.totalItems || 0;
+    document.getElementById("lastActivity").textContent = lastExam
+      ? formatDate(lastExam.createdAt)
+      : "No activity";
 
     document.getElementById("recentUserExams").innerHTML =
       summary.recentExams.length > 0
-        ? summary.recentExams.map(renderExamItem).join("")
-        : `<p class="muted-text">No exams generated yet.</p>`;
+        ? summary.recentExams.slice(0, 2).map(renderExamItem).join("")
+        : `<div class="empty-state compact-empty">
+            <h2>No exams generated yet.</h2>
+            <p>Create your first exam from the question bank.</p>
+          </div>`;
   } catch (error) {
     setMessage(
       "dashboardMessage",
@@ -34,33 +40,37 @@ async function loadUserDashboard() {
 }
 
 function renderExamItem(exam) {
-  const scoreText = exam.submitted
-    ? `${exam.score} / ${exam.totalItems}`
-    : "Not submitted";
-  const action = exam.submitted
-    ? `<button class="btn secondary" type="button" onclick="openResult('${exam._id}')">View Result</button>`
-    : `<button class="btn" type="button" onclick="continueExam('${exam._id}')">Continue</button>`;
+  const subtitle = `${escapeHTML(exam.subject)}${exam.topic ? ` - ${escapeHTML(exam.topic)}` : ""}`;
 
   return `
-    <div class="list-item">
-      <div>
+    <div class="student-exam-item">
+      <span class="student-exam-icon"></span>
+      <div class="student-exam-info">
         <strong>${escapeHTML(exam.title)}</strong>
-        <small>${escapeHTML(exam.subject)}${exam.topic ? ` - ${escapeHTML(exam.topic)}` : ""}</small>
-        <span class="badge ${exam.submitted ? "easy" : "average"}">${escapeHTML(scoreText)}</span>
+        <small>${subtitle}</small>
+        <span class="badge easy">${exam.totalItems} items</span>
       </div>
-      ${action}
+      <span class="student-exam-date">${formatDate(exam.createdAt)}</span>
+      <button class="btn secondary compact-btn" type="button" onclick="previewExam('${exam._id}')">Preview</button>
     </div>
   `;
 }
 
-function continueExam(examId) {
+function previewExam(examId) {
   localStorage.setItem("current_exam_id", examId);
   location.href = "/take-exam.html";
 }
 
-function openResult(examId) {
-  localStorage.setItem("result_exam_id", examId);
-  location.href = "/result.html";
+function formatDate(value) {
+  if (!value) {
+    return "No activity";
+  }
+
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 loadUserDashboard();

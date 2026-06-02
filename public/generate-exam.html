@@ -107,6 +107,25 @@
 
             <button class="btn generate-btn" type="submit">Generate Exam</button>
             <p class="message" id="examMessage"></p>
+            <div class="hidden generated-exam-actions" id="generatedExamActions">
+              <a class="btn secondary" id="previewGeneratedExam" href="/take-exam.html">
+                Preview Exam
+              </a>
+              <button
+                class="btn secondary"
+                type="button"
+                onclick="downloadGeneratedExam('download-docx')"
+              >
+                Download No Answer Key
+              </button>
+              <button
+                class="btn"
+                type="button"
+                onclick="downloadGeneratedExam('download-answer-key-docx')"
+              >
+                Download With Answer Key
+              </button>
+            </div>
           </form>
 
           <aside class="card exam-summary">
