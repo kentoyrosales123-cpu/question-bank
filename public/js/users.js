@@ -19,10 +19,10 @@ async function loadUsers() {
 function updateUserStats() {
   document.getElementById("totalUsers").textContent = users.length;
   document.getElementById("adminUsers").textContent = users.filter(
-    (user) => user.role === "admin",
+    (user) => ["admin", "super_admin"].includes(user.role),
   ).length;
   document.getElementById("regularUsers").textContent = users.filter(
-    (user) => user.role !== "admin",
+    (user) => ["user", "professor"].includes(user.role),
   ).length;
   document.getElementById("verifiedUsers").textContent = users.filter(
     (user) => user.isEmailVerified !== false,
@@ -61,7 +61,10 @@ function renderUserRow(user) {
           ${isCurrentUser ? "disabled" : ""}
         >
           <option value="user" ${user.role === "user" ? "selected" : ""}>Professor</option>
+          <option value="professor" ${user.role === "professor" ? "selected" : ""}>Professor</option>
+          <option value="student" ${user.role === "student" ? "selected" : ""}>Student</option>
           <option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option>
+          <option value="super_admin" ${user.role === "super_admin" ? "selected" : ""}>Super Admin</option>
         </select>
       </td>
       <td>

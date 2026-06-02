@@ -2,11 +2,13 @@ protectPage();
 adminOnlyPage();
 
 let pendingQuestions = [];
+const selectedParsedIds = new Set();
 
 async function loadParsedQuestions() {
   try {
     const data = await apiRequest("/parser");
     pendingQuestions = data.parsedQuestions.filter((q) => q.status === "Pending");
+    selectedParsedIds.clear();
 
     updateReviewStats(pendingQuestions);
     renderParsedQuestions(pendingQuestions);
@@ -38,10 +40,12 @@ function renderParsedQuestions(questions) {
         <p>Uploaded questions that need review will appear here.</p>
       </div>
     `;
+    syncBulkSelectionControls();
     return;
   }
 
   list.innerHTML = questions.map(renderParsedCard).join("");
+  syncBulkSelectionControls();
 }
 
 function renderParsedCard(q, index) {
@@ -52,7 +56,17 @@ function renderParsedCard(q, index) {
   return `
     <article class="review-card" id="parsed_card_${q._id}">
       <header class="review-card-header">
-        <div>
+        <label class="review-select">
+          <input
+            class="parsed-select-checkbox"
+            type="checkbox"
+            value="${escapeHTML(q._id)}"
+            ${selectedParsedIds.has(q._id) ? "checked" : ""}
+            onchange="toggleParsedSelection('${q._id}', this.checked)"
+          />
+          <span>Select</span>
+        </label>
+        <div class="review-card-title">
           <div class="review-card-kicker">
             <span class="status-pill">Pending</span>
             <span>Item ${index + 1}</span>
@@ -143,6 +157,74 @@ function renderParsedCard(q, index) {
   `;
 }
 
+function getVisibleParsedIds() {
+  return Array.from(document.querySelectorAll(".parsed-select-checkbox")).map(
+    (input) => input.value,
+  );
+}
+
+function getVisibleSelectedIds() {
+  const visibleIds = new Set(getVisibleParsedIds());
+  return Array.from(selectedParsedIds).filter((id) => visibleIds.has(id));
+}
+
+function syncBulkSelectionControls() {
+  const visibleIds = getVisibleParsedIds();
+  const selectedIds = getVisibleSelectedIds();
+  const selectAll = document.getElementById("selectAllParsed");
+  const count = document.getElementById("selectedParsedCount");
+  const approveButton = document.getElementById("bulkApproveButton");
+  const rejectButton = document.getElementById("bulkRejectButton");
+  const hasSelection = selectedIds.length > 0;
+
+  count.textContent = `${selectedIds.length} selected`;
+  approveButton.disabled = !hasSelection;
+  rejectButton.disabled = !hasSelection;
+  selectAll.disabled = visibleIds.length === 0;
+  selectAll.checked = visibleIds.length > 0 && selectedIds.length === visibleIds.length;
+  selectAll.indeterminate =
+    selectedIds.length > 0 && selectedIds.length < visibleIds.length;
+}
+
+function toggleParsedSelection(id, isSelected) {
+  if (isSelected) {
+    selectedParsedIds.add(id);
+  } else {
+    selectedParsedIds.delete(id);
+  }
+
+  syncBulkSelectionControls();
+}
+
+function toggleVisibleParsedSelection(isSelected) {
+  getVisibleParsedIds().forEach((id) => {
+    if (isSelected) {
+      selectedParsedIds.add(id);
+    } else {
+      selectedParsedIds.delete(id);
+    }
+  });
+
+  document.querySelectorAll(".parsed-select-checkbox").forEach((input) => {
+    input.checked = isSelected;
+  });
+
+  syncBulkSelectionControls();
+}
+
+function setBulkReviewMessage(text, type = "success") {
+  const message = document.getElementById("bulkReviewMessage");
+
+  message.textContent = text;
+  message.classList.toggle("correct", type === "success");
+  message.classList.toggle("wrong", type === "error");
+}
+
+function removeParsedQuestionFromList(id) {
+  pendingQuestions = pendingQuestions.filter((q) => q._id !== id);
+  selectedParsedIds.delete(id);
+}
+
 function renderField(label, id, value) {
   return `
     <div>
@@ -191,11 +273,8 @@ async function saveParsed(id) {
 
 async function approveParsed(id) {
   const body = getParsedFormBody(id);
-  const missingChoices = ["A", "B", "C", "D"].filter(
-    (letter) => !body.choices[letter],
-  );
 
-  if (!body.correctAnswer || missingChoices.length > 0) {
+  if (!isParsedQuestionReadyForApproval(body)) {
     setMessage(
       id,
       "Set the correct answer and complete all choices before approving.",
@@ -209,10 +288,19 @@ async function approveParsed(id) {
     const data = await apiRequest(`/parser/${id}/approve`, "POST");
 
     setMessage(id, data.message, "success");
+    removeParsedQuestionFromList(id);
     setTimeout(loadParsedQuestions, 500);
   } catch (error) {
     setMessage(id, error.message, "error");
   }
+}
+
+function isParsedQuestionReadyForApproval(body) {
+  const missingChoices = ["A", "B", "C", "D"].filter(
+    (letter) => !body.choices[letter],
+  );
+
+  return Boolean(body.correctAnswer && missingChoices.length === 0);
 }
 
 async function rejectParsed(id) {
@@ -228,13 +316,116 @@ async function rejectParsed(id) {
       card.style.transform = "translateY(8px)";
 
       setTimeout(() => {
-        pendingQuestions = pendingQuestions.filter((q) => q._id !== id);
+        removeParsedQuestionFromList(id);
         updateReviewStats(pendingQuestions);
         renderParsedQuestions(getFilteredQuestions());
       }, 250);
     }
   } catch (error) {
     setMessage(id, error.message, "error");
+  }
+}
+
+async function approveSelectedParsed() {
+  const ids = getVisibleSelectedIds();
+
+  if (ids.length === 0) {
+    setBulkReviewMessage("Select at least one parsed question.", "error");
+    return;
+  }
+
+  const invalidIds = ids.filter((id) => {
+    const body = getParsedFormBody(id);
+    return !isParsedQuestionReadyForApproval(body);
+  });
+
+  if (invalidIds.length > 0) {
+    invalidIds.forEach((id) => {
+      setMessage(
+        id,
+        "Set the correct answer and complete all choices before approving.",
+        "error",
+      );
+    });
+    setBulkReviewMessage(
+      `${invalidIds.length} selected question${invalidIds.length > 1 ? "s need" : " needs"} a complete answer setup before approval.`,
+      "error",
+    );
+    return;
+  }
+
+  setBulkActionState(true);
+  setBulkReviewMessage(`Approving ${ids.length} selected question${ids.length > 1 ? "s" : ""}...`);
+
+  let approvedCount = 0;
+
+  try {
+    for (const id of ids) {
+      await apiRequest(`/parser/${id}`, "PUT", getParsedFormBody(id));
+      const data = await apiRequest(`/parser/${id}/approve`, "POST");
+      approvedCount++;
+      setMessage(id, data.message, "success");
+      removeParsedQuestionFromList(id);
+    }
+
+    setBulkReviewMessage(`${approvedCount} selected question${approvedCount > 1 ? "s" : ""} approved.`);
+    renderParsedQuestions(getFilteredQuestions());
+    updateReviewStats(pendingQuestions);
+  } catch (error) {
+    setBulkReviewMessage(
+      `${approvedCount} approved before an error occurred: ${error.message}`,
+      "error",
+    );
+    renderParsedQuestions(getFilteredQuestions());
+    updateReviewStats(pendingQuestions);
+  } finally {
+    setBulkActionState(false);
+  }
+}
+
+async function rejectSelectedParsed() {
+  const ids = getVisibleSelectedIds();
+
+  if (ids.length === 0) {
+    setBulkReviewMessage("Select at least one parsed question.", "error");
+    return;
+  }
+
+  setBulkActionState(true);
+  setBulkReviewMessage(`Rejecting ${ids.length} selected question${ids.length > 1 ? "s" : ""}...`);
+
+  let rejectedCount = 0;
+
+  try {
+    for (const id of ids) {
+      const data = await apiRequest(`/parser/${id}/reject`, "POST");
+      rejectedCount++;
+      setMessage(id, data.message, "success");
+      removeParsedQuestionFromList(id);
+    }
+
+    setBulkReviewMessage(`${rejectedCount} selected question${rejectedCount > 1 ? "s" : ""} rejected.`);
+    renderParsedQuestions(getFilteredQuestions());
+    updateReviewStats(pendingQuestions);
+  } catch (error) {
+    setBulkReviewMessage(
+      `${rejectedCount} rejected before an error occurred: ${error.message}`,
+      "error",
+    );
+    renderParsedQuestions(getFilteredQuestions());
+    updateReviewStats(pendingQuestions);
+  } finally {
+    setBulkActionState(false);
+  }
+}
+
+function setBulkActionState(isWorking) {
+  document.getElementById("bulkApproveButton").disabled = isWorking;
+  document.getElementById("bulkRejectButton").disabled = isWorking;
+  document.getElementById("selectAllParsed").disabled = isWorking;
+
+  if (!isWorking) {
+    syncBulkSelectionControls();
   }
 }
 
@@ -319,7 +510,20 @@ function renderQuestionTables(tables) {
 }
 
 document.getElementById("reviewSearch").addEventListener("input", () => {
+  selectedParsedIds.clear();
   renderParsedQuestions(getFilteredQuestions());
 });
+
+document.getElementById("selectAllParsed").addEventListener("change", (event) => {
+  toggleVisibleParsedSelection(event.target.checked);
+});
+
+document
+  .getElementById("bulkApproveButton")
+  .addEventListener("click", approveSelectedParsed);
+
+document
+  .getElementById("bulkRejectButton")
+  .addEventListener("click", rejectSelectedParsed);
 
 loadParsedQuestions();

@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Item Analysis Upload</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a class="active" href="/item-analysis-upload.html">Item Analysis</a>
+        <div class="nav-divider"></div>
+        <a href="/profile.html">Profile</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>Item Analysis Upload</h1>
+            <p class="muted-text">
+              Upload student-per-item results from Excel or CSV to generate item analysis.
+            </p>
+          </div>
+          <button class="btn secondary" onclick="toggleTheme()">Toggle Theme</button>
+        </div>
+
+        <section class="item-analysis-layout">
+          <form class="card item-analysis-form" id="itemAnalysisForm">
+            <h2>Exam Information</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Exam Title *</span>
+                <input id="analysisTitle" name="title" required />
+              </label>
+              <label>
+                <span class="field-label">Subject *</span>
+                <input id="analysisSubject" name="subject" required />
+              </label>
+              <label>
+                <span class="field-label">Section *</span>
+                <input id="analysisSection" name="section" required />
+              </label>
+              <label>
+                <span class="field-label">Semester</span>
+                <input id="analysisSemester" name="semester" placeholder="1st Semester" />
+              </label>
+              <label>
+                <span class="field-label">School Year</span>
+                <input id="analysisSchoolYear" name="schoolYear" placeholder="2025-2026" />
+              </label>
+              <label>
+                <span class="field-label">Number of Items *</span>
+                <input id="analysisItems" name="numberOfItems" type="number" min="1" value="50" required />
+              </label>
+            </div>
+
+            <label>
+              <span class="field-label">Upload Excel/CSV Result File *</span>
+              <input
+                id="resultFile"
+                name="resultFile"
+                type="file"
+                accept=".xlsx,.csv"
+                required
+              />
+            </label>
+
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Manual Answer Key (Optional)</span>
+                <textarea
+                  id="answerKey"
+                  name="answerKey"
+                  placeholder="Example: A B C D A or A,B,C,D,A"
+                ></textarea>
+              </label>
+              <label>
+                <span class="field-label">Answer Key File (Optional)</span>
+                <input id="answerKeyFile" name="answerKeyFile" type="file" accept=".xlsx,.csv" />
+              </label>
+            </div>
+
+            <div class="action-row">
+              <button class="btn" type="submit">Upload and Analyze</button>
+              <button class="btn secondary" type="button" onclick="downloadTemplate()">
+                Download Template
+              </button>
+            </div>
+            <p class="message" id="itemAnalysisMessage"></p>
+          </form>
+
+          <aside class="item-analysis-side">
+            <section class="card generated-answer-key-panel">
+              <h2>Generated Exam Answer Key</h2>
+              <p class="muted-text">
+                Choose one of your generated exams to download its answer key.
+              </p>
+              <label>
+                <span class="field-label">Generated Exam</span>
+                <select id="generatedExamSelect">
+                  <option value="">Loading generated exams...</option>
+                </select>
+              </label>
+              <div class="exam-answer-key-meta" id="generatedExamMeta"></div>
+              <div class="action-row">
+                <button
+                  class="btn"
+                  id="downloadGeneratedAnswerKeyButton"
+                  type="button"
+                >
+                  Download Answer Key
+                </button>
+                <button
+                  class="btn secondary"
+                  id="useGeneratedExamButton"
+                  type="button"
+                >
+                  Use Exam Details
+                </button>
+              </div>
+              <p class="message" id="generatedExamMessage"></p>
+            </section>
+
+            <section class="card item-analysis-help">
+              <h2>Required Format</h2>
+              <p>Student Name | Student ID | Section | Item 1 | Item 2 | ... | Total Score</p>
+              <ul>
+                <li>Use <strong>1</strong> or <strong>C</strong> for correct.</li>
+                <li>Use <strong>0</strong> or <strong>W</strong> for wrong.</li>
+                <li>Blank item values are accepted and treated as wrong.</li>
+                <li>Total Score may be blank; the system can compute it.</li>
+              </ul>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/item-analysis-upload.js"></script>
+  </body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Item Analysis</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a class="active" href="/item-analysis-upload.html">Item Analysis</a>
+        <div class="nav-divider"></div>
+        <a href="/profile.html">Profile</a>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 id="analysisTitle">Item Analysis</h1>
+            <p class="muted-text" id="analysisSubtitle">Review item performance and recommendations.</p>
+          </div>
+          <div class="action-row">
+            <button class="btn secondary" onclick="toggleTheme()">Toggle Theme</button>
+            <button class="btn" type="button" onclick="exportAnalysis()">Export Analysis</button>
+          </div>
+        </div>
+
+        <section class="dashboard-stats item-analysis-stats">
+          <div class="card metric-card">
+            <div class="metric-icon"></div>
+            <div><h3>Total Students</h3><strong id="totalStudents">0</strong><small>uploaded results</small></div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon"></div>
+            <div><h3>Average Score</h3><strong id="averageScore">0</strong><small>class performance</small></div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon"></div>
+            <div><h3>Items for Revision</h3><strong id="itemsForRevision">0</strong><small>revise recommended</small></div>
+          </div>
+          <div class="card metric-card">
+            <div class="metric-icon"></div>
+            <div><h3>Weak Items</h3><strong id="weakItems">0</strong><small>difficult or poor</small></div>
+          </div>
+        </section>
+
+        <section class="item-analysis-charts">
+          <div class="card">
+            <h2>Difficulty Index</h2>
+            <canvas id="difficultyChart"></canvas>
+          </div>
+          <div class="card">
+            <h2>Discrimination Index</h2>
+            <canvas id="discriminationChart"></canvas>
+          </div>
+          <div class="card">
+            <h2>Recommendations</h2>
+            <canvas id="recommendationChart"></canvas>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Item Analysis Table</h2>
+            <p class="message wrong" id="analysisMessage"></p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item No.</th>
+                  <th>Correct Count</th>
+                  <th>Incorrect Count</th>
+                  <th>Difficulty Index</th>
+                  <th>Difficulty Interpretation</th>
+                  <th>Discrimination Index</th>
+                  <th>Discrimination Interpretation</th>
+                  <th>Recommendation</th>
+                </tr>
+              </thead>
+              <tbody id="analysisBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/js/chart.umd.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/item-analysis.js"></script>
+  </body>
+</html>

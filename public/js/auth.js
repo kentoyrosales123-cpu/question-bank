@@ -14,7 +14,9 @@ function setAuth(token, user) {
 }
 
 function getDashboardUrl(user = getUser()) {
-  return user && user.role === "admin" ? "/dashboard.html" : "/user-dashboard.html";
+  return user && ["admin", "super_admin"].includes(user.role)
+    ? "/dashboard.html"
+    : "/user-dashboard.html";
 }
 
 function logout() {
@@ -40,7 +42,7 @@ function protectPage() {
 function adminOnlyPage() {
   const user = getUser();
 
-  if (!user || user.role !== "admin") {
+  if (!user || !["admin", "super_admin"].includes(user.role)) {
     alert("Admin access only.");
     location.href = getDashboardUrl(user);
   }
@@ -62,8 +64,20 @@ function syncDashboardLinks() {
     link.href = dashboardUrl;
   });
 
-  if (!user || user.role === "admin") {
+  if (!user || user.role === "admin" || user.role === "super_admin") {
     return;
+  }
+
+  if (user.role === "student") {
+    [
+      "/item-analysis-upload.html",
+      "/generate-exam.html",
+      "/upload.html",
+    ].forEach((href) => {
+      document.querySelectorAll(`a[href="${href}"]`).forEach((link) => {
+        link.classList.add("hidden");
+      });
+    });
   }
 
   [

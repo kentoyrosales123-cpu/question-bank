@@ -12,6 +12,7 @@ const examRoutes = require("./routes/examRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const parserRoutes = require("./routes/parserRoutes");
+const itemAnalysisRoutes = require("./routes/itemAnalysisRoutes");
 
 const app = express();
 
@@ -35,8 +36,13 @@ app.use("/api/exams", examRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/parser", parserRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/item-analysis", itemAnalysisRoutes);
 
 app.use("/api/users", require("./routes/userRoutes"));
+
+app.get("/item-analysis/:id", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "item-analysis.html"));
+});
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));

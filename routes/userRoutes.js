@@ -167,14 +167,17 @@ router.patch("/:id/role", protect, adminOnly, async (req, res) => {
   try {
     const { role } = req.body;
 
-    if (!["user", "admin"].includes(role)) {
+    if (!["user", "admin", "super_admin", "professor", "student"].includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Role must be user or admin.",
+        message: "Role must be user, professor, student, admin, or super admin.",
       });
     }
 
-    if (req.params.id === req.user._id.toString() && role !== "admin") {
+    if (
+      req.params.id === req.user._id.toString() &&
+      !["admin", "super_admin"].includes(role)
+    ) {
       return res.status(400).json({
         success: false,
         message: "You cannot remove your own admin role.",

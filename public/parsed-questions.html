@@ -53,6 +53,23 @@
           />
         </section>
 
+        <section class="bulk-review-toolbar">
+          <label class="bulk-select-toggle">
+            <input id="selectAllParsed" type="checkbox" />
+            <span>Select visible</span>
+          </label>
+          <span class="bulk-selected-count" id="selectedParsedCount">0 selected</span>
+          <div class="action-row">
+            <button class="btn success" id="bulkApproveButton" type="button" disabled>
+              Approve Selected
+            </button>
+            <button class="btn danger" id="bulkRejectButton" type="button" disabled>
+              Reject Selected
+            </button>
+          </div>
+          <p class="message" id="bulkReviewMessage"></p>
+        </section>
+
         <div id="parsedList"></div>
       </main>
     </div>
