@@ -5,13 +5,39 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body>
-    <main class="auth-page">
-      <form class="auth-card" id="registerForm">
-        <h1>Create Account</h1>
+    <main class="auth-page um-auth-page">
+      <section class="auth-brand-panel">
+        <div class="auth-logo-lockup">
+          <img src="/logo.avif" alt="University of Mindanao logo" />
+          <div>
+            <span>University of Mindanao</span>
+            <strong>Question Bank System</strong>
+          </div>
+        </div>
+        <div class="auth-brand-copy">
+          <p>Build better assessments with a UM-centered question bank.</p>
+          <small>Register to access exam generation, parsed question review, and item analysis tools.</small>
+        </div>
+      </section>
 
-        <input id="name" type="text" placeholder="Full Name" required />
-        <input id="email" type="email" placeholder="Email" required />
-        <input id="password" type="password" placeholder="Password" required />
+      <form class="auth-card um-auth-card" id="registerForm">
+        <div class="auth-form-heading">
+          <span>Get Started</span>
+          <h1>Create your account</h1>
+        </div>
+
+        <label>
+          <span class="field-label">Full Name</span>
+          <input id="name" type="text" placeholder="Juan Dela Cruz" required />
+        </label>
+        <label>
+          <span class="field-label">Email Address</span>
+          <input id="email" type="email" placeholder="name@umindanao.edu.ph" required />
+        </label>
+        <label>
+          <span class="field-label">Password</span>
+          <input id="password" type="password" placeholder="Create a password" required />
+        </label>
 
         <button class="btn" id="registerButton" type="submit">Register</button>
 
@@ -32,7 +58,9 @@
           </button>
         </div>
 
-        <p>Already have an account? <a href="/login.html">Login</a></p>
+        <div class="auth-link-row single">
+          <span>Already have an account? <a href="/login.html">Login</a></span>
+        </div>
         <p class="message wrong" id="authMessage"></p>
       </form>
     </main>

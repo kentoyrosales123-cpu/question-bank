@@ -5,17 +5,42 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body>
-    <main class="auth-page">
-      <form class="auth-card" id="loginForm">
-        <h1>Login</h1>
+    <main class="auth-page um-auth-page">
+      <section class="auth-brand-panel">
+        <div class="auth-logo-lockup">
+          <img src="/logo.avif" alt="University of Mindanao logo" />
+          <div>
+            <span>University of Mindanao</span>
+            <strong>Question Bank System</strong>
+          </div>
+        </div>
+        <div class="auth-brand-copy">
+          <p>Secure assessment tools for UM faculty and students.</p>
+          <small>Generate exams, manage question banks, and review performance data in one place.</small>
+        </div>
+      </section>
 
-        <input id="email" type="email" placeholder="Email" required />
-        <input id="password" type="password" placeholder="Password" required />
+      <form class="auth-card um-auth-card" id="loginForm">
+        <div class="auth-form-heading">
+          <span>Welcome Back</span>
+          <h1>Sign in to your account</h1>
+        </div>
+
+        <label>
+          <span class="field-label">Email Address</span>
+          <input id="email" type="email" placeholder="name@umindanao.edu.ph" required />
+        </label>
+        <label>
+          <span class="field-label">Password</span>
+          <input id="password" type="password" placeholder="Enter your password" required />
+        </label>
 
         <button class="btn" type="submit">Login</button>
 
-        <p><a href="/forgot-password.html">Forgot password?</a></p>
-        <p>Don't have an account? <a href="/register.html">Register</a></p>
+        <div class="auth-link-row">
+          <a href="/forgot-password.html">Forgot password?</a>
+          <span>New here? <a href="/register.html">Create account</a></span>
+        </div>
         <p class="message wrong" id="authMessage"></p>
       </form>
     </main>
