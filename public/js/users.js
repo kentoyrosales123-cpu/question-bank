@@ -4,6 +4,9 @@ adminOnlyPage();
 let users = [];
 
 document.getElementById("userSearch").addEventListener("input", renderUsers);
+document
+  .getElementById("createUserForm")
+  .addEventListener("submit", createUser);
 
 async function loadUsers() {
   try {
@@ -60,7 +63,7 @@ function renderUserRow(user) {
           onchange="updateUserRole('${user._id}', this.value)"
           ${isCurrentUser ? "disabled" : ""}
         >
-          <option value="user" ${user.role === "user" ? "selected" : ""}>Professor</option>
+          <option value="user" ${user.role === "user" ? "selected" : ""}>Regular User</option>
           <option value="professor" ${user.role === "professor" ? "selected" : ""}>Professor</option>
           <option value="student" ${user.role === "student" ? "selected" : ""}>Student</option>
           <option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option>
@@ -85,6 +88,26 @@ function renderUserRow(user) {
       </td>
     </tr>
   `;
+}
+
+async function createUser(event) {
+  event.preventDefault();
+
+  const body = {
+    name: document.getElementById("createUserName").value,
+    email: document.getElementById("createUserEmail").value,
+    password: document.getElementById("createUserPassword").value,
+    role: document.getElementById("createUserRole").value,
+  };
+
+  try {
+    await apiRequest("/users", "POST", body);
+    document.getElementById("createUserForm").reset();
+    setMessage("usersMessage", "Account created successfully.", false);
+    await loadUsers();
+  } catch (error) {
+    setMessage("usersMessage", error.message);
+  }
 }
 
 async function updateUserRole(id, role) {

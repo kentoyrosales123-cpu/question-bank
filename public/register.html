@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Register</title>
+    <title>Account Access</title>
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body>
@@ -15,56 +15,24 @@
           </div>
         </div>
         <div class="auth-brand-copy">
-          <p>Build better assessments with a UM-centered question bank.</p>
-          <small>Register to access exam generation, parsed question review, and item analysis tools.</small>
+          <p>Accounts are managed by authorized administrators.</p>
+          <small>Ask your system administrator to create your account before signing in.</small>
         </div>
       </section>
 
-      <form class="auth-card um-auth-card" id="registerForm">
+      <section class="auth-card um-auth-card">
         <div class="auth-form-heading">
-          <span>Get Started</span>
-          <h1>Create your account</h1>
+          <span>Account Access</span>
+          <h1>Registration is managed by administrators</h1>
         </div>
 
-        <label>
-          <span class="field-label">Full Name</span>
-          <input id="name" type="text" placeholder="Juan Dela Cruz" required />
-        </label>
-        <label>
-          <span class="field-label">Email Address</span>
-          <input id="email" type="email" placeholder="name@umindanao.edu.ph" required />
-        </label>
-        <label>
-          <span class="field-label">Password</span>
-          <input id="password" type="password" placeholder="Create a password" required />
-        </label>
+        <p class="muted-text">
+          Public self-registration is currently disabled. Once your account is
+          created, you can use the login page with the credentials provided to you.
+        </p>
 
-        <button class="btn" id="registerButton" type="submit">Register</button>
-
-        <div class="hidden" id="verificationPanel">
-          <input
-            id="otp"
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9]{6}"
-            maxlength="6"
-            placeholder="6-digit verification code"
-          />
-          <button class="btn success" id="verifyEmailButton" type="button">
-            Verify Email
-          </button>
-          <button class="btn secondary" id="resendOtpButton" type="button">
-            Resend Code
-          </button>
-        </div>
-
-        <div class="auth-link-row single">
-          <span>Already have an account? <a href="/login.html">Login</a></span>
-        </div>
-        <p class="message wrong" id="authMessage"></p>
-      </form>
+        <a class="btn" href="/login.html">Back to Login</a>
+      </section>
     </main>
-
-    <script src="/js/auth.js"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@ The Question Bank System is a web-based application for creating, uploading, rev
 
 The system supports:
 
-- User registration and login
+- Administrator-created user accounts and login
 - Dashboard monitoring
 - Manual question entry
 - DOCX/PDF/image questionnaire upload
@@ -20,9 +20,9 @@ The system supports:
 - Item analysis upload from Excel or CSV student results
 - Item analysis reports and Excel export
 
-## Email Verification Setup
+## Email and Administrator Setup
 
-Registration uses a 6-digit OTP email verification code. Configure these environment variables before production use:
+Configure these environment variables before production use so the system can send password reset and system emails:
 
 ```text
 SMTP_HOST=smtp.example.com
@@ -33,7 +33,7 @@ SMTP_PASS=your_email_password_or_app_password
 SMTP_FROM="Question Bank <your_email@example.com>"
 ```
 
-If SMTP settings are not configured, the server prints the OTP in the console for local development testing.
+If SMTP settings are not configured, email-based features may not send messages correctly in production.
 
 The default administrator account can also be prepared through environment variables:
 
@@ -43,18 +43,23 @@ ADMIN_PASSWORD=your_secure_admin_password
 ADMIN_NAME=System Administrator
 ```
 
-## 1. Account Registration
+## 1. Account Creation
 
-### How to Register
+### Public Registration
 
-1. Open the registration page.
-2. Enter your full name.
-3. Enter a valid email address.
-4. Enter a password.
-5. Click `Register`.
-6. Check your email for the 6-digit verification code.
-7. Enter the code on the registration page.
-8. Click `Verify Email`.
+Public self-registration is disabled. Users cannot create accounts from the login page.
+
+Accounts are created by an administrator from the `Users` page.
+
+### How an Admin Creates an Account
+
+1. Log in as an administrator.
+2. Go to `Users`.
+3. In the `Create Account` form, enter the user's full name.
+4. Enter the user's email address.
+5. Enter a temporary password.
+6. Select the user's role.
+7. Click `Create Account`.
 
 ### Required Fields
 
@@ -64,28 +69,24 @@ ADMIN_NAME=System Administrator
 
 ### Role Selection
 
-The current registration page does not show a role selector. New accounts are automatically created as regular `user` accounts.
+The administrator selects the account role during creation. The system supports `user`, `professor`, `student`, `admin`, and `super_admin` roles.
 
-The system also supports `professor`, `student`, `admin`, and `super_admin` roles. Role assignment is handled by an administrator from the user management page or directly during system setup.
+### After Successful Account Creation
 
-### After Successful Registration
+After successful account creation:
 
-After successful registration:
+1. The account is saved in the database.
+2. The account is marked as verified.
+3. The user can log in using the email and password assigned by the administrator.
+4. The user's access depends on the selected role.
 
-1. The account is created.
-2. A verification code is sent to your email address.
-3. After you verify the code, the system stores your login session.
-4. You are allowed to enter the system based on your assigned role.
-
-### Common Registration Errors
+### Common Account Creation Errors
 
 | Error | Cause | Fix |
 | --- | --- | --- |
 | Name, email, and password are required | One or more required fields were left blank | Complete all required fields |
 | Email already registered | The email is already used by another account | Use a different email or log in with the existing account |
-| Email and verification code are required | The OTP verification form is incomplete | Enter the 6-digit code sent to your email |
-| Invalid verification code | The OTP does not match the latest code | Re-enter the code or request a new one |
-| Verification code expired | The OTP is older than the allowed verification window | Click `Resend Code` and use the new OTP |
+| Role must be user, professor, student, admin, or super admin | The selected role is not supported | Choose one of the supported roles |
 | Invalid email format | The email address is not valid | Enter a valid email address |
 | Server error | Temporary server or database issue | Try again or contact the administrator |
 
@@ -112,7 +113,7 @@ After successful login:
 3. You are redirected to the appropriate system page.
 4. Your access depends on your role.
 
-Accounts must verify their email address before login is allowed.
+Admin-created accounts are already marked as verified and can log in immediately.
 
 ### If Login Fails
 

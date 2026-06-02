@@ -1,10 +1,14 @@
 const express = require("express");
 const router = express.Router();
+const bcrypt = require("bcryptjs");
 
 const User = require("../models/User");
 const Exam = require("../models/Exam");
+const { normalizeEmail } = require("../config/loginAccess");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 const imageUpload = require("../middleware/imageUploadMiddleware");
+
+const allowedRoles = ["user", "admin", "super_admin", "professor", "student"];
 
 router.get("/", protect, adminOnly, async (req, res) => {
   try {
@@ -15,6 +19,62 @@ router.get("/", protect, adminOnly, async (req, res) => {
     res.json({
       success: true,
       users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+router.post("/", protect, adminOnly, async (req, res) => {
+  try {
+    const name = String(req.body.name || "").trim();
+    const email = normalizeEmail(req.body.email);
+    const password = String(req.body.password || "");
+    const role = req.body.role || "user";
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, and password are required.",
+      });
+    }
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role must be user, professor, student, admin, or super admin.",
+      });
+    }
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already registered.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+      isEmailVerified: true,
+    });
+
+    const createdUser = await User.findById(user._id).select(
+      "-password -profileImage.data",
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Account created successfully.",
+      user: createdUser,
     });
   } catch (error) {
     res.status(500).json({
@@ -167,7 +227,7 @@ router.patch("/:id/role", protect, adminOnly, async (req, res) => {
   try {
     const { role } = req.body;
 
-    if (!["user", "admin", "super_admin", "professor", "student"].includes(role)) {
+    if (!allowedRoles.includes(role)) {
       return res.status(400).json({
         success: false,
         message: "Role must be user, professor, student, admin, or super admin.",

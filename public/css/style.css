@@ -446,6 +446,7 @@ textarea {
 .landing-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
 }
 
@@ -464,6 +465,12 @@ textarea {
   background: rgba(255, 247, 236, 0.96);
   color: #76000f;
   border-color: transparent;
+}
+
+.landing-note {
+  color: rgba(255, 247, 236, 0.84);
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .dashboard-layout {
