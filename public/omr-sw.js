@@ -1,4 +1,4 @@
-const CACHE_NAME = "um-omr-scanner-v3";
+const CACHE_NAME = "omr-scanner-v3";
 const APP_SHELL = [
   "/omr-scanner.html",
   "/css/style.css",
@@ -10,7 +10,9 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
+  );
 });
 
 self.addEventListener("activate", (event) => {

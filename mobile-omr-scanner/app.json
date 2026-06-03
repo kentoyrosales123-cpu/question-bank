@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "UM OMR Scanner",
+    "name": "OMR Scanner",
     "slug": "mobile-omr-scanner",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "scheme": "um-omr-scanner",
+    "scheme": "omr-scanner",
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,

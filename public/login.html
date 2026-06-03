@@ -5,22 +5,23 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body>
-    <main class="auth-page um-auth-page">
+    <main class="auth-page">
       <section class="auth-brand-panel">
         <div class="auth-logo-lockup">
-          <img src="/logo.avif" alt="University of Mindanao logo" />
           <div>
-            <span>University of Mindanao</span>
-            <strong>Question Bank System</strong>
+            <span>Question Bank System</span>
           </div>
         </div>
         <div class="auth-brand-copy">
-          <p>Secure assessment tools for UM faculty and students.</p>
-          <small>Generate exams, manage question banks, and review performance data in one place.</small>
+          <p>Secure assessment tools for faculty and students.</p>
+          <small
+            >Generate exams, manage question banks, and review performance data
+            in one place.</small
+          >
         </div>
       </section>
 
-      <form class="auth-card um-auth-card" id="loginForm">
+      <form class="auth-card" id="loginForm">
         <div class="auth-form-heading">
           <span>Welcome Back</span>
           <h1>Sign in to your account</h1>
@@ -28,11 +29,21 @@
 
         <label>
           <span class="field-label">Email Address</span>
-          <input id="email" type="email" placeholder="name@umindanao.edu.ph" required />
+          <input
+            id="email"
+            type="email"
+            placeholder="user@example.com"
+            required
+          />
         </label>
         <label>
           <span class="field-label">Password</span>
-          <input id="password" type="password" placeholder="Enter your password" required />
+          <input
+            id="password"
+            type="password"
+            placeholder="Enter your password"
+            required
+          />
         </label>
 
         <button class="btn" type="submit">Login</button>

@@ -264,50 +264,50 @@ const buildOmrTemplateBuffer = async ({
         ? Buffer.from(qrDataUrl.split(",")[1], "base64")
         : null;
       const rows = Array.from({ length: omrRowsPerBlock }, (_, rowIndex) => {
-          const fill = rowIndex % 2 === 0 ? "FFFFFF" : "FCF7F7";
+        const fill = rowIndex % 2 === 0 ? "FFFFFF" : "FCF7F7";
 
-          return new TableRow({
-            children: Array.from({ length: 4 }, (_, blockIndex) => {
-              const itemIndex = blockIndex * omrRowsPerBlock + rowIndex;
-              const itemNo = startItem + itemIndex;
-              const hasItem = itemIndex < pageItemCount && itemNo <= endItem;
+        return new TableRow({
+          children: Array.from({ length: 4 }, (_, blockIndex) => {
+            const itemIndex = blockIndex * omrRowsPerBlock + rowIndex;
+            const itemNo = startItem + itemIndex;
+            const hasItem = itemIndex < pageItemCount && itemNo <= endItem;
 
-              return [
-                omrCell(hasItem ? String(itemNo) : "", {
-                  bold: true,
-                  fill,
-                  margin: 35,
-                  size: 18,
-                  width: { size: 4, type: WidthType.PERCENTAGE },
-                }),
-                omrCell(hasItem ? "Ⓐ" : "", {
-                  fill,
-                  margin: 28,
-                  size: 22,
-                  width: { size: 5.25, type: WidthType.PERCENTAGE },
-                }),
-                omrCell(hasItem ? "Ⓑ" : "", {
-                  fill,
-                  margin: 28,
-                  size: 22,
-                  width: { size: 5.25, type: WidthType.PERCENTAGE },
-                }),
-                omrCell(hasItem ? "Ⓒ" : "", {
-                  fill,
-                  margin: 28,
-                  size: 22,
-                  width: { size: 5.25, type: WidthType.PERCENTAGE },
-                }),
-                omrCell(hasItem ? "Ⓓ" : "", {
-                  fill,
-                  margin: 28,
-                  size: 22,
-                  width: { size: 5.25, type: WidthType.PERCENTAGE },
-                }),
-              ];
-            }).flat(),
-          });
+            return [
+              omrCell(hasItem ? String(itemNo) : "", {
+                bold: true,
+                fill,
+                margin: 35,
+                size: 18,
+                width: { size: 4, type: WidthType.PERCENTAGE },
+              }),
+              omrCell(hasItem ? "Ⓐ" : "", {
+                fill,
+                margin: 28,
+                size: 22,
+                width: { size: 5.25, type: WidthType.PERCENTAGE },
+              }),
+              omrCell(hasItem ? "Ⓑ" : "", {
+                fill,
+                margin: 28,
+                size: 22,
+                width: { size: 5.25, type: WidthType.PERCENTAGE },
+              }),
+              omrCell(hasItem ? "Ⓒ" : "", {
+                fill,
+                margin: 28,
+                size: 22,
+                width: { size: 5.25, type: WidthType.PERCENTAGE },
+              }),
+              omrCell(hasItem ? "Ⓓ" : "", {
+                fill,
+                margin: 28,
+                size: 22,
+                width: { size: 5.25, type: WidthType.PERCENTAGE },
+              }),
+            ];
+          }).flat(),
         });
+      });
       const headerTable = new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -318,7 +318,7 @@ const buildOmrTemplateBuffer = async ({
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: "UNIVERSITY OF MINDANAO",
+                        text: "Question Bank System",
                         bold: true,
                         color: maroon,
                         size: 24,
@@ -446,9 +446,12 @@ const buildOmrTemplateBuffer = async ({
           }),
           new TableRow({
             children: [
-              textCell([infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
-              }),
+              textCell(
+                [infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)],
+                {
+                  width: { size: 50, type: WidthType.PERCENTAGE },
+                },
+              ),
               textCell([infoLine("Date")], {
                 width: { size: 50, type: WidthType.PERCENTAGE },
               }),
@@ -472,8 +475,7 @@ const buildOmrTemplateBuffer = async ({
                         size: 20,
                       }),
                       new TextRun({
-                        text:
-                          `Scan each page QR before capture. Each OMR page contains up to ${omrItemsPerPage} items in four answer blocks. Shade one circle per item.`,
+                        text: `Scan each page QR before capture. Each OMR page contains up to ${omrItemsPerPage} items in four answer blocks. Shade one circle per item.`,
                         size: 20,
                       }),
                     ],
@@ -492,12 +494,7 @@ const buildOmrTemplateBuffer = async ({
           : []),
         headerTable,
         ...(pageIndex === 0
-          ? [
-              new Paragraph(""),
-              infoTable,
-              new Paragraph(""),
-              instructionTable,
-            ]
+          ? [new Paragraph(""), infoTable, new Paragraph(""), instructionTable]
           : []),
         new Paragraph(""),
         new Table({
@@ -563,7 +560,9 @@ const parseResultRows = async (file, numberOfItems) => {
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
-    const studentName = normalizeValue(getCellValue(row, headers["student name"]));
+    const studentName = normalizeValue(
+      getCellValue(row, headers["student name"]),
+    );
     const studentId = normalizeValue(getCellValue(row, headers["student id"]));
     const section = normalizeValue(getCellValue(row, headers.section));
 
@@ -572,7 +571,9 @@ const parseResultRows = async (file, numberOfItems) => {
     }
 
     if (!studentName || !studentId || !section) {
-      validationErrors.push(`Row ${rowNumber}: student name, ID, and section are required.`);
+      validationErrors.push(
+        `Row ${rowNumber}: student name, ID, and section are required.`,
+      );
       return;
     }
 
@@ -637,20 +638,17 @@ const buildStudentResultFromAnswers = (exam, student, answers) => {
     ]),
   );
 
-  const itemResults = Array.from(
-    { length: exam.numberOfItems },
-    (_, index) => {
-      const itemNo = index + 1;
-      const value = answerValues[index] || "";
-      const correctAnswer = answerKeyByItem.get(itemNo) || "";
+  const itemResults = Array.from({ length: exam.numberOfItems }, (_, index) => {
+    const itemNo = index + 1;
+    const value = answerValues[index] || "";
+    const correctAnswer = answerKeyByItem.get(itemNo) || "";
 
-      return {
-        itemNo,
-        value,
-        isCorrect: Boolean(value && correctAnswer && value === correctAnswer),
-      };
-    },
-  );
+    return {
+      itemNo,
+      value,
+      isCorrect: Boolean(value && correctAnswer && value === correctAnswer),
+    };
+  });
 
   return {
     analysisExamId: exam._id,
@@ -671,7 +669,9 @@ const computeAnalysis = (exam, results) => {
       : 0;
   const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
   const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
-  const sortedResults = [...results].sort((a, b) => b.totalScore - a.totalScore);
+  const sortedResults = [...results].sort(
+    (a, b) => b.totalScore - a.totalScore,
+  );
   const groupSize = Math.max(1, Math.ceil(totalStudents * 0.27));
   const upperGroup = sortedResults.slice(0, groupSize);
   const lowerGroup = sortedResults.slice(-groupSize);
@@ -682,7 +682,8 @@ const computeAnalysis = (exam, results) => {
       (result) => result.itemResults[index]?.isCorrect,
     ).length;
     const incorrectCount = totalStudents - correctCount;
-    const difficultyIndex = totalStudents > 0 ? correctCount / totalStudents : 0;
+    const difficultyIndex =
+      totalStudents > 0 ? correctCount / totalStudents : 0;
     const upperCorrectRate =
       upperGroup.length > 0
         ? upperGroup.filter((result) => result.itemResults[index]?.isCorrect)
@@ -736,7 +737,9 @@ const computeAnalysis = (exam, results) => {
       recommendationSummary,
       priorityItems: items
         .filter((item) =>
-          ["Check Answer Key", "Revise", "Review"].includes(item.recommendation),
+          ["Check Answer Key", "Revise", "Review"].includes(
+            item.recommendation,
+          ),
         )
         .slice(0, 8),
     },
@@ -776,7 +779,9 @@ exports.listItemAnalysisExams = async (req, res) => {
     }
 
     const exams = await ItemAnalysisExam.find(query)
-      .select("title subject section semester schoolYear numberOfItems answerKey uploadedAt createdAt")
+      .select(
+        "title subject section semester schoolYear numberOfItems answerKey uploadedAt createdAt",
+      )
       .sort({ createdAt: -1 });
 
     res.json({
@@ -807,7 +812,8 @@ exports.createItemAnalysisExam = async (req, res) => {
     if (!title || !subject || !section || !itemCount) {
       return res.status(400).json({
         success: false,
-        message: "Exam title, subject, section, and number of items are required.",
+        message:
+          "Exam title, subject, section, and number of items are required.",
       });
     }
 
@@ -1077,7 +1083,8 @@ exports.saveScannedResult = async (req, res) => {
     if (!data.exam.answerKey || data.exam.answerKey.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "This item analysis exam needs an answer key before scanned sheets can be scored.",
+        message:
+          "This item analysis exam needs an answer key before scanned sheets can be scored.",
       });
     }
 

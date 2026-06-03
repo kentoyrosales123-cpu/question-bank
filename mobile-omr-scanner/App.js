@@ -38,7 +38,9 @@ function parseQrMetadata(value = "") {
 }
 
 function normalizeMatchValue(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function findExamFromQrMetadata(metadata, exams) {
@@ -47,7 +49,9 @@ function findExamFromQrMetadata(metadata, exams) {
   }
 
   if (metadata.analysisExamId) {
-    const exactMatch = exams.find((exam) => exam._id === metadata.analysisExamId);
+    const exactMatch = exams.find(
+      (exam) => exam._id === metadata.analysisExamId,
+    );
 
     if (exactMatch) {
       return exactMatch;
@@ -60,10 +64,12 @@ function findExamFromQrMetadata(metadata, exams) {
       normalizeMatchValue(exam.title) === normalizeMatchValue(metadata.title);
     const sameSubject =
       !metadata.subject ||
-      normalizeMatchValue(exam.subject) === normalizeMatchValue(metadata.subject);
+      normalizeMatchValue(exam.subject) ===
+        normalizeMatchValue(metadata.subject);
     const sameSection =
       !metadata.section ||
-      normalizeMatchValue(exam.section) === normalizeMatchValue(metadata.section);
+      normalizeMatchValue(exam.section) ===
+        normalizeMatchValue(metadata.section);
     const sameItemCount =
       !metadata.numberOfItems ||
       Number(exam.numberOfItems) === Number(metadata.numberOfItems);
@@ -94,7 +100,9 @@ function getAnswerKeyMap(exam) {
   return new Map(
     (exam?.answerKey || []).map((item) => [
       Number(item.itemNo),
-      String(item.answer || "").trim().toUpperCase(),
+      String(item.answer || "")
+        .trim()
+        .toUpperCase(),
     ]),
   );
 }
@@ -116,7 +124,9 @@ function getExpectedOmrPageCount(numberOfItems) {
 }
 
 function getQrScanRange(metadata, exam) {
-  const totalItems = Number(exam?.numberOfItems || metadata?.numberOfItems || 0);
+  const totalItems = Number(
+    exam?.numberOfItems || metadata?.numberOfItems || 0,
+  );
   const startItem = Math.max(1, Number(metadata?.startItem || 1));
   const fallbackEnd = metadata?.itemsOnPage
     ? startItem + Number(metadata.itemsOnPage) - 1
@@ -349,9 +359,13 @@ export default function App() {
       return;
     }
 
-    const data = await requestApi(apiBaseUrl, `/item-analysis/${examId}/results`, {
-      token: authToken,
-    });
+    const data = await requestApi(
+      apiBaseUrl,
+      `/item-analysis/${examId}/results`,
+      {
+        token: authToken,
+      },
+    );
     setHistory(data.results || []);
   };
 
@@ -399,7 +413,9 @@ export default function App() {
 
     setQrScanEnabled(false);
     setQrMetadata(metadata);
-    setQrStatus(`QR read: ${metadata.title || "OMR sheet"}. Looking for exam...`);
+    setQrStatus(
+      `QR read: ${metadata.title || "OMR sheet"}. Looking for exam...`,
+    );
 
     let matchingExam = findExamFromQrMetadata(metadata, exams);
     let preloadedResults = null;
@@ -440,7 +456,10 @@ export default function App() {
       return;
     }
 
-    if (selectedExamId !== matchingExam._id || answers.length !== matchingExam.numberOfItems) {
+    if (
+      selectedExamId !== matchingExam._id ||
+      answers.length !== matchingExam.numberOfItems
+    ) {
       await selectExam(matchingExam, token, {
         preserveQr: true,
         preloadedResults,
@@ -627,7 +646,10 @@ export default function App() {
     }
 
     if (!studentName.trim() || !studentId.trim()) {
-      Alert.alert("Missing student", "Student name and student ID are required.");
+      Alert.alert(
+        "Missing student",
+        "Student name and student ID are required.",
+      );
       return;
     }
 
@@ -705,10 +727,11 @@ export default function App() {
           style={styles.authPage}
         >
           <View style={styles.authCard}>
-            <Text style={styles.kicker}>University of Mindanao</Text>
+            <Text style={styles.kicker}>Mobile OMR Scanner</Text>
             <Text style={styles.title}>Mobile OMR Scanner</Text>
             <Text style={styles.muted}>
-              Sign in with your Question Bank account and connect to your backend.
+              Sign in with your Question Bank account and connect to your
+              backend.
             </Text>
 
             <Text style={styles.label}>API Base URL</Text>
@@ -780,8 +803,17 @@ export default function App() {
             style={[styles.segment, mode === item && styles.segmentActive]}
             onPress={() => setMode(item)}
           >
-            <Text style={[styles.segmentText, mode === item && styles.segmentTextActive]}>
-              {item === "scan" ? "Scan" : item === "history" ? "History" : "Web"}
+            <Text
+              style={[
+                styles.segmentText,
+                mode === item && styles.segmentTextActive,
+              ]}
+            >
+              {item === "scan"
+                ? "Scan"
+                : item === "history"
+                  ? "History"
+                  : "Web"}
             </Text>
           </Pressable>
         ))}
@@ -832,10 +864,15 @@ export default function App() {
               <View style={styles.card}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.sectionTitle}>Native OMR Detection</Text>
-                  <Text style={styles.historyCount}>{history.length} saved</Text>
+                  <Text style={styles.historyCount}>
+                    {history.length} saved
+                  </Text>
                 </View>
                 {!permission?.granted ? (
-                  <PrimaryButton label="Allow Camera" onPress={requestPermission} />
+                  <PrimaryButton
+                    label="Allow Camera"
+                    onPress={requestPermission}
+                  />
                 ) : (
                   <CameraView
                     ref={cameraRef}
@@ -844,7 +881,9 @@ export default function App() {
                     barcodeScannerSettings={{
                       barcodeTypes: ["qr"],
                     }}
-                    onBarcodeScanned={qrScanEnabled ? handleQrScanned : undefined}
+                    onBarcodeScanned={
+                      qrScanEnabled ? handleQrScanned : undefined
+                    }
                   />
                 )}
                 <QrStatusCard
@@ -854,8 +893,8 @@ export default function App() {
                   onToggleQrScan={toggleQrScan}
                 />
                 <Text style={styles.muted}>
-                  Align the printed OMR table in the camera preview, then capture and detect.
-                  Review answers before saving.
+                  Align the printed OMR table in the camera preview, then
+                  capture and detect. Review answers before saving.
                 </Text>
                 <PrimaryButton
                   disabled={loading || !selectedExam}
@@ -899,7 +938,9 @@ function ExamSelector({ exams, loading, onRefresh, onSelect, selectedExamId }) {
       </View>
 
       {exams.length === 0 ? (
-        <Text style={styles.warning}>No item analysis exams with answer keys found.</Text>
+        <Text style={styles.warning}>
+          No item analysis exams with answer keys found.
+        </Text>
       ) : (
         exams.map((exam) => (
           <Pressable
@@ -939,7 +980,9 @@ function StudentCard({
           style={[styles.toggle, batchMode && styles.toggleActive]}
           onPress={() => setBatchMode(!batchMode)}
         >
-          <Text style={[styles.toggleText, batchMode && styles.toggleTextActive]}>
+          <Text
+            style={[styles.toggleText, batchMode && styles.toggleTextActive]}
+          >
             {batchMode ? "Batch On" : "Batch Off"}
           </Text>
         </Pressable>
@@ -963,18 +1006,15 @@ function StudentCard({
         placeholder="Section"
       />
       <Text style={styles.muted}>
-        Batch mode clears the student and answers after each save so you can scan
-        the next sheet immediately.
+        Batch mode clears the student and answers after each save so you can
+        scan the next sheet immediately.
       </Text>
     </View>
   );
 }
 
 function ScoreCard({ liveScore, numberOfItems, scannedPages }) {
-  const expectedPages = Math.max(
-    1,
-    getExpectedOmrPageCount(numberOfItems),
-  );
+  const expectedPages = Math.max(1, getExpectedOmrPageCount(numberOfItems));
   const scannedPageCount = Object.keys(scannedPages || {}).length;
 
   return (
@@ -984,11 +1024,13 @@ function ScoreCard({ liveScore, numberOfItems, scannedPages }) {
         {liveScore.score}/{liveScore.total || "-"}
       </Text>
       <Text style={styles.scoreSubtext}>
-        {liveScore.detected} answer{liveScore.detected === 1 ? "" : "s"} detected
+        {liveScore.detected} answer{liveScore.detected === 1 ? "" : "s"}{" "}
+        detected
       </Text>
       {expectedPages > 1 ? (
         <Text style={styles.scoreSubtext}>
-          {scannedPageCount}/{expectedPages} OMR page{expectedPages === 1 ? "" : "s"} scanned
+          {scannedPageCount}/{expectedPages} OMR page
+          {expectedPages === 1 ? "" : "s"} scanned
         </Text>
       ) : null}
     </View>
@@ -1007,15 +1049,21 @@ function QrStatusCard({ metadata, qrScanEnabled, qrStatus, onToggleQrScan }) {
           style={[styles.toggle, qrScanEnabled && styles.toggleActive]}
           onPress={onToggleQrScan}
         >
-          <Text style={[styles.toggleText, qrScanEnabled && styles.toggleTextActive]}>
+          <Text
+            style={[
+              styles.toggleText,
+              qrScanEnabled && styles.toggleTextActive,
+            ]}
+          >
             {qrScanEnabled ? "QR On" : "QR Off"}
           </Text>
         </Pressable>
       </View>
       {metadata ? (
         <Text style={styles.qrMeta}>
-          {metadata.subject || "No subject"} | {metadata.section || "No section"} |{" "}
-          {metadata.numberOfItems || "-"} items
+          {metadata.subject || "No subject"} |{" "}
+          {metadata.section || "No section"} | {metadata.numberOfItems || "-"}{" "}
+          items
           {metadata.pageNo
             ? ` | Page ${metadata.pageNo}/${metadata.pageCount || 1} | Items ${metadata.startItem || 1}-${metadata.endItem || metadata.numberOfItems || "-"}`
             : ""}
@@ -1025,7 +1073,13 @@ function QrStatusCard({ metadata, qrScanEnabled, qrStatus, onToggleQrScan }) {
   );
 }
 
-function AnswerReview({ answers, clearAnswers, loading, saveResult, setAnswer }) {
+function AnswerReview({
+  answers,
+  clearAnswers,
+  loading,
+  saveResult,
+  setAnswer,
+}) {
   return (
     <View style={styles.card}>
       <View style={styles.rowBetween}>
