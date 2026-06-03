@@ -29,6 +29,7 @@ async function loadAnalysis() {
       .map(renderAnalysisRow)
       .join("");
 
+    renderRecommendationPanel(summary);
     renderCharts(analysis.items);
   } catch (error) {
     setMessage("analysisMessage", error.message);
@@ -45,9 +46,47 @@ function renderAnalysisRow(item) {
       <td>${escapeHTML(item.difficultyInterpretation)}</td>
       <td>${item.discriminationIndex}</td>
       <td>${escapeHTML(item.discriminationInterpretation)}</td>
-      <td><span class="badge ${getRecommendationClass(item.recommendation)}">${escapeHTML(item.recommendation)}</span></td>
+      <td>
+        <span class="badge ${getRecommendationClass(item.recommendation)}">${escapeHTML(item.recommendation)}</span>
+        <small class="recommendation-action">${escapeHTML(item.action || "")}</small>
+      </td>
     </tr>
   `;
+}
+
+function renderRecommendationPanel(summary) {
+  const recommendationSummary = summary.recommendationSummary || {};
+  const priorityItems = summary.priorityItems || [];
+
+  document.getElementById("recommendationSummary").innerHTML = [
+    "Keep",
+    "Review",
+    "Revise",
+    "Check Answer Key",
+  ]
+    .map(
+      (key) => `
+        <div class="recommendation-chip">
+          <span>${escapeHTML(key)}</span>
+          <strong>${recommendationSummary[key] || 0}</strong>
+        </div>
+      `,
+    )
+    .join("");
+
+  document.getElementById("priorityRecommendations").innerHTML =
+    priorityItems.length > 0
+      ? priorityItems
+          .map(
+            (item) => `
+              <article class="recommendation-item">
+                <strong>Item ${item.itemNo}: ${escapeHTML(item.recommendation)}</strong>
+                <p>${escapeHTML(item.action || "")}</p>
+              </article>
+            `,
+          )
+          .join("")
+      : `<p class="muted-text">No priority issues detected. Most items are safe to keep.</p>`;
 }
 
 function getRecommendationClass(recommendation) {

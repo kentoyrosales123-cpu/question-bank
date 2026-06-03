@@ -1,6 +1,7 @@
 protectPage();
 
 let examOptionData = [];
+let blueprintRows = [];
 
 const summaryFields = [
   "title",
@@ -41,6 +42,7 @@ function adjustTotalItems(amount) {
 }
 
 function updateExamSummary() {
+  syncBlueprintTotals();
   const totalItems = getNumber("totalItems");
   const easy = getNumber("easyCount");
   const average = getNumber("averageCount");
@@ -70,6 +72,117 @@ function updateExamSummary() {
     difficult,
     totalItems,
   );
+}
+
+function getAvailableBlueprintTopics() {
+  const selectedSubjects = getSelectedValues("subject");
+  const selectedTopics = getSelectedValues("topic");
+  const rows = [];
+
+  examOptionData.forEach((item) => {
+    if (selectedSubjects.length > 0 && !selectedSubjects.includes(item.subject)) {
+      return;
+    }
+
+    (item.topics || []).forEach((topic) => {
+      if (selectedTopics.length > 0 && !selectedTopics.includes(topic)) {
+        return;
+      }
+
+      rows.push({ subject: item.subject, topic });
+    });
+  });
+
+  return rows;
+}
+
+function renderBlueprintRows() {
+  const body = document.getElementById("blueprintBody");
+
+  if (blueprintRows.length === 0) {
+    body.innerHTML = `
+      <tr>
+        <td colspan="6" class="empty-table-cell">No blueprint rows yet.</td>
+      </tr>
+    `;
+    syncBlueprintTotals();
+    return;
+  }
+
+  body.innerHTML = blueprintRows
+    .map(
+      (row, index) => `
+        <tr>
+          <td>${escapeHTML(row.subject)}</td>
+          <td>${escapeHTML(row.topic)}</td>
+          <td><input type="number" min="0" value="${row.easyCount}" onchange="updateBlueprintCount(${index}, 'easyCount', this.value)"></td>
+          <td><input type="number" min="0" value="${row.averageCount}" onchange="updateBlueprintCount(${index}, 'averageCount', this.value)"></td>
+          <td><input type="number" min="0" value="${row.difficultCount}" onchange="updateBlueprintCount(${index}, 'difficultCount', this.value)"></td>
+          <td><button class="btn danger" type="button" onclick="removeBlueprintRow(${index})">Remove</button></td>
+        </tr>
+      `,
+    )
+    .join("");
+  syncBlueprintTotals();
+}
+
+function addSelectedTopicsToBlueprint() {
+  const existingKeys = new Set(
+    blueprintRows.map((row) => `${row.subject}|||${row.topic}`),
+  );
+  const rowsToAdd = getAvailableBlueprintTopics().filter(
+    (row) => !existingKeys.has(`${row.subject}|||${row.topic}`),
+  );
+
+  blueprintRows.push(
+    ...rowsToAdd.map((row) => ({
+      ...row,
+      easyCount: 0,
+      averageCount: 0,
+      difficultCount: 0,
+    })),
+  );
+  renderBlueprintRows();
+}
+
+function updateBlueprintCount(index, field, value) {
+  if (!blueprintRows[index]) return;
+  blueprintRows[index][field] = Math.max(0, Number(value || 0));
+  syncBlueprintTotals();
+  updateExamSummary();
+}
+
+function removeBlueprintRow(index) {
+  blueprintRows.splice(index, 1);
+  renderBlueprintRows();
+  updateExamSummary();
+}
+
+function clearBlueprintRows() {
+  blueprintRows = [];
+  renderBlueprintRows();
+  updateExamSummary();
+}
+
+function syncBlueprintTotals() {
+  if (!document.getElementById("useBlueprint")?.checked) {
+    return;
+  }
+
+  const totals = blueprintRows.reduce(
+    (sum, row) => ({
+      easyCount: sum.easyCount + Number(row.easyCount || 0),
+      averageCount: sum.averageCount + Number(row.averageCount || 0),
+      difficultCount: sum.difficultCount + Number(row.difficultCount || 0),
+    }),
+    { easyCount: 0, averageCount: 0, difficultCount: 0 },
+  );
+
+  document.getElementById("easyCount").value = totals.easyCount;
+  document.getElementById("averageCount").value = totals.averageCount;
+  document.getElementById("difficultCount").value = totals.difficultCount;
+  document.getElementById("totalItems").value =
+    totals.easyCount + totals.averageCount + totals.difficultCount;
 }
 
 function renderOptions(selectId, values, placeholder) {
@@ -117,6 +230,13 @@ async function loadExamOptions() {
 
 document.getElementById("subject").addEventListener("change", updateTopicOptions);
 document.getElementById("topic").addEventListener("change", updateExamSummary);
+document.getElementById("useBlueprint").addEventListener("change", updateExamSummary);
+document
+  .getElementById("addBlueprintRowsButton")
+  .addEventListener("click", addSelectedTopicsToBlueprint);
+document
+  .getElementById("clearBlueprintButton")
+  .addEventListener("click", clearBlueprintRows);
 
 document.getElementById("examForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -132,10 +252,28 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
     averageCount: Number(document.getElementById("averageCount").value),
     difficultCount: Number(document.getElementById("difficultCount").value),
   };
+  const useBlueprint = document.getElementById("useBlueprint").checked;
 
-  if (subjects.length === 0) {
+  if (useBlueprint) {
+    body.blueprint = blueprintRows.filter(
+      (row) =>
+        Number(row.easyCount || 0) +
+          Number(row.averageCount || 0) +
+          Number(row.difficultCount || 0) >
+        0,
+    );
+  }
+
+  if (!useBlueprint && subjects.length === 0) {
     document.getElementById("examMessage").textContent =
       "Select at least one subject.";
+    document.getElementById("examMessage").classList.add("wrong");
+    return;
+  }
+
+  if (useBlueprint && (!body.blueprint || body.blueprint.length === 0)) {
+    document.getElementById("examMessage").textContent =
+      "Add at least one blueprint row with item counts.";
     document.getElementById("examMessage").classList.add("wrong");
     return;
   }
@@ -156,6 +294,7 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
 });
 
 loadExamOptions();
+renderBlueprintRows();
 updateExamSummary();
 
 async function downloadGeneratedExam(endpoint) {

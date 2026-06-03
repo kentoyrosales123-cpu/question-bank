@@ -1,4 +1,28 @@
 const Question = require("../models/Question");
+const Exam = require("../models/Exam");
+
+const getQuestionSnapshot = (question) => ({
+  subject: question.subject,
+  topic: question.topic,
+  questionText: question.questionText,
+  choices: {
+    A: question.choices?.A || "",
+    B: question.choices?.B || "",
+    C: question.choices?.C || "",
+    D: question.choices?.D || "",
+  },
+  correctAnswer: question.correctAnswer,
+  difficulty: question.difficulty,
+  explanation: question.explanation || "",
+  tableData: question.tableData || "",
+  tables: question.tables || [],
+  hasImage: Boolean(question.image && question.image.data),
+});
+
+const getChangedFields = (before, after) =>
+  Object.keys(after).filter(
+    (field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]),
+  );
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -171,10 +195,31 @@ exports.updateQuestion = async (req, res) => {
           }
         : question.image,
     };
+    const before = getQuestionSnapshot(question);
+    const after = {
+      ...updateData,
+      hasImage: Boolean(updateData.image && updateData.image.data),
+    };
+    delete after.image;
+    const changedFields = getChangedFields(before, after);
+
+    const updateOperation = { $set: updateData };
+
+    if (changedFields.length > 0) {
+      updateOperation.$push = {
+        versionHistory: {
+          editedBy: req.user._id,
+          editedAt: new Date(),
+          before,
+          after,
+          changedFields,
+        },
+      };
+    }
 
     const updatedQuestion = await Question.findByIdAndUpdate(
       req.params.id,
-      updateData,
+      updateOperation,
       { new: true },
     ).select("-image.data");
 
@@ -182,6 +227,100 @@ exports.updateQuestion = async (req, res) => {
       success: true,
       message: "Question updated successfully.",
       question: updatedQuestion,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getQuestionHistory = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id)
+      .select("versionHistory")
+      .populate("versionHistory.editedBy", "name email");
+
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      history: [...(question.versionHistory || [])].reverse(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getQuestionAnalytics = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id).select(
+      "subject topic questionText difficulty",
+    );
+
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found.",
+      });
+    }
+
+    const exams = await Exam.find({ questions: question._id })
+      .select("title subject topic totalItems submitted answers score createdAt user")
+      .populate("user", "name email")
+      .sort({ createdAt: -1 });
+    let submittedUsage = 0;
+    let correctCount = 0;
+    let wrongCount = 0;
+
+    exams.forEach((exam) => {
+      const answer = (exam.answers || []).find(
+        (item) => item.question && item.question.toString() === question._id.toString(),
+      );
+
+      if (!answer) {
+        return;
+      }
+
+      submittedUsage++;
+
+      if (answer.isCorrect) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+    });
+
+    const accuracy =
+      submittedUsage > 0 ? Math.round((correctCount / submittedUsage) * 1000) / 10 : 0;
+
+    res.json({
+      success: true,
+      analytics: {
+        generatedExamUsage: exams.length,
+        submittedUsage,
+        correctCount,
+        wrongCount,
+        accuracy,
+        recentExams: exams.slice(0, 8).map((exam) => ({
+          _id: exam._id,
+          title: exam.title,
+          subject: exam.subject,
+          topic: exam.topic,
+          submitted: exam.submitted,
+          createdAt: exam.createdAt,
+          user: exam.user,
+        })),
+      },
     });
   } catch (error) {
     res.status(500).json({

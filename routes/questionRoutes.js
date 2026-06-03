@@ -6,6 +6,8 @@ const {
   getQuestions,
   getQuestion,
   getQuestionImage,
+  getQuestionHistory,
+  getQuestionAnalytics,
   updateQuestion,
   deleteQuestion,
   filterQuestions,
@@ -17,6 +19,8 @@ const imageUpload = require("../middleware/imageUploadMiddleware");
 router.get("/", protect, adminOnly, getQuestions);
 router.get("/filter", protect, adminOnly, filterQuestions);
 router.get("/:id/image", getQuestionImage);
+router.get("/:id/history", protect, adminOnly, getQuestionHistory);
+router.get("/:id/analytics", protect, adminOnly, getQuestionAnalytics);
 router.get("/:id", protect, adminOnly, getQuestion);
 
 router.post(

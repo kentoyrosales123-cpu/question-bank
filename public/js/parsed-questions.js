@@ -24,10 +24,14 @@ function updateReviewStats(questions) {
       (q.image && q.image.contentType) ||
       (Array.isArray(q.tables) && q.tables.length > 0),
   ).length;
+  const duplicateRisk = questions.filter(
+    (q) => Array.isArray(q.duplicateCandidates) && q.duplicateCandidates.length > 0,
+  ).length;
 
   document.getElementById("pendingCount").textContent = questions.length;
   document.getElementById("needsAnswerCount").textContent = needsAnswer;
   document.getElementById("mediaCount").textContent = withMedia;
+  document.getElementById("duplicateRiskCount").textContent = duplicateRisk;
 }
 
 function renderParsedQuestions(questions) {
@@ -52,6 +56,7 @@ function renderParsedCard(q, index) {
   const warnings = getQuestionWarnings(q);
   const hasImage = q.image && q.image.contentType;
   const hasTables = Array.isArray(q.tables) && q.tables.length > 0;
+  const duplicateCandidates = q.duplicateCandidates || [];
 
   return `
     <article class="review-card" id="parsed_card_${q._id}">
@@ -76,6 +81,7 @@ function renderParsedCard(q, index) {
         <div class="review-card-flags">
           ${hasImage ? `<span class="mini-badge">Image</span>` : ""}
           ${hasTables ? `<span class="mini-badge">Table</span>` : ""}
+          ${duplicateCandidates.length ? `<span class="mini-badge warning">Duplicate</span>` : ""}
           ${warnings.length ? `<span class="mini-badge warning">Review</span>` : ""}
         </div>
       </header>
@@ -87,6 +93,8 @@ function renderParsedCard(q, index) {
               .join("")}</div>`
           : ""
       }
+
+      ${duplicateCandidates.length ? renderDuplicateWarning(duplicateCandidates) : ""}
 
       <div class="review-card-body">
         <aside class="review-assets">
@@ -154,6 +162,24 @@ function renderParsedCard(q, index) {
         </section>
       </div>
     </article>
+  `;
+}
+
+function renderDuplicateWarning(candidates) {
+  return `
+    <div class="review-warnings duplicate-warning">
+      <strong>Possible duplicate</strong>
+      ${candidates
+        .map(
+          (candidate) => `
+            <span>
+              ${Math.round(candidate.score * 100)}% match:
+              ${escapeHTML(candidate.questionText).slice(0, 120)}
+            </span>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -256,6 +282,11 @@ function getQuestionWarnings(q) {
   if (!q.correctAnswer) warnings.push("No answer selected");
   if (!q.subject) warnings.push("Missing subject");
   if (!q.topic) warnings.push("Missing topic");
+  if (Array.isArray(q.duplicateCandidates) && q.duplicateCandidates.length > 0) {
+    warnings.push(
+      q.duplicateRisk === "High" ? "High duplicate risk" : "Possible duplicate",
+    );
+  }
 
   return warnings;
 }

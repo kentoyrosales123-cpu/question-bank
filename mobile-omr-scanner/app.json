@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "UM OMR Scanner",
+    "slug": "mobile-omr-scanner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "um-omr-scanner",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "The app uses the camera to scan OMR answer sheets."
+      }
+    },
+    "android": {
+      "permissions": ["CAMERA"]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

@@ -18,6 +18,7 @@ The system supports:
 - Randomized exam generation
 - DOCX download for exam papers and answer keys
 - Item analysis upload from Excel or CSV student results
+- Mobile OMR scanning for MCQ answer sheets
 - Item analysis reports and Excel export
 
 ## Email and Administrator Setup
@@ -231,6 +232,7 @@ After upload:
 Parsed questions appear on the `Review Parsed Questions` page. Each parsed question can show:
 
 - A selection checkbox for bulk approval or rejection
+- Duplicate-risk warnings when the question appears similar to an existing question-bank item
 - Subject
 - Topic
 - Attached image, if detected
@@ -470,6 +472,18 @@ Avoid putting multiple questions inside one table:
 4. Edit the text if needed.
 5. Click `Save Edit`.
 
+### Duplicate Detection
+
+The review page checks pending parsed questions against existing question-bank items.
+
+Duplicate warnings can show:
+
+- `Possible duplicate`
+- `High duplicate risk`
+- Candidate matching questions with similarity percentage
+
+If a parsed question has a high duplicate risk, review the existing question before approval. High-risk duplicates are blocked from normal approval to avoid adding the same question twice.
+
 ### Check Choices
 
 For every parsed question, confirm:
@@ -606,6 +620,24 @@ The system randomly selects questions based on:
 
 If there are not enough questions for the selected distribution, the system shows an error.
 
+### Exam Blueprint
+
+The `Generate Exam` page supports a topic-level blueprint.
+
+Use the blueprint when you want to control how many questions come from each topic.
+
+To use an exam blueprint:
+
+1. Select one or more subjects.
+2. Select topics, or leave topics blank to include all topics from the selected subjects.
+3. Check `Use topic blueprint`.
+4. Click `Add Selected Topics`.
+5. Enter Easy, Average, and Difficult counts per topic row.
+6. Confirm the blueprint totals match the overall difficulty distribution.
+7. Click `Generate Exam`.
+
+The system validates the blueprint before generation. If a topic does not have enough questions for the requested difficulty counts, the system shows an error.
+
 ### Downloading Exam Files
 
 After generating an exam, the take-exam page provides two DOCX downloads:
@@ -684,6 +716,147 @@ Teachers can:
 2. Click `Download Answer Key` to download the answer-key DOCX.
 3. Click `Use Exam Details` to copy the selected exam title, subject, and item count into the item analysis form.
 
+### Mobile OMR Scanner
+
+The `Open Mobile OMR Scanner` button opens a phone-friendly scanning page for MCQ answer sheets.
+
+The scanner can:
+
+- Create an item analysis exam using exam details and an answer key
+- Capture or upload an OMR sheet image from a phone
+- Use live camera scanning to detect answers continuously
+- Show the student's score while the sheet is being scanned
+- Detect A, B, C, and D answers from the selected scan area
+- Let the teacher review and correct detected answers before saving
+- Save the student's answers directly into the item analysis record
+- Auto-save a complete stable live scan directly into item analysis when enabled
+- Be installed from supported mobile browsers as a lightweight scanner app
+
+### Downloading an OMR Answer Sheet
+
+Teachers can download a printable OMR answer sheet based on the number of items.
+
+From the `Item Analysis` page:
+
+1. Enter the exam title, subject, section, and number of items.
+2. Click `Download OMR Sheet`.
+3. Print the downloaded DOCX answer sheet.
+
+From the mobile scanner:
+
+1. Select an existing item analysis exam or create an OMR scanning exam.
+2. Click `Download OMR Sheet Template`.
+3. Print the downloaded DOCX answer sheet.
+
+### Scanning Student Sheets
+
+To scan student sheets manually:
+
+1. Go to `Item Analysis`.
+2. Click `Open Mobile OMR Scanner`.
+3. If no scanning exam exists, open `Create OMR Scanning Exam`.
+4. Enter the exam title, subject, section, number of items, and answer key.
+5. Select the item analysis exam.
+6. Enter the student's name, student ID, and section.
+7. Capture or upload the OMR sheet image.
+8. Adjust `Scan Area` if the answer bubbles are not centered in the highlighted area.
+9. If using the downloaded OMR sheet, keep `No. Column` near `12` so the scanner skips the item-number column.
+10. Keep `Header Row` near `3` so the scanner skips the A-B-C-D table header.
+11. Click `Scan Answers`.
+12. Review the detected answers.
+13. Click `Save to Item Analysis`.
+
+To use live scanning:
+
+1. Select the item analysis exam.
+2. Enter the student's name, student ID, and section.
+3. Click `Start Live Scan`.
+4. Hold the OMR sheet inside the scan area.
+5. Watch the `Live Score` panel while the scanner detects answers.
+6. Adjust `No. Column` and `Header Row` if detected answers appear shifted.
+7. Review the detected answers if needed.
+8. Click `Save to Item Analysis`.
+
+To save automatically during live scanning, check `Auto-save when the live scan is stable`.
+
+Auto-save only runs when:
+
+- A student name and student ID are entered
+- Every item has a detected answer
+- The same answer pattern is detected for several live frames
+
+If the same student ID is scanned again for the same item analysis exam, the system updates that student's result instead of creating a duplicate row.
+
+### OMR Sheet Layout Notes
+
+The current scanner expects a simple answer area with:
+
+- One row per item
+- Four answer bubbles per row
+- Choices ordered from left to right as A, B, C, and D
+- Dark filled marks on a light background
+- A clear photo with the answer area as flat and straight as possible
+
+The scanner is designed for quick mobile capture, but the teacher should always review detected answers before saving.
+
+### Expo Mobile OMR App
+
+The project also includes a separate Expo app in:
+
+```text
+mobile-omr-scanner
+```
+
+The Expo app connects to the existing backend and supports:
+
+- Login using the same Question Bank account
+- Item analysis exam selection
+- Student name, ID, and section entry
+- Native camera capture for OMR sheets
+- On-device shaded-answer detection
+- A-D answer review and correction
+- Live score computation while answers are detected or selected
+- Batch scanning with automatic clear after saving
+- Scan history for saved student results
+- Saving student results directly to item analysis
+- An embedded `Web Scanner` tab for the browser-based OMR scanner page
+
+To run it:
+
+1. Start the backend server.
+2. Find the computer's local network IP address.
+3. Create `mobile-omr-scanner/.env` from `mobile-omr-scanner/.env.example`.
+4. Set `EXPO_PUBLIC_API_BASE_URL` to the backend URL, for example:
+
+```text
+EXPO_PUBLIC_API_BASE_URL=http://192.168.1.10:5000/api
+```
+
+5. In a terminal, open the mobile app folder:
+
+```bash
+cd mobile-omr-scanner
+npm install
+npm start
+```
+
+6. Scan the Expo QR code with Expo Go.
+
+Do not use `localhost` as the API URL from a phone. Use the computer's local network IP address.
+
+In the Expo app:
+
+1. Select an item analysis exam.
+2. Enter the student's name, student ID, and section.
+3. Keep `Batch On` if scanning many students in sequence.
+4. Point the camera at the QR code on the OMR sheet.
+5. Confirm the app links the sheet to the correct item analysis exam.
+6. Tap `Capture and Detect`.
+7. Review detected A-D answers.
+8. Check the live score.
+9. Tap `Save and Next`.
+10. Open `History` to confirm saved scans and scores.
+
 ### Item Analysis Report
 
 The item analysis report shows:
@@ -698,6 +871,21 @@ The item analysis report shows:
 - Discrimination index
 - Discrimination interpretation
 - Recommendation per item
+- Recommended action per item
+- Priority recommendation list
+
+### Item Analysis Recommendations
+
+The system recommends actions based on difficulty and discrimination indices.
+
+| Recommendation | Meaning |
+| --- | --- |
+| Keep | The item is performing well and can be reused |
+| Review | The item should be checked for wording, choices, or alignment |
+| Revise | The item needs rewriting before reuse |
+| Check Answer Key | The item may be miskeyed or behaving unexpectedly |
+
+The `Recommended Actions` panel highlights priority items before the full item-analysis table.
 
 ### Exporting Item Analysis
 
@@ -709,7 +897,54 @@ The export includes:
 - Item analysis table
 - Student scores
 
-## 13. Common Parsing Problems and Fixes
+## 13. Question Traceability
+
+The system supports traceability tools for approved question-bank items.
+
+### Question Version History
+
+When an admin edits an approved question, the system records:
+
+- Edited fields
+- Previous values
+- New values
+- Editor
+- Edit date and time
+
+Open `Questions`, click `View`, and check the `Version History` section.
+
+### Question Usage Analytics
+
+The `Questions` page also shows analytics for each approved question:
+
+- Number of generated exams that used the question
+- Number of submitted exams where the question was answered
+- Correct count
+- Wrong count
+- Accuracy percentage
+- Recent exams that included the question
+
+Use this to decide whether a question should be kept, revised, or retired.
+
+### QR-Coded OMR Sheets
+
+Downloaded OMR answer sheets include a metadata QR code.
+
+The QR code can contain:
+
+- Item analysis exam ID
+- Exam title
+- Subject
+- Section
+- Student ID, if provided
+- Number of items
+- Generation date
+
+This prepares the sheet for faster mobile scanning and future automatic exam/student identification.
+
+The Expo mobile app can scan this QR code and automatically select the matching item analysis exam when the exam is loaded in the app.
+
+## 14. Common Parsing Problems and Fixes
 
 | Problem | Cause | Fix |
 | --- | --- | --- |
@@ -728,7 +963,7 @@ The export includes:
 | One question parsed instead of many | Questions are written as headings or labels that do not split cleanly | Use simple numbering such as `1.`, `2.`, `3.` |
 | Image appears on the wrong question | Images are not ordered or placed consistently | Use one inline image per question and keep image order the same as question order |
 
-## 14. Best Practices
+## 15. Best Practices
 
 1. Use the system's DOCX template.
 2. Keep formatting simple.

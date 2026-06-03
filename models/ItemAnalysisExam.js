@@ -38,6 +38,11 @@ const itemAnalysisExamSchema = new mongoose.Schema(
         answer: String,
       },
     ],
+    generatedExamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Exam",
+      default: null,
+    },
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

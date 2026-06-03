@@ -56,6 +56,73 @@ const getRandomQuestions = async (subjects, topics, difficulty, count) => {
   ]);
 };
 
+const normalizeBlueprint = (blueprint = []) =>
+  (Array.isArray(blueprint) ? blueprint : [])
+    .map((row) => ({
+      subject: String(row.subject || "").trim(),
+      topic: String(row.topic || "").trim(),
+      easyCount: Number(row.easyCount || 0),
+      averageCount: Number(row.averageCount || 0),
+      difficultCount: Number(row.difficultCount || 0),
+    }))
+    .filter(
+      (row) =>
+        row.subject &&
+        row.topic &&
+        row.easyCount + row.averageCount + row.difficultCount > 0,
+    );
+
+const getBlueprintQuestions = async (blueprint) => {
+  const selected = [];
+
+  for (const row of blueprint) {
+    const rowQuestions = [
+      ...(await getRandomQuestions([row.subject], [row.topic], "Easy", row.easyCount)),
+      ...(await getRandomQuestions(
+        [row.subject],
+        [row.topic],
+        "Average",
+        row.averageCount,
+      )),
+      ...(await getRandomQuestions(
+        [row.subject],
+        [row.topic],
+        "Difficult",
+        row.difficultCount,
+      )),
+    ];
+    const expected = row.easyCount + row.averageCount + row.difficultCount;
+
+    if (rowQuestions.length < expected) {
+      throw new Error(
+        `Not enough questions for ${row.subject} / ${row.topic}. Requested ${expected}, found ${rowQuestions.length}.`,
+      );
+    }
+
+    selected.push(...rowQuestions);
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  selected.forEach((question) => {
+    const id = question._id.toString();
+
+    if (!seen.has(id)) {
+      seen.add(id);
+      unique.push(question);
+    }
+  });
+
+  if (unique.length < selected.length) {
+    throw new Error(
+      "Blueprint selected duplicate questions across rows. Use more specific topics or lower the requested counts.",
+    );
+  }
+
+  return unique;
+};
+
 exports.getExamOptions = async (req, res) => {
   try {
     const options = await Question.aggregate([
@@ -98,6 +165,8 @@ exports.generateExam = async (req, res) => {
     } = req.body;
     const subjects = normalizeSelection(req.body.subjects || subject);
     const topics = normalizeSelection(req.body.topics || topic);
+    const blueprint = normalizeBlueprint(req.body.blueprint);
+    const useBlueprint = blueprint.length > 0;
 
     const total =
       Number(easyCount || 0) +
@@ -110,7 +179,7 @@ exports.generateExam = async (req, res) => {
       Number(difficultCount || 0),
     ];
 
-    if (subjects.length === 0 || !totalItems) {
+    if (!useBlueprint && (subjects.length === 0 || !totalItems)) {
       return res.status(400).json({
         success: false,
         message: "At least one subject and total items are required.",
@@ -136,49 +205,90 @@ exports.generateExam = async (req, res) => {
       });
     }
 
-    const easyQuestions = await getRandomQuestions(
-      subjects,
-      topics,
-      "Easy",
-      easyCount,
-    );
-
-    const averageQuestions = await getRandomQuestions(
-      subjects,
-      topics,
-      "Average",
-      averageCount,
-    );
-
-    const difficultQuestions = await getRandomQuestions(
-      subjects,
-      topics,
-      "Difficult",
-      difficultCount,
+    const blueprintTotals = blueprint.reduce(
+      (totals, row) => ({
+        easyCount: totals.easyCount + row.easyCount,
+        averageCount: totals.averageCount + row.averageCount,
+        difficultCount: totals.difficultCount + row.difficultCount,
+      }),
+      { easyCount: 0, averageCount: 0, difficultCount: 0 },
     );
 
     if (
-      easyQuestions.length < Number(easyCount) ||
-      averageQuestions.length < Number(averageCount) ||
-      difficultQuestions.length < Number(difficultCount)
+      useBlueprint &&
+      (blueprintTotals.easyCount !== Number(easyCount || 0) ||
+        blueprintTotals.averageCount !== Number(averageCount || 0) ||
+        blueprintTotals.difficultCount !== Number(difficultCount || 0))
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Not enough questions available for the selected difficulty distribution.",
+          "Blueprint difficulty totals must match the Easy, Average, and Difficult counts.",
       });
     }
 
-    const allQuestions = [
-      ...easyQuestions,
-      ...averageQuestions,
-      ...difficultQuestions,
-    ].sort(() => Math.random() - 0.5);
+    let allQuestions;
+
+    if (useBlueprint) {
+      try {
+        allQuestions = (await getBlueprintQuestions(blueprint)).sort(
+          () => Math.random() - 0.5,
+        );
+      } catch (blueprintError) {
+        return res.status(400).json({
+          success: false,
+          message: blueprintError.message,
+        });
+      }
+    } else {
+      const easyQuestions = await getRandomQuestions(
+        subjects,
+        topics,
+        "Easy",
+        easyCount,
+      );
+
+      const averageQuestions = await getRandomQuestions(
+        subjects,
+        topics,
+        "Average",
+        averageCount,
+      );
+
+      const difficultQuestions = await getRandomQuestions(
+        subjects,
+        topics,
+        "Difficult",
+        difficultCount,
+      );
+
+      if (
+        easyQuestions.length < Number(easyCount) ||
+        averageQuestions.length < Number(averageCount) ||
+        difficultQuestions.length < Number(difficultCount)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Not enough questions available for the selected difficulty distribution.",
+        });
+      }
+
+      allQuestions = [
+        ...easyQuestions,
+        ...averageQuestions,
+        ...difficultQuestions,
+      ].sort(() => Math.random() - 0.5);
+    }
 
     const exam = await Exam.create({
       title: title || "Generated Exam",
-      subject: formatSelectionLabel(subjects),
-      topic: formatSelectionLabel(topics),
+      subject: useBlueprint
+        ? formatSelectionLabel([...new Set(blueprint.map((row) => row.subject))])
+        : formatSelectionLabel(subjects),
+      topic: useBlueprint
+        ? formatSelectionLabel([...new Set(blueprint.map((row) => row.topic))])
+        : formatSelectionLabel(topics),
       totalItems,
       easyCount,
       averageCount,
@@ -205,6 +315,7 @@ exports.generateExam = async (req, res) => {
         easyCount,
         averageCount,
         difficultCount,
+        blueprint,
       },
     });
 

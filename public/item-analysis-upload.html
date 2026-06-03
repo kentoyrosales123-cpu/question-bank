@@ -89,6 +89,9 @@
               <button class="btn secondary" type="button" onclick="downloadTemplate()">
                 Download Template
               </button>
+              <button class="btn secondary" type="button" onclick="downloadOmrTemplate()">
+                Download OMR Sheet
+              </button>
             </div>
             <p class="message" id="itemAnalysisMessage"></p>
           </form>
@@ -122,6 +125,13 @@
                   Use Exam Details
                 </button>
               </div>
+              <a
+                class="btn secondary hidden"
+                id="openLinkedItemAnalysisButton"
+                href="#"
+              >
+                Open Item Analysis Report
+              </a>
               <p class="message" id="generatedExamMessage"></p>
             </section>
 
@@ -134,6 +144,15 @@
                 <li>Blank item values are accepted and treated as wrong.</li>
                 <li>Total Score may be blank; the system can compute it.</li>
               </ul>
+              <button
+                class="btn secondary"
+                id="downloadRequiredFormatTemplateButton"
+                type="button"
+              >
+                Download Result Template
+              </button>
+              <p class="message" id="requiredFormatMessage"></p>
+              <a class="btn" href="/omr-scanner.html">Open Mobile OMR Scanner</a>
             </section>
           </aside>
         </section>

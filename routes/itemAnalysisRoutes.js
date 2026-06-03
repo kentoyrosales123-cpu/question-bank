@@ -2,9 +2,15 @@ const express = require("express");
 const router = express.Router();
 
 const {
+  listItemAnalysisExams,
+  createItemAnalysisExam,
+  createItemAnalysisFromGeneratedExam,
   downloadTemplate,
+  downloadOmrTemplate,
   uploadItemAnalysis,
+  saveScannedResult,
   getItemAnalysis,
+  listItemAnalysisResults,
   exportItemAnalysis,
 } = require("../controllers/itemAnalysisController");
 
@@ -13,6 +19,15 @@ const { itemAnalysisAccess } = require("../middleware/itemAnalysisAccess");
 const upload = require("../middleware/itemAnalysisUploadMiddleware");
 
 router.get("/template", protect, itemAnalysisAccess, downloadTemplate);
+router.get("/omr-template", protect, itemAnalysisAccess, downloadOmrTemplate);
+router.get("/exams", protect, itemAnalysisAccess, listItemAnalysisExams);
+router.post("/exams", protect, itemAnalysisAccess, createItemAnalysisExam);
+router.post(
+  "/from-generated-exam/:examId",
+  protect,
+  itemAnalysisAccess,
+  createItemAnalysisFromGeneratedExam,
+);
 
 router.post(
   "/upload",
@@ -25,6 +40,8 @@ router.post(
   uploadItemAnalysis,
 );
 
+router.post("/:id/scanned-result", protect, itemAnalysisAccess, saveScannedResult);
+router.get("/:id/results", protect, itemAnalysisAccess, listItemAnalysisResults);
 router.get("/:id/export", protect, itemAnalysisAccess, exportItemAnalysis);
 router.get("/:id", protect, itemAnalysisAccess, getItemAnalysis);
 

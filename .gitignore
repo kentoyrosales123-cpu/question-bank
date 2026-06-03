@@ -1,4 +1,99 @@
-node_modules
+```gitignore
+# =========================
+# NODE MODULES
+# =========================
+node_modules/
+mobile-omr-scanner/node_modules/
+
+# =========================
+# ENVIRONMENT VARIABLES
+# =========================
 .env
+.env.*
+!.env.example
+
+mobile-omr-scanner/.env
+mobile-omr-scanner/.env.*
+
+# =========================
+# EXPO / REACT NATIVE
+# =========================
+.expo/
+mobile-omr-scanner/.expo/
+
+.expo-shared/
+mobile-omr-scanner/.expo-shared/
+
+# Expo build/cache
+web-build/
+mobile-omr-scanner/web-build/
+
+# =========================
+# ANDROID / IOS BUILD FILES
+# =========================
+mobile-omr-scanner/android/app/build/
+mobile-omr-scanner/android/.gradle/
+mobile-omr-scanner/android/build/
+
+mobile-omr-scanner/ios/build/
+mobile-omr-scanner/ios/Pods/
+
+# =========================
+# LOG FILES
+# =========================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# FILE UPLOADS
+# =========================
 uploads/*
 !uploads/.gitkeep
+
+# =========================
+# BUILD / DIST FILES
+# =========================
+dist/
+build/
+coverage/
+
+# =========================
+# TEMP FILES
+# =========================
+tmp/
+temp/
+.cache/
+
+# =========================
+# OS GENERATED FILES
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# VS CODE / IDE FILES
+# =========================
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+.idea/
+
+# =========================
+# TEST FILES
+# =========================
+*.test.js
+*.spec.js
+
+# =========================
+# SECURITY
+# =========================
+*.pem
+*.key
+*.crt
+```

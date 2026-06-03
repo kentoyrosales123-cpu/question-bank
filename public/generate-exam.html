@@ -106,6 +106,43 @@
                   <small>questions</small>
                 </label>
               </div>
+
+              <div class="blueprint-panel">
+                <label class="bulk-select-toggle">
+                  <input id="useBlueprint" type="checkbox" />
+                  <span>Use topic blueprint</span>
+                </label>
+                <p class="muted-text">
+                  Add topic rows and set Easy, Average, and Difficult counts per topic.
+                </p>
+                <div class="action-row">
+                  <button class="btn secondary" id="addBlueprintRowsButton" type="button">
+                    Add Selected Topics
+                  </button>
+                  <button class="btn secondary" id="clearBlueprintButton" type="button">
+                    Clear Blueprint
+                  </button>
+                </div>
+                <div class="blueprint-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Topic</th>
+                        <th>Easy</th>
+                        <th>Average</th>
+                        <th>Difficult</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="blueprintBody">
+                      <tr>
+                        <td colspan="6" class="empty-table-cell">No blueprint rows yet.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </section>
 
             <button class="btn generate-btn" type="submit">Generate Exam</button>

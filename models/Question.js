@@ -63,6 +63,22 @@ const questionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    versionHistory: [
+      {
+        editedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        editedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        before: mongoose.Schema.Types.Mixed,
+        after: mongoose.Schema.Types.Mixed,
+        changedFields: [String],
+      },
+    ],
   },
   { timestamps: true },
 );

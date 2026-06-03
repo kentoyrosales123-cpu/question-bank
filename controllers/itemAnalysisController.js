@@ -1,7 +1,24 @@
 const { Readable } = require("stream");
 const ExcelJS = require("exceljs");
+const QRCode = require("qrcode");
+const {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  ImageRun,
+  PageBreak,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  VerticalAlign,
+  WidthType,
+} = require("docx");
 const ItemAnalysisExam = require("../models/ItemAnalysisExam");
 const ItemAnalysisStudentResult = require("../models/ItemAnalysisStudentResult");
+const Exam = require("../models/Exam");
 
 const normalizeHeader = (value) =>
   String(value || "")
@@ -41,6 +58,22 @@ const recommendationFor = (difficultyIndex, discriminationIndex) => {
   if (difficultyIndex < 0.3 && discriminationIndex < 0.2) return "Revise";
   if (discriminationIndex >= 0.3) return "Keep";
   return "Review";
+};
+
+const actionForRecommendation = (recommendation) => {
+  if (recommendation === "Check Answer Key") {
+    return "Verify the keyed answer and inspect student response patterns before reusing this item.";
+  }
+
+  if (recommendation === "Revise") {
+    return "Rewrite the item, choices, or lesson alignment before adding it to another exam.";
+  }
+
+  if (recommendation === "Review") {
+    return "Review wording and distractors; keep only if the teacher confirms the item is valid.";
+  }
+
+  return "Keep this item in the question bank and consider using it again.";
 };
 
 const roundMetric = (value) => Math.round(value * 1000) / 1000;
@@ -110,6 +143,409 @@ const parseAnswerKey = async (manualInput = "", file) => {
     itemNo: index + 1,
     answer,
   }));
+};
+
+const sanitizeFileName = (name) =>
+  `${name || "omr-answer-sheet"}.docx`
+    .replace(/[^a-z0-9.]/gi, "_")
+    .toLowerCase();
+
+const maroon = "8A0013";
+const gold = "F2B705";
+const lightGold = "FFF7DF";
+const borderColor = "D7C6C6";
+const omrFirstPageItems = 17;
+const omrNextPageItems = 20;
+const cellBorders = {
+  top: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
+  bottom: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
+  left: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
+  right: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
+};
+
+const omrCell = (text, options = {}) =>
+  new TableCell({
+    ...(options.width ? { width: options.width } : {}),
+    borders: options.borders || cellBorders,
+    verticalAlign: VerticalAlign.CENTER,
+    shading: options.fill ? { fill: options.fill } : undefined,
+    margins: {
+      top: options.margin || 80,
+      bottom: options.margin || 80,
+      left: 100,
+      right: 100,
+    },
+    children: [
+      new Paragraph({
+        alignment: options.align || AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text,
+            bold: Boolean(options.bold),
+            size: options.size || 22,
+            color: options.color || "1F1418",
+          }),
+        ],
+      }),
+    ],
+  });
+
+const textCell = (children, options = {}) =>
+  new TableCell({
+    ...(options.width ? { width: options.width } : {}),
+    borders: options.borders || cellBorders,
+    verticalAlign: VerticalAlign.CENTER,
+    shading: options.fill ? { fill: options.fill } : undefined,
+    margins: {
+      top: options.margin || 120,
+      bottom: options.margin || 120,
+      left: 140,
+      right: 140,
+    },
+    children,
+  });
+
+const infoLine = (label, value = "") =>
+  new Paragraph({
+    children: [
+      new TextRun({ text: `${label}: `, bold: true, size: 20, color: maroon }),
+      new TextRun({
+        text: value || "________________________________",
+        size: 20,
+      }),
+    ],
+  });
+
+const buildOmrTemplateBuffer = async ({
+  title = "OMR Answer Sheet",
+  subject = "",
+  section = "",
+  numberOfItems = 50,
+  qrPayload = null,
+}) => {
+  const itemCount = Math.max(1, Math.min(200, Number(numberOfItems) || 50));
+  const itemRanges = [];
+  let currentStartItem = 1;
+
+  while (currentStartItem <= itemCount) {
+    const pageSize =
+      currentStartItem === 1 ? omrFirstPageItems : omrNextPageItems;
+    const currentEndItem = Math.min(itemCount, currentStartItem + pageSize - 1);
+
+    itemRanges.push({
+      startItem: currentStartItem,
+      endItem: currentEndItem,
+    });
+    currentStartItem = currentEndItem + 1;
+  }
+
+  const pageCount = itemRanges.length;
+  const pages = await Promise.all(
+    itemRanges.map(async ({ startItem, endItem }, pageIndex) => {
+      const pageNo = pageIndex + 1;
+      const pageItemCount = endItem - startItem + 1;
+      const pagePayload = qrPayload
+        ? {
+            ...qrPayload,
+            pageNo,
+            pageCount,
+            startItem,
+            endItem,
+            itemsOnPage: pageItemCount,
+          }
+        : null;
+      const qrDataUrl = pagePayload
+        ? await QRCode.toDataURL(JSON.stringify(pagePayload), {
+            errorCorrectionLevel: "M",
+            margin: 1,
+            width: 220,
+          })
+        : "";
+      const qrImage = qrDataUrl
+        ? Buffer.from(qrDataUrl.split(",")[1], "base64")
+        : null;
+      const rows = [
+        new TableRow({
+          children: [
+            omrCell("No.", {
+              bold: true,
+              color: "FFFFFF",
+              fill: maroon,
+              width: { size: 12, type: WidthType.PERCENTAGE },
+            }),
+            omrCell("A", {
+              bold: true,
+              color: "FFFFFF",
+              fill: maroon,
+              width: { size: 22, type: WidthType.PERCENTAGE },
+            }),
+            omrCell("B", {
+              bold: true,
+              color: "FFFFFF",
+              fill: maroon,
+              width: { size: 22, type: WidthType.PERCENTAGE },
+            }),
+            omrCell("C", {
+              bold: true,
+              color: "FFFFFF",
+              fill: maroon,
+              width: { size: 22, type: WidthType.PERCENTAGE },
+            }),
+            omrCell("D", {
+              bold: true,
+              color: "FFFFFF",
+              fill: maroon,
+              width: { size: 22, type: WidthType.PERCENTAGE },
+            }),
+          ],
+        }),
+        ...Array.from({ length: pageItemCount }, (_, index) => {
+          const itemNo = startItem + index;
+          const fill = index % 2 === 0 ? "FFFFFF" : "FCF7F7";
+
+          return new TableRow({
+            children: [
+              omrCell(String(itemNo), {
+                bold: true,
+                fill,
+                width: { size: 12, type: WidthType.PERCENTAGE },
+              }),
+              omrCell("○", {
+                fill,
+                size: 26,
+                width: { size: 22, type: WidthType.PERCENTAGE },
+              }),
+              omrCell("○", {
+                fill,
+                size: 26,
+                width: { size: 22, type: WidthType.PERCENTAGE },
+              }),
+              omrCell("○", {
+                fill,
+                size: 26,
+                width: { size: 22, type: WidthType.PERCENTAGE },
+              }),
+              omrCell("○", {
+                fill,
+                size: 26,
+                width: { size: 22, type: WidthType.PERCENTAGE },
+              }),
+            ],
+          });
+        }),
+      ];
+      const headerTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              textCell(
+                [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: "UNIVERSITY OF MINDANAO",
+                        bold: true,
+                        color: maroon,
+                        size: 24,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: "OMR Answer Sheet",
+                        bold: true,
+                        color: "1F1418",
+                        size: 32,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `Question Bank System | OMR Sheet | Page ${pageNo} of ${pageCount} | Items ${startItem}-${endItem}`,
+                        color: "5A3B40",
+                        italics: true,
+                        size: 20,
+                      }),
+                    ],
+                  }),
+                ],
+                {
+                  fill: lightGold,
+                  width: { size: 80, type: WidthType.PERCENTAGE },
+                },
+              ),
+              textCell(
+                qrImage
+                  ? [
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new TextRun({
+                            text: `Scan Page ${pageNo} QR`,
+                            bold: true,
+                            color: maroon,
+                            size: 18,
+                          }),
+                        ],
+                      }),
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new TextRun({
+                            text: `Items ${startItem}-${endItem}`,
+                            bold: true,
+                            color: "1F1418",
+                            size: 16,
+                          }),
+                        ],
+                      }),
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new ImageRun({
+                            data: qrImage,
+                            type: "png",
+                            transformation: {
+                              width: 95,
+                              height: 95,
+                            },
+                          }),
+                        ],
+                      }),
+                    ]
+                  : [
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new TextRun({
+                            text: `Scan Page ${pageNo} QR`,
+                            bold: true,
+                            color: maroon,
+                            size: 18,
+                          }),
+                        ],
+                      }),
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [
+                          new TextRun({
+                            text: "Unavailable",
+                            color: "666666",
+                            size: 18,
+                          }),
+                        ],
+                      }),
+                    ],
+                {
+                  width: { size: 20, type: WidthType.PERCENTAGE },
+                },
+              ),
+            ],
+          }),
+        ],
+      });
+      const infoTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              textCell([infoLine("Subject", subject)], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+              textCell([infoLine("Section", section)], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              textCell([infoLine("Student Name")], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+              textCell([infoLine("Student ID")], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              textCell([infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+              textCell([infoLine("Date")], {
+                width: { size: 50, type: WidthType.PERCENTAGE },
+              }),
+            ],
+          }),
+        ],
+      });
+      const instructionTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              textCell(
+                [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: "Instructions: ",
+                        bold: true,
+                        color: maroon,
+                        size: 20,
+                      }),
+                      new TextRun({
+                        text:
+                          `Scan each page QR before capture. Page 1 contains up to ${omrFirstPageItems} items; next pages contain up to ${omrNextPageItems} items. Shade one circle per item.`,
+                        size: 20,
+                      }),
+                    ],
+                  }),
+                ],
+                { fill: lightGold },
+              ),
+            ],
+          }),
+        ],
+      });
+
+      return [
+        ...(pageIndex > 0
+          ? [new Paragraph({ children: [new PageBreak()] })]
+          : []),
+        headerTable,
+        ...(pageIndex === 0
+          ? [
+              new Paragraph(""),
+              infoTable,
+              new Paragraph(""),
+              instructionTable,
+            ]
+          : []),
+        new Paragraph(""),
+        new Table({
+          width: {
+            size: 100,
+            type: WidthType.PERCENTAGE,
+          },
+          rows,
+        }),
+      ];
+    }),
+  );
+
+  const doc = new Document({
+    sections: [
+      {
+        children: pages.flat(),
+      },
+    ],
+  });
+
+  return Packer.toBuffer(doc);
 };
 
 const parseResultRows = async (file, numberOfItems) => {
@@ -216,6 +652,42 @@ const parseResultRows = async (file, numberOfItems) => {
   return rows;
 };
 
+const buildStudentResultFromAnswers = (exam, student, answers) => {
+  const answerValues = Array.isArray(answers)
+    ? answers.map((answer) => normalizeValue(answer).toUpperCase())
+    : [];
+  const answerKeyByItem = new Map(
+    (exam.answerKey || []).map((item) => [
+      Number(item.itemNo),
+      normalizeValue(item.answer).toUpperCase(),
+    ]),
+  );
+
+  const itemResults = Array.from(
+    { length: exam.numberOfItems },
+    (_, index) => {
+      const itemNo = index + 1;
+      const value = answerValues[index] || "";
+      const correctAnswer = answerKeyByItem.get(itemNo) || "";
+
+      return {
+        itemNo,
+        value,
+        isCorrect: Boolean(value && correctAnswer && value === correctAnswer),
+      };
+    },
+  );
+
+  return {
+    analysisExamId: exam._id,
+    studentName: student.studentName,
+    studentId: student.studentId,
+    section: student.section || exam.section,
+    itemResults,
+    totalScore: itemResults.filter((item) => item.isCorrect).length,
+  };
+};
+
 const computeAnalysis = (exam, results) => {
   const totalStudents = results.length;
   const scores = results.map((result) => result.totalScore);
@@ -263,8 +735,13 @@ const computeAnalysis = (exam, results) => {
       discriminationInterpretation:
         discriminationInterpretation(discriminationIndex),
       recommendation,
+      action: actionForRecommendation(recommendation),
     };
   });
+  const recommendationSummary = items.reduce((summary, item) => {
+    summary[item.recommendation] = (summary[item.recommendation] || 0) + 1;
+    return summary;
+  }, {});
 
   return {
     exam,
@@ -282,6 +759,12 @@ const computeAnalysis = (exam, results) => {
           item.difficultyInterpretation === "Very Difficult" ||
           item.discriminationInterpretation === "Poor",
       ).length,
+      recommendationSummary,
+      priorityItems: items
+        .filter((item) =>
+          ["Check Answer Key", "Revise", "Review"].includes(item.recommendation),
+        )
+        .slice(0, 8),
     },
     items,
   };
@@ -308,6 +791,91 @@ const getExamWithResults = async (analysisExamId, user) => {
   }).sort({ totalScore: -1, studentName: 1 });
 
   return { exam, results };
+};
+
+exports.listItemAnalysisExams = async (req, res) => {
+  try {
+    const query = {};
+
+    if (!["admin", "super_admin"].includes(req.user.role)) {
+      query.uploadedBy = req.user._id;
+    }
+
+    const exams = await ItemAnalysisExam.find(query)
+      .select("title subject section semester schoolYear numberOfItems answerKey uploadedAt createdAt")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      exams,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.createItemAnalysisExam = async (req, res) => {
+  try {
+    const {
+      title,
+      subject,
+      section,
+      semester,
+      schoolYear,
+      numberOfItems,
+      answerKey,
+    } = req.body;
+    const itemCount = Number(numberOfItems);
+
+    if (!title || !subject || !section || !itemCount) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam title, subject, section, and number of items are required.",
+      });
+    }
+
+    if (!Number.isInteger(itemCount) || itemCount < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Number of items must be a whole number greater than 0.",
+      });
+    }
+
+    const parsedAnswerKey = await parseAnswerKey(answer);
+
+    if (parsedAnswerKey.length !== itemCount) {
+      return res.status(400).json({
+        success: false,
+        message: `Answer key must contain exactly ${itemCount} answers.`,
+      });
+    }
+
+    const exam = await ItemAnalysisExam.create({
+      title,
+      subject,
+      section,
+      semester,
+      schoolYear,
+      numberOfItems: itemCount,
+      answerKey: parsedAnswerKey,
+      uploadedBy: req.user._id,
+      uploadedAt: new Date(),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "OMR scanning exam created.",
+      exam,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 exports.downloadTemplate = async (req, res) => {
@@ -353,6 +921,224 @@ exports.downloadTemplate = async (req, res) => {
     res.send(Buffer.from(buffer));
   } catch (error) {
     res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
+  try {
+    const generatedExamQuery = { _id: req.params.examId };
+
+    if (!["admin", "super_admin"].includes(req.user.role)) {
+      generatedExamQuery.user = req.user._id;
+    }
+
+    const generatedExam = await Exam.findOne(generatedExamQuery).populate(
+      "questions",
+      "correctAnswer",
+    );
+
+    if (!generatedExam) {
+      return res.status(404).json({
+        success: false,
+        message: "Generated exam not found.",
+      });
+    }
+
+    const itemCount = Number(generatedExam.totalItems || 0);
+    const questions = generatedExam.questions || [];
+
+    if (!Number.isInteger(itemCount) || itemCount < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Generated exam has an invalid item count.",
+      });
+    }
+
+    if (questions.length !== itemCount) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Generated exam question count does not match the number of items.",
+      });
+    }
+
+    const answerKey = questions.map((question, index) => ({
+      itemNo: index + 1,
+      answer: normalizeValue(question.correctAnswer).toUpperCase(),
+    }));
+    const missingAnswer = answerKey.find((item) => !item.answer);
+
+    if (missingAnswer) {
+      return res.status(400).json({
+        success: false,
+        message: `Generated exam is missing an answer for item ${missingAnswer.itemNo}.`,
+      });
+    }
+
+    const title = normalizeValue(req.body.title) || generatedExam.title;
+    const subject = normalizeValue(req.body.subject) || generatedExam.subject;
+    const section = normalizeValue(req.body.section) || "No section";
+    const semester = normalizeValue(req.body.semester);
+    const schoolYear = normalizeValue(req.body.schoolYear);
+
+    const exam = await ItemAnalysisExam.findOneAndUpdate(
+      {
+        generatedExamId: generatedExam._id,
+        uploadedBy: req.user._id,
+      },
+      {
+        title,
+        subject,
+        section,
+        semester,
+        schoolYear,
+        numberOfItems: itemCount,
+        answerKey,
+        generatedExamId: generatedExam._id,
+        uploadedBy: req.user._id,
+        uploadedAt: new Date(),
+      },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Generated exam linked to item analysis.",
+      analysisExamId: exam._id,
+      exam,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.downloadOmrTemplate = async (req, res) => {
+  try {
+    const itemCount = Number(req.query.items || 50);
+
+    if (!Number.isInteger(itemCount) || itemCount < 1 || itemCount > 200) {
+      return res.status(400).json({
+        success: false,
+        message: "Number of items must be between 1 and 200.",
+      });
+    }
+
+    const title = normalizeValue(req.query.title) || "OMR Answer Sheet";
+    const analysisExamId = normalizeValue(req.query.examId);
+    const subject = normalizeValue(req.query.subject);
+    const section = normalizeValue(req.query.section);
+    const studentId = normalizeValue(req.query.studentId);
+    const qrPayload = {
+      type: "UM_OMR_SHEET",
+      analysisExamId,
+      title,
+      subject,
+      section,
+      studentId,
+      numberOfItems: itemCount,
+      generatedAt: new Date().toISOString(),
+    };
+    const buffer = await buildOmrTemplateBuffer({
+      title,
+      subject,
+      section,
+      numberOfItems: itemCount,
+      qrPayload,
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${sanitizeFileName(`${title}-${itemCount}-items`)}"`,
+    );
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.saveScannedResult = async (req, res) => {
+  try {
+    const { studentName, studentId, section, answers } = req.body;
+    const data = await getExamWithResults(req.params.id, req.user);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Item analysis exam not found.",
+      });
+    }
+
+    if (!studentName || !studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student name and student ID are required.",
+      });
+    }
+
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Scanned answers are required.",
+      });
+    }
+
+    if (!data.exam.answerKey || data.exam.answerKey.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "This item analysis exam needs an answer key before scanned sheets can be scored.",
+      });
+    }
+
+    const row = buildStudentResultFromAnswers(
+      data.exam,
+      {
+        studentName: normalizeValue(studentName),
+        studentId: normalizeValue(studentId),
+        section: normalizeValue(section) || data.exam.section,
+      },
+      answers,
+    );
+
+    const result = await ItemAnalysisStudentResult.findOneAndUpdate(
+      {
+        analysisExamId: data.exam._id,
+        studentId: row.studentId,
+      },
+      row,
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Scanned answers saved to item analysis.",
+      result,
+      analysisExamId: data.exam._id,
+    });
+  } catch (error) {
+    res.status(400).json({
       success: false,
       message: error.message,
     });
@@ -451,6 +1237,41 @@ exports.getItemAnalysis = async (req, res) => {
   }
 };
 
+exports.listItemAnalysisResults = async (req, res) => {
+  try {
+    const data = await getExamWithResults(req.params.id, req.user);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Item analysis exam not found.",
+      });
+    }
+
+    const results = data.results.map((result) => ({
+      _id: result._id,
+      studentName: result.studentName,
+      studentId: result.studentId,
+      section: result.section,
+      totalScore: result.totalScore,
+      itemResults: result.itemResults,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    }));
+
+    res.json({
+      success: true,
+      exam: data.exam,
+      results,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 exports.exportItemAnalysis = async (req, res) => {
   try {
     const data = await getExamWithResults(req.params.id, req.user);
@@ -467,6 +1288,7 @@ exports.exportItemAnalysis = async (req, res) => {
     const summarySheet = workbook.addWorksheet("Summary");
     const itemSheet = workbook.addWorksheet("Item Analysis");
     const scoreSheet = workbook.addWorksheet("Student Scores");
+    const perStudentSheet = workbook.addWorksheet("Per Student Analysis");
 
     summarySheet.addRows([
       ["Exam title", analysis.exam.title],
@@ -518,7 +1340,56 @@ exports.exportItemAnalysis = async (req, res) => {
       })),
     );
 
-    [summarySheet, itemSheet, scoreSheet].forEach((sheet) => {
+    perStudentSheet.columns = [
+      { header: "Student Name", key: "studentName", width: 24 },
+      { header: "Student ID", key: "studentId", width: 18 },
+      { header: "Section", key: "section", width: 16 },
+      { header: "Total Score", key: "totalScore", width: 14 },
+      { header: "Percentage", key: "percentage", width: 14 },
+      ...Array.from({ length: analysis.exam.numberOfItems }, (_, index) => {
+        const itemNo = index + 1;
+
+        return [
+          {
+            header: `Item ${itemNo} Answer`,
+            key: `item${itemNo}Answer`,
+            width: 16,
+          },
+          {
+            header: `Item ${itemNo} Result`,
+            key: `item${itemNo}Result`,
+            width: 16,
+          },
+        ];
+      }).flat(),
+    ];
+    perStudentSheet.addRows(
+      data.results.map((result) => {
+        const row = {
+          studentName: result.studentName,
+          studentId: result.studentId,
+          section: result.section,
+          totalScore: result.totalScore,
+          percentage: roundMetric(
+            (result.totalScore / analysis.exam.numberOfItems) * 100,
+          ),
+        };
+
+        Array.from({ length: analysis.exam.numberOfItems }, (_, index) => {
+          const itemNo = index + 1;
+          const itemResult = result.itemResults[index] || {};
+
+          row[`item${itemNo}Answer`] = itemResult.value || "";
+          row[`item${itemNo}Result`] = itemResult.isCorrect
+            ? "Correct"
+            : "Wrong";
+        });
+
+        return row;
+      }),
+    );
+
+    [summarySheet, itemSheet, scoreSheet, perStudentSheet].forEach((sheet) => {
       sheet.getRow(1).font = { bold: true };
     });
 

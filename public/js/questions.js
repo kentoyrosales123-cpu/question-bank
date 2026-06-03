@@ -57,7 +57,13 @@ async function filterQuestions() {
 async function viewQuestion(id) {
   try {
     const data = await apiRequest(`/questions/${id}`);
+    const [analyticsData, historyData] = await Promise.all([
+      apiRequest(`/questions/${id}/analytics`).catch(() => ({ analytics: null })),
+      apiRequest(`/questions/${id}/history`).catch(() => ({ history: [] })),
+    ]);
     const question = data.question;
+    const analytics = analyticsData.analytics;
+    const history = historyData.history || [];
 
     document.getElementById("questionModalTitle").textContent =
       "Question Details";
@@ -111,12 +117,76 @@ async function viewQuestion(id) {
         <span class="field-label">Explanation</span>
         <p>${escapeHTML(question.explanation || "No explanation provided.")}</p>
       </div>
+
+      ${renderQuestionAnalytics(analytics)}
+      ${renderQuestionHistory(history)}
     `;
 
     document.getElementById("questionModal").classList.remove("hidden");
   } catch (error) {
     alert(error.message);
   }
+}
+
+function renderQuestionAnalytics(analytics) {
+  if (!analytics) {
+    return "";
+  }
+
+  return `
+    <div class="question-detail-block">
+      <span class="field-label">Usage Analytics</span>
+      <div class="detail-grid">
+        <div><span class="field-label">Generated Exams</span><strong>${analytics.generatedExamUsage}</strong></div>
+        <div><span class="field-label">Submitted Uses</span><strong>${analytics.submittedUsage}</strong></div>
+        <div><span class="field-label">Correct</span><strong>${analytics.correctCount}</strong></div>
+        <div><span class="field-label">Accuracy</span><strong>${analytics.accuracy}%</strong></div>
+      </div>
+      ${
+        analytics.recentExams?.length
+          ? `<div class="recommendation-list">
+              ${analytics.recentExams
+                .map(
+                  (exam) => `
+                    <article class="recommendation-item">
+                      <strong>${escapeHTML(exam.title)}</strong>
+                      <p>${escapeHTML(exam.subject)} | ${escapeHTML(exam.topic || "All topics")} | ${new Date(exam.createdAt).toLocaleDateString()}</p>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </div>`
+          : `<p class="muted-text">This question has not been used in generated exams yet.</p>`
+      }
+    </div>
+  `;
+}
+
+function renderQuestionHistory(history) {
+  return `
+    <div class="question-detail-block">
+      <span class="field-label">Version History</span>
+      ${
+        history.length
+          ? `<div class="recommendation-list">
+              ${history
+                .map(
+                  (entry) => `
+                    <article class="recommendation-item">
+                      <strong>${escapeHTML(entry.changedFields?.join(", ") || "Updated")}</strong>
+                      <p>
+                        ${new Date(entry.editedAt).toLocaleString()} by
+                        ${escapeHTML(entry.editedBy?.name || entry.editedBy?.email || "Unknown user")}
+                      </p>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </div>`
+          : `<p class="muted-text">No edits recorded yet.</p>`
+      }
+    </div>
+  `;
 }
 
 async function editQuestion(id) {

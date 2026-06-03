@@ -9,6 +9,72 @@ const Upload = require("../models/Upload");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
 
+const normalizeQuestionForDuplicateCheck = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getTokenSet = (value = "") =>
+  new Set(
+    normalizeQuestionForDuplicateCheck(value)
+      .split(" ")
+      .filter((token) => token.length > 2),
+  );
+
+const getSimilarityScore = (left = "", right = "") => {
+  const leftTokens = getTokenSet(left);
+  const rightTokens = getTokenSet(right);
+
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+
+  leftTokens.forEach((token) => {
+    if (rightTokens.has(token)) {
+      intersection++;
+    }
+  });
+
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+
+  return union > 0 ? intersection / union : 0;
+};
+
+const findDuplicateCandidates = (question, existingQuestions = []) => {
+  const normalizedText = normalizeQuestionForDuplicateCheck(question.questionText);
+
+  return existingQuestions
+    .map((existing) => {
+      const existingText = normalizeQuestionForDuplicateCheck(existing.questionText);
+      const sameSubject =
+        normalizeQuestionForDuplicateCheck(existing.subject) ===
+        normalizeQuestionForDuplicateCheck(question.subject);
+      const sameTopic =
+        normalizeQuestionForDuplicateCheck(existing.topic) ===
+        normalizeQuestionForDuplicateCheck(question.topic);
+      const exactText = normalizedText && normalizedText === existingText;
+      const similarity = getSimilarityScore(question.questionText, existing.questionText);
+      const score = exactText ? 1 : similarity + (sameSubject ? 0.04 : 0) + (sameTopic ? 0.04 : 0);
+
+      return {
+        questionId: existing._id,
+        questionText: existing.questionText,
+        subject: existing.subject,
+        topic: existing.topic,
+        difficulty: existing.difficulty,
+        score: Math.min(1, Math.round(score * 1000) / 1000),
+        exactText,
+      };
+    })
+    .filter((candidate) => candidate.exactText || candidate.score >= 0.72)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+};
+
 const OCR_LANG_PATH = path.join(
   path.dirname(require.resolve("@tesseract.js-data/eng")),
   "4.0.0",
@@ -684,13 +750,27 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
 exports.getParsedQuestions = async (req, res) => {
   try {
-    const parsedQuestions = await ParsedQuestion.find()
-      .populate("upload", "originalName")
-      .sort({ createdAt: -1 });
+    const [parsedQuestions, existingQuestions] = await Promise.all([
+      ParsedQuestion.find().populate("upload", "originalName").sort({ createdAt: -1 }),
+      Question.find().select("subject topic questionText difficulty").lean(),
+    ]);
+    const parsedQuestionsWithDuplicates = parsedQuestions.map((question) => {
+      const item = question.toObject();
+
+      item.duplicateCandidates = findDuplicateCandidates(item, existingQuestions);
+      item.duplicateRisk =
+        item.duplicateCandidates.length === 0
+          ? "None"
+          : item.duplicateCandidates[0].score >= 0.9
+            ? "High"
+            : "Possible";
+
+      return item;
+    });
 
     res.json({
       success: true,
-      parsedQuestions,
+      parsedQuestions: parsedQuestionsWithDuplicates,
     });
   } catch (error) {
     res.status(500).json({
@@ -715,6 +795,21 @@ exports.approveParsedQuestion = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please set the correct answer before approving.",
+      });
+    }
+
+    const existingQuestions = await Question.find()
+      .select("subject topic questionText difficulty")
+      .lean();
+    const duplicateCandidates = findDuplicateCandidates(parsed, existingQuestions);
+    const highRiskDuplicate = duplicateCandidates.find((candidate) => candidate.score >= 0.9);
+
+    if (highRiskDuplicate && req.body?.force !== true) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Possible duplicate detected. Review the duplicate warning before approving this question.",
+        duplicateCandidates,
       });
     }
 

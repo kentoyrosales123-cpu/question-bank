@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+  <head>
+    <title>OMR Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#76000f" />
+    <link rel="manifest" href="/omr-manifest.webmanifest" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body class="scanner-body">
+    <main class="scanner-app">
+      <header class="scanner-header">
+        <div>
+          <span>Mobile OMR</span>
+          <h1>Scan MCQ Answers</h1>
+        </div>
+        <a class="btn secondary" href="/item-analysis-upload.html">Item Analysis</a>
+      </header>
+
+      <section class="scanner-panel">
+        <details class="scanner-create-exam">
+          <summary>Create OMR Scanning Exam</summary>
+          <form id="scannerExamForm">
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Exam Title</span>
+                <input id="scannerExamTitle" required />
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="scannerExamSubject" required />
+              </label>
+              <label>
+                <span class="field-label">Section</span>
+                <input id="scannerExamSection" required />
+              </label>
+              <label>
+                <span class="field-label">Number of Items</span>
+                <input id="scannerExamItems" type="number" min="1" value="50" required />
+              </label>
+              <label>
+                <span class="field-label">Semester</span>
+                <input id="scannerExamSemester" placeholder="1st Semester" />
+              </label>
+              <label>
+                <span class="field-label">School Year</span>
+                <input id="scannerExamSchoolYear" placeholder="2025-2026" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">Answer Key</span>
+              <textarea
+                id="scannerExamAnswerKey"
+                placeholder="Example: A B C D A or A,B,C,D,A"
+                required
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Create Scanning Exam</button>
+          </form>
+        </details>
+
+        <label>
+          <span class="field-label">Item Analysis Exam</span>
+          <select id="scannerExamSelect">
+            <option value="">Loading exams...</option>
+          </select>
+        </label>
+
+        <div class="scanner-meta" id="scannerExamMeta"></div>
+
+        <button class="btn secondary scanner-wide-button" id="downloadOmrTemplateButton" type="button">
+          Download OMR Sheet Template
+        </button>
+        <a class="btn scanner-wide-button" href="#liveScannerPanel">
+          Go to Live Scanner
+        </a>
+
+        <div class="field-grid two">
+          <label>
+            <span class="field-label">Student Name</span>
+            <input id="scannerStudentName" placeholder="Student full name" required />
+          </label>
+          <label>
+            <span class="field-label">Student ID</span>
+            <input id="scannerStudentId" placeholder="Student ID" required />
+          </label>
+        </div>
+
+        <label>
+          <span class="field-label">Section</span>
+          <input id="scannerSection" placeholder="Section" />
+        </label>
+      </section>
+
+      <section class="scanner-panel" id="liveScannerPanel">
+        <div class="scanner-live-controls">
+          <video id="omrVideo" class="scanner-video" autoplay playsinline muted></video>
+          <div class="scanner-score-card" id="liveScoreCard">
+            <span>Live Score</span>
+            <strong id="liveScoreText">-</strong>
+            <small id="liveScanStatus">Camera not started</small>
+          </div>
+        </div>
+
+        <label class="scanner-capture">
+          <span>Capture OMR Sheet</span>
+          <input id="omrImageInput" type="file" accept="image/*" capture="environment" />
+        </label>
+
+        <canvas id="omrCanvas" class="scanner-canvas"></canvas>
+
+        <details class="scanner-tuning">
+          <summary>Scan Area</summary>
+          <div class="field-grid two">
+            <label>
+              <span class="field-label">Top</span>
+              <input id="scanTop" type="range" min="0" max="45" value="12" />
+            </label>
+            <label>
+              <span class="field-label">Bottom</span>
+              <input id="scanBottom" type="range" min="55" max="100" value="94" />
+            </label>
+            <label>
+              <span class="field-label">Left</span>
+              <input id="scanLeft" type="range" min="0" max="45" value="10" />
+            </label>
+            <label>
+              <span class="field-label">Right</span>
+              <input id="scanRight" type="range" min="55" max="100" value="90" />
+            </label>
+            <label>
+              <span class="field-label">No. Column</span>
+              <input id="scanNumberColumn" type="range" min="0" max="30" value="12" />
+            </label>
+            <label>
+              <span class="field-label">Header Row</span>
+              <input id="scanHeaderRow" type="range" min="0" max="12" value="3" />
+            </label>
+          </div>
+        </details>
+
+        <div class="action-row">
+          <button class="btn success" id="startLiveScanButton" type="button">Start Live Scan</button>
+          <button class="btn secondary" id="stopLiveScanButton" type="button">Stop Live Scan</button>
+          <button class="btn" id="scanAnswersButton" type="button">Scan Answers</button>
+          <button class="btn secondary" id="clearScanButton" type="button">Clear</button>
+        </div>
+        <label class="scanner-autosave">
+          <input id="autoSaveStableScan" type="checkbox" />
+          <span>Auto-save when the live scan is stable</span>
+        </label>
+        <p class="message" id="scannerMessage"></p>
+      </section>
+
+      <section class="scanner-panel">
+        <div class="section-heading">
+          <h2>Review Answers</h2>
+          <p class="muted-text">Confirm detected answers before saving.</p>
+        </div>
+        <div class="answer-review-grid" id="answerReviewGrid"></div>
+        <button class="btn scanner-save" id="saveScannedResultButton" type="button">
+          Save to Item Analysis
+        </button>
+      </section>
+    </main>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/omr-scanner.js?v=3"></script>
+  </body>
+</html>
