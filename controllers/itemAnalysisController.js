@@ -154,8 +154,8 @@ const maroon = "8A0013";
 const gold = "F2B705";
 const lightGold = "FFF7DF";
 const borderColor = "D7C6C6";
-const omrFirstPageItems = 17;
-const omrNextPageItems = 20;
+const omrItemsPerPage = 100;
+const omrRowsPerBlock = 25;
 const cellBorders = {
   top: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
   bottom: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
@@ -228,8 +228,7 @@ const buildOmrTemplateBuffer = async ({
   let currentStartItem = 1;
 
   while (currentStartItem <= itemCount) {
-    const pageSize =
-      currentStartItem === 1 ? omrFirstPageItems : omrNextPageItems;
+    const pageSize = omrItemsPerPage;
     const currentEndItem = Math.min(itemCount, currentStartItem + pageSize - 1);
 
     itemRanges.push({
@@ -264,76 +263,51 @@ const buildOmrTemplateBuffer = async ({
       const qrImage = qrDataUrl
         ? Buffer.from(qrDataUrl.split(",")[1], "base64")
         : null;
-      const rows = [
-        new TableRow({
-          children: [
-            omrCell("No.", {
-              bold: true,
-              color: "FFFFFF",
-              fill: maroon,
-              width: { size: 12, type: WidthType.PERCENTAGE },
-            }),
-            omrCell("A", {
-              bold: true,
-              color: "FFFFFF",
-              fill: maroon,
-              width: { size: 22, type: WidthType.PERCENTAGE },
-            }),
-            omrCell("B", {
-              bold: true,
-              color: "FFFFFF",
-              fill: maroon,
-              width: { size: 22, type: WidthType.PERCENTAGE },
-            }),
-            omrCell("C", {
-              bold: true,
-              color: "FFFFFF",
-              fill: maroon,
-              width: { size: 22, type: WidthType.PERCENTAGE },
-            }),
-            omrCell("D", {
-              bold: true,
-              color: "FFFFFF",
-              fill: maroon,
-              width: { size: 22, type: WidthType.PERCENTAGE },
-            }),
-          ],
-        }),
-        ...Array.from({ length: pageItemCount }, (_, index) => {
-          const itemNo = startItem + index;
-          const fill = index % 2 === 0 ? "FFFFFF" : "FCF7F7";
+      const rows = Array.from({ length: omrRowsPerBlock }, (_, rowIndex) => {
+          const fill = rowIndex % 2 === 0 ? "FFFFFF" : "FCF7F7";
 
           return new TableRow({
-            children: [
-              omrCell(String(itemNo), {
-                bold: true,
-                fill,
-                width: { size: 12, type: WidthType.PERCENTAGE },
-              }),
-              omrCell("○", {
-                fill,
-                size: 26,
-                width: { size: 22, type: WidthType.PERCENTAGE },
-              }),
-              omrCell("○", {
-                fill,
-                size: 26,
-                width: { size: 22, type: WidthType.PERCENTAGE },
-              }),
-              omrCell("○", {
-                fill,
-                size: 26,
-                width: { size: 22, type: WidthType.PERCENTAGE },
-              }),
-              omrCell("○", {
-                fill,
-                size: 26,
-                width: { size: 22, type: WidthType.PERCENTAGE },
-              }),
-            ],
+            children: Array.from({ length: 4 }, (_, blockIndex) => {
+              const itemIndex = blockIndex * omrRowsPerBlock + rowIndex;
+              const itemNo = startItem + itemIndex;
+              const hasItem = itemIndex < pageItemCount && itemNo <= endItem;
+
+              return [
+                omrCell(hasItem ? String(itemNo) : "", {
+                  bold: true,
+                  fill,
+                  margin: 35,
+                  size: 18,
+                  width: { size: 4, type: WidthType.PERCENTAGE },
+                }),
+                omrCell(hasItem ? "Ⓐ" : "", {
+                  fill,
+                  margin: 28,
+                  size: 22,
+                  width: { size: 5.25, type: WidthType.PERCENTAGE },
+                }),
+                omrCell(hasItem ? "Ⓑ" : "", {
+                  fill,
+                  margin: 28,
+                  size: 22,
+                  width: { size: 5.25, type: WidthType.PERCENTAGE },
+                }),
+                omrCell(hasItem ? "Ⓒ" : "", {
+                  fill,
+                  margin: 28,
+                  size: 22,
+                  width: { size: 5.25, type: WidthType.PERCENTAGE },
+                }),
+                omrCell(hasItem ? "Ⓓ" : "", {
+                  fill,
+                  margin: 28,
+                  size: 22,
+                  width: { size: 5.25, type: WidthType.PERCENTAGE },
+                }),
+              ];
+            }).flat(),
           });
-        }),
-      ];
+        });
       const headerTable = new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -499,7 +473,7 @@ const buildOmrTemplateBuffer = async ({
                       }),
                       new TextRun({
                         text:
-                          `Scan each page QR before capture. Page 1 contains up to ${omrFirstPageItems} items; next pages contain up to ${omrNextPageItems} items. Shade one circle per item.`,
+                          `Scan each page QR before capture. Each OMR page contains up to ${omrItemsPerPage} items in four answer blocks. Shade one circle per item.`,
                         size: 20,
                       }),
                     ],

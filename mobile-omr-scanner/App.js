@@ -20,8 +20,8 @@ const DEFAULT_API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.1.10:5000/api";
 
 const choices = ["A", "B", "C", "D"];
-const OMR_FIRST_PAGE_ITEMS = 17;
-const OMR_NEXT_PAGE_ITEMS = 20;
+const OMR_ITEMS_PER_PAGE = 100;
+const OMR_ROWS_PER_BLOCK = 25;
 
 function parseQrMetadata(value = "") {
   try {
@@ -112,12 +112,7 @@ function scoreAnswers(exam, answers) {
 
 function getExpectedOmrPageCount(numberOfItems) {
   const total = Number(numberOfItems || 0);
-
-  if (total <= OMR_FIRST_PAGE_ITEMS) {
-    return total > 0 ? 1 : 0;
-  }
-
-  return 1 + Math.ceil((total - OMR_FIRST_PAGE_ITEMS) / OMR_NEXT_PAGE_ITEMS);
+  return total > 0 ? Math.ceil(total / OMR_ITEMS_PER_PAGE) : 0;
 }
 
 function getQrScanRange(metadata, exam) {
@@ -153,7 +148,7 @@ function buildDetectorHtml(imageUri, numberOfItems) {
       const imageUri = ${safeUri};
       const numberOfItems = ${items};
       const labels = ["A", "B", "C", "D"];
-      const scan = { top: 0.12, bottom: 0.94, left: 0.10, right: 0.90, numberColumn: 0.12, headerRow: 0.03 };
+      const scan = { top: 0.12, bottom: 0.94, left: 0.06, right: 0.94, numberColumn: 0.16, headerRow: 0 };
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
 
@@ -197,18 +192,22 @@ function buildDetectorHtml(imageUri, numberOfItems) {
             width: canvas.width * (scan.right - scan.left),
             height: canvas.height * (scan.bottom - scan.top),
           };
-          const answerY = bounds.y + bounds.height * scan.headerRow;
-          const answerHeight = bounds.height * (1 - scan.headerRow);
-          const rowHeight = answerHeight / numberOfItems;
-          const answerX = bounds.x + bounds.width * scan.numberColumn;
-          const answerWidth = bounds.width * (1 - scan.numberColumn);
-          const columnWidth = answerWidth / labels.length;
-          const sampleRadius = Math.max(4, Math.min(rowHeight, columnWidth) * 0.18);
+          const rowsPerBlock = ${OMR_ROWS_PER_BLOCK};
+          const blockCount = 4;
+          const rowHeight = bounds.height / rowsPerBlock;
+          const blockWidth = bounds.width / blockCount;
           const answers = [];
           const diagnostics = [];
 
           for (let itemIndex = 0; itemIndex < numberOfItems; itemIndex += 1) {
-            const y = answerY + rowHeight * (itemIndex + 0.5);
+            const blockIndex = Math.floor(itemIndex / rowsPerBlock);
+            const rowIndex = itemIndex % rowsPerBlock;
+            const blockX = bounds.x + blockWidth * blockIndex;
+            const y = bounds.y + rowHeight * (rowIndex + 0.5);
+            const answerX = blockX + blockWidth * scan.numberColumn;
+            const answerWidth = blockWidth * (1 - scan.numberColumn);
+            const columnWidth = answerWidth / labels.length;
+            const sampleRadius = Math.max(3, Math.min(rowHeight, columnWidth) * 0.18);
             const scores = labels.map((label, labelIndex) => {
               const x = answerX + columnWidth * (labelIndex + 0.5);
               return { label, ...sampleBubble(x, y, sampleRadius) };
