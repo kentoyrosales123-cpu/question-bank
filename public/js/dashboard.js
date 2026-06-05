@@ -35,7 +35,7 @@ async function loadDashboard() {
 
     document.getElementById("activityBody").innerHTML =
       stats.recentActivity && stats.recentActivity.length > 0
-        ? stats.recentActivity.map(renderActivityRow).join("")
+        ? stats.recentActivity.slice(0, 10).map(renderActivityRow).join("")
         : `
           <tr>
             <td colspan="5" class="empty-table-cell">No activity recorded yet.</td>
@@ -160,9 +160,29 @@ function renderActivityRow(activity) {
   `;
 }
 
+function getActivityDownloadQuery() {
+  const startDate = document.getElementById("activityStartDate")?.value || "";
+  const endDate = document.getElementById("activityEndDate")?.value || "";
+
+  if (startDate && endDate && startDate > endDate) {
+    throw new Error("Start date cannot be after end date.");
+  }
+
+  const params = new URLSearchParams();
+
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+
+  return params.toString();
+}
+
 async function downloadActivityLog() {
   try {
-    const res = await fetch("/api/dashboard/activity/download", {
+    const query = getActivityDownloadQuery();
+    const url = query
+      ? `/api/dashboard/activity/download?${query}`
+      : "/api/dashboard/activity/download";
+    const res = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${getToken()}`,
@@ -175,20 +195,20 @@ async function downloadActivityLog() {
     }
 
     const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
+    const objectUrl = window.URL.createObjectURL(blob);
     const fileName =
       res
         .headers
         .get("Content-Disposition")
-        ?.match(/filename="([^"]+)"/)?.[1] || "activity-log.csv";
+        ?.match(/filename="([^"]+)"/)?.[1] || "activity-log.xlsx";
 
     const a = document.createElement("a");
-    a.href = url;
+    a.href = objectUrl;
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    window.URL.revokeObjectURL(url);
+    window.URL.revokeObjectURL(objectUrl);
   } catch (error) {
     alert(error.message);
   }

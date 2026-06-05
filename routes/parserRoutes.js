@@ -10,16 +10,16 @@ const {
   getParsedQuestionImage,
 } = require("../controllers/parserController");
 
-const { protect, adminOnly } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleware");
 
 router.post("/parse", protect, parseUploadedQuestionnaire);
-router.get("/", protect, adminOnly, getParsedQuestions);
+router.get("/", protect, getParsedQuestions);
 
 // image route must be before /:id routes and before module.exports
 router.get("/:id/image", getParsedQuestionImage);
 
-router.put("/:id", protect, adminOnly, updateParsedQuestion);
-router.post("/:id/approve", protect, adminOnly, approveParsedQuestion);
-router.post("/:id/reject", protect, adminOnly, rejectParsedQuestion);
+router.put("/:id", protect, updateParsedQuestion);
+router.post("/:id/approve", protect, approveParsedQuestion);
+router.post("/:id/reject", protect, rejectParsedQuestion);
 
 module.exports = router;

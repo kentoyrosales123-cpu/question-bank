@@ -160,6 +160,7 @@ const lightGold = "FFF7DF";
 const borderColor = "D7C6C6";
 const omrItemsPerPage = 100;
 const omrRowsPerBlock = 25;
+const omrMaxBlocksPerPage = 4;
 const cellBorders = {
   top: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
   bottom: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
@@ -220,6 +221,12 @@ const infoLine = (label, value = "") =>
     ],
   });
 
+const spacerParagraph = (size = 4) =>
+  new Paragraph({
+    spacing: { before: 0, after: size * 4 },
+    children: [new TextRun({ text: "", size })],
+  });
+
 const buildOmrTemplateBuffer = async ({
   title = "OMR Answer Sheet",
   subject = "",
@@ -267,11 +274,19 @@ const buildOmrTemplateBuffer = async ({
       const qrImage = qrDataUrl
         ? Buffer.from(qrDataUrl.split(",")[1], "base64")
         : null;
+      const blockCount = Math.min(
+        omrMaxBlocksPerPage,
+        Math.max(1, Math.ceil(pageItemCount / omrRowsPerBlock)),
+      );
+      const blockWidth = 100 / blockCount;
+      const itemNumberWidth = blockWidth * 0.14;
+      const answerWidth = blockWidth * 0.215;
+      const bubbleSize = blockCount <= 2 ? 30 : 26;
       const rows = Array.from({ length: omrRowsPerBlock }, (_, rowIndex) => {
         const fill = rowIndex % 2 === 0 ? "FFFFFF" : "FCF7F7";
 
         return new TableRow({
-          children: Array.from({ length: 4 }, (_, blockIndex) => {
+          children: Array.from({ length: blockCount }, (_, blockIndex) => {
             const itemIndex = blockIndex * omrRowsPerBlock + rowIndex;
             const itemNo = startItem + itemIndex;
             const hasItem = itemIndex < pageItemCount && itemNo <= endItem;
@@ -280,33 +295,33 @@ const buildOmrTemplateBuffer = async ({
               omrCell(hasItem ? String(itemNo) : "", {
                 bold: true,
                 fill,
-                margin: 35,
+                margin: 26,
                 size: 18,
-                width: { size: 4, type: WidthType.PERCENTAGE },
+                width: { size: itemNumberWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓐ" : "", {
                 fill,
-                margin: 28,
-                size: 22,
-                width: { size: 5.25, type: WidthType.PERCENTAGE },
+                margin: 18,
+                size: bubbleSize,
+                width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓑ" : "", {
                 fill,
-                margin: 28,
-                size: 22,
-                width: { size: 5.25, type: WidthType.PERCENTAGE },
+                margin: 18,
+                size: bubbleSize,
+                width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓒ" : "", {
                 fill,
-                margin: 28,
-                size: 22,
-                width: { size: 5.25, type: WidthType.PERCENTAGE },
+                margin: 18,
+                size: bubbleSize,
+                width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓓ" : "", {
                 fill,
-                margin: 28,
-                size: 22,
-                width: { size: 5.25, type: WidthType.PERCENTAGE },
+                margin: 18,
+                size: bubbleSize,
+                width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
             ];
           }).flat(),
@@ -325,7 +340,7 @@ const buildOmrTemplateBuffer = async ({
                         text: "Question Bank System",
                         bold: true,
                         color: maroon,
-                        size: 24,
+                        size: 18,
                       }),
                     ],
                   }),
@@ -335,7 +350,7 @@ const buildOmrTemplateBuffer = async ({
                         text: "OMR Answer Sheet",
                         bold: true,
                         color: "1F1418",
-                        size: 32,
+                        size: 24,
                       }),
                     ],
                   }),
@@ -345,13 +360,14 @@ const buildOmrTemplateBuffer = async ({
                         text: `Question Bank System | OMR Sheet | Page ${pageNo} of ${pageCount} | Items ${startItem}-${endItem}`,
                         color: "5A3B40",
                         italics: true,
-                        size: 20,
+                        size: 16,
                       }),
                     ],
                   }),
                 ],
                 {
                   fill: lightGold,
+                  margin: 70,
                   width: { size: 80, type: WidthType.PERCENTAGE },
                 },
               ),
@@ -365,7 +381,7 @@ const buildOmrTemplateBuffer = async ({
                             text: `Scan Page ${pageNo} QR`,
                             bold: true,
                             color: maroon,
-                            size: 18,
+                            size: 14,
                           }),
                         ],
                       }),
@@ -376,7 +392,7 @@ const buildOmrTemplateBuffer = async ({
                             text: `Items ${startItem}-${endItem}`,
                             bold: true,
                             color: "1F1418",
-                            size: 16,
+                            size: 12,
                           }),
                         ],
                       }),
@@ -387,8 +403,8 @@ const buildOmrTemplateBuffer = async ({
                             data: qrImage,
                             type: "png",
                             transformation: {
-                              width: 95,
-                              height: 95,
+                              width: 72,
+                              height: 72,
                             },
                           }),
                         ],
@@ -418,6 +434,7 @@ const buildOmrTemplateBuffer = async ({
                       }),
                     ],
                 {
+                  margin: 50,
                   width: { size: 20, type: WidthType.PERCENTAGE },
                 },
               ),
@@ -431,33 +448,35 @@ const buildOmrTemplateBuffer = async ({
           new TableRow({
             children: [
               textCell([infoLine("Subject", subject)], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
+                margin: 55,
+                width: { size: 34, type: WidthType.PERCENTAGE },
               }),
               textCell([infoLine("Section", section)], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
+                margin: 55,
+                width: { size: 33, type: WidthType.PERCENTAGE },
               }),
+              textCell(
+                [infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)],
+                {
+                  margin: 55,
+                  width: { size: 33, type: WidthType.PERCENTAGE },
+                },
+              ),
             ],
           }),
           new TableRow({
             children: [
               textCell([infoLine("Student Name")], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
+                margin: 55,
+                width: { size: 42, type: WidthType.PERCENTAGE },
               }),
               textCell([infoLine("Student ID")], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
+                margin: 55,
+                width: { size: 34, type: WidthType.PERCENTAGE },
               }),
-            ],
-          }),
-          new TableRow({
-            children: [
-              textCell(
-                [infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)],
-                {
-                  width: { size: 50, type: WidthType.PERCENTAGE },
-                },
-              ),
               textCell([infoLine("Date")], {
-                width: { size: 50, type: WidthType.PERCENTAGE },
+                margin: 55,
+                width: { size: 24, type: WidthType.PERCENTAGE },
               }),
             ],
           }),
@@ -476,16 +495,16 @@ const buildOmrTemplateBuffer = async ({
                         text: "Instructions: ",
                         bold: true,
                         color: maroon,
-                        size: 20,
+                        size: 16,
                       }),
                       new TextRun({
-                        text: `Scan each page QR before capture. Each OMR page contains up to ${omrItemsPerPage} items in four answer blocks. Shade one circle per item.`,
-                        size: 20,
+                        text: `Scan the page QR before capture. Shade one circle per item.`,
+                        size: 16,
                       }),
                     ],
                   }),
                 ],
-                { fill: lightGold },
+                { fill: lightGold, margin: 50 },
               ),
             ],
           }),
@@ -498,9 +517,9 @@ const buildOmrTemplateBuffer = async ({
           : []),
         headerTable,
         ...(pageIndex === 0
-          ? [new Paragraph(""), infoTable, new Paragraph(""), instructionTable]
+          ? [spacerParagraph(), infoTable, spacerParagraph(), instructionTable]
           : []),
-        new Paragraph(""),
+        spacerParagraph(),
         new Table({
           width: {
             size: 100,
@@ -515,6 +534,16 @@ const buildOmrTemplateBuffer = async ({
   const doc = new Document({
     sections: [
       {
+        properties: {
+          page: {
+            margin: {
+              top: 360,
+              right: 360,
+              bottom: 360,
+              left: 360,
+            },
+          },
+        },
         children: pages.flat(),
       },
     ],

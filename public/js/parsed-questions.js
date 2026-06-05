@@ -1,20 +1,49 @@
 protectPage();
-adminOnlyPage();
+
+const parsedReviewUser = getUser();
+
+if (parsedReviewUser && parsedReviewUser.role === "student") {
+  alert("Parsed question review is for teachers and authorized users only.");
+  location.href = getDashboardUrl(parsedReviewUser);
+}
 
 let pendingQuestions = [];
 const selectedParsedIds = new Set();
+const parsedReviewParams = new URLSearchParams(location.search);
+const parsedReviewUploadId = parsedReviewParams.get("uploadId") || "";
 
 async function loadParsedQuestions() {
   try {
-    const data = await apiRequest("/parser");
+    const endpoint = parsedReviewUploadId
+      ? `/parser?uploadId=${encodeURIComponent(parsedReviewUploadId)}`
+      : "/parser";
+    const data = await apiRequest(endpoint);
     pendingQuestions = data.parsedQuestions.filter((q) => q.status === "Pending");
     selectedParsedIds.clear();
+
+    updateParsedReviewScope(data);
 
     updateReviewStats(pendingQuestions);
     renderParsedQuestions(pendingQuestions);
   } catch (error) {
     alert(error.message);
   }
+}
+
+function updateParsedReviewScope(data) {
+  const heading = document.querySelector(".topbar h1");
+  const uploadName =
+    data.upload?.originalName ||
+    pendingQuestions.find((question) => question.upload?.originalName)?.upload
+      ?.originalName;
+
+  if (!heading || !parsedReviewUploadId) {
+    return;
+  }
+
+  heading.textContent = uploadName
+    ? `Review Parsed Questions: ${uploadName}`
+    : "Review Parsed Questions";
 }
 
 function updateReviewStats(questions) {
@@ -155,7 +184,7 @@ function renderParsedCard(q, index) {
 
           <footer class="review-actions">
             <button class="btn secondary" onclick="saveParsed('${q._id}')">Save Edit</button>
-            <button class="btn success" onclick="approveParsed('${q._id}')">Approve to Question Bank</button>
+            <button class="btn success" onclick="approveParsed('${q._id}')">Add to Question Bank</button>
             <button class="btn danger" onclick="rejectParsed('${q._id}')">Reject</button>
             <p class="message" id="msg_${q._id}"></p>
           </footer>
@@ -386,7 +415,7 @@ async function approveSelectedParsed() {
   }
 
   setBulkActionState(true);
-  setBulkReviewMessage(`Approving ${ids.length} selected question${ids.length > 1 ? "s" : ""}...`);
+  setBulkReviewMessage(`Adding ${ids.length} selected question${ids.length > 1 ? "s" : ""}...`);
 
   let approvedCount = 0;
 
@@ -399,7 +428,7 @@ async function approveSelectedParsed() {
       removeParsedQuestionFromList(id);
     }
 
-    setBulkReviewMessage(`${approvedCount} selected question${approvedCount > 1 ? "s" : ""} approved.`);
+    setBulkReviewMessage(`${approvedCount} selected question${approvedCount > 1 ? "s" : ""} added to the question bank.`);
     renderParsedQuestions(getFilteredQuestions());
     updateReviewStats(pendingQuestions);
   } catch (error) {

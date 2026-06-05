@@ -9,6 +9,71 @@ const Upload = require("../models/Upload");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
 
+const adminRoles = ["admin", "super_admin"];
+
+const isAdminUser = (user) => adminRoles.includes(user?.role);
+
+const isUploadOwner = (upload, user) =>
+  Boolean(
+    upload?.uploadedBy &&
+      user?._id &&
+      upload.uploadedBy.toString() === user._id.toString(),
+  );
+
+const getAccessibleUploadIds = async (user) => {
+  if (isAdminUser(user)) {
+    return null;
+  }
+
+  const uploads = await Upload.find({ uploadedBy: user._id }).select("_id").lean();
+  return uploads.map((upload) => upload._id);
+};
+
+const getParsedQuestionForUser = async (parsedQuestionId, user) => {
+  const parsed = await ParsedQuestion.findById(parsedQuestionId).populate(
+    "upload",
+    "originalName uploadedBy",
+  );
+
+  if (!parsed) {
+    return { parsed: null, hasAccess: false };
+  }
+
+  return {
+    parsed,
+    hasAccess: isAdminUser(user) || isUploadOwner(parsed.upload, user),
+  };
+};
+
+const getParsedQuestionUpdates = (body = {}) => {
+  const updates = {};
+  const fields = [
+    "subject",
+    "topic",
+    "questionText",
+    "correctAnswer",
+    "difficulty",
+    "explanation",
+  ];
+
+  fields.forEach((field) => {
+    if (body[field] !== undefined) {
+      updates[field] = body[field];
+    }
+  });
+
+  if (body.choices && typeof body.choices === "object") {
+    updates.choices = {
+      A: body.choices.A || "",
+      B: body.choices.B || "",
+      C: body.choices.C || "",
+      D: body.choices.D || "",
+    };
+  }
+
+  return updates;
+};
+
 const normalizeQuestionForDuplicateCheck = (value = "") =>
   String(value || "")
     .toLowerCase()
@@ -645,7 +710,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
     const isOwner =
       upload.uploadedBy && upload.uploadedBy.toString() === req.user._id.toString();
 
-    if (req.user.role !== "admin" && !isOwner) {
+    if (!isAdminUser(req.user) && !isOwner) {
       return res.status(403).json({
         success: false,
         message: "You do not have access to this uploaded file.",
@@ -750,8 +815,40 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
 exports.getParsedQuestions = async (req, res) => {
   try {
+    const requestedUploadId = String(req.query.uploadId || "").trim();
+    const accessibleUploadIds = await getAccessibleUploadIds(req.user);
+    const query = {};
+    let scopedUpload = null;
+
+    if (requestedUploadId) {
+      const upload = await Upload.findById(requestedUploadId).select(
+        "originalName uploadedBy",
+      );
+
+      if (!upload) {
+        return res.status(404).json({
+          success: false,
+          message: "Uploaded file not found.",
+        });
+      }
+
+      if (!isAdminUser(req.user) && !isUploadOwner(upload, req.user)) {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have access to this uploaded file.",
+        });
+      }
+
+      query.upload = upload._id;
+      scopedUpload = upload;
+    } else if (accessibleUploadIds) {
+      query.upload = { $in: accessibleUploadIds };
+    }
+
     const [parsedQuestions, existingQuestions] = await Promise.all([
-      ParsedQuestion.find().populate("upload", "originalName").sort({ createdAt: -1 }),
+      ParsedQuestion.find(query)
+        .populate("upload", "originalName uploadedBy")
+        .sort({ createdAt: -1 }),
       Question.find().select("subject topic questionText difficulty").lean(),
     ]);
     const parsedQuestionsWithDuplicates = parsedQuestions.map((question) => {
@@ -771,6 +868,12 @@ exports.getParsedQuestions = async (req, res) => {
     res.json({
       success: true,
       parsedQuestions: parsedQuestionsWithDuplicates,
+      upload: scopedUpload
+        ? {
+            _id: scopedUpload._id,
+            originalName: scopedUpload.originalName,
+          }
+        : null,
     });
   } catch (error) {
     res.status(500).json({
@@ -782,12 +885,22 @@ exports.getParsedQuestions = async (req, res) => {
 
 exports.approveParsedQuestion = async (req, res) => {
   try {
-    const parsed = await ParsedQuestion.findById(req.params.id);
+    const { parsed, hasAccess } = await getParsedQuestionForUser(
+      req.params.id,
+      req.user,
+    );
 
     if (!parsed) {
       return res.status(404).json({
         success: false,
         message: "Parsed question not found.",
+      });
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this parsed question.",
       });
     }
 
@@ -846,11 +959,27 @@ exports.approveParsedQuestion = async (req, res) => {
 
 exports.updateParsedQuestion = async (req, res) => {
   try {
-    const updated = await ParsedQuestion.findByIdAndUpdate(
+    const { parsed, hasAccess } = await getParsedQuestionForUser(
       req.params.id,
-      req.body,
-      { new: true },
+      req.user,
     );
+
+    if (!parsed) {
+      return res.status(404).json({
+        success: false,
+        message: "Parsed question not found.",
+      });
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this parsed question.",
+      });
+    }
+
+    Object.assign(parsed, getParsedQuestionUpdates(req.body));
+    const updated = await parsed.save();
 
     res.json({
       success: true,
@@ -867,12 +996,22 @@ exports.updateParsedQuestion = async (req, res) => {
 
 exports.rejectParsedQuestion = async (req, res) => {
   try {
-    const parsed = await ParsedQuestion.findById(req.params.id);
+    const { parsed, hasAccess } = await getParsedQuestionForUser(
+      req.params.id,
+      req.user,
+    );
 
     if (!parsed) {
       return res.status(404).json({
         success: false,
         message: "Parsed question not found.",
+      });
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this parsed question.",
       });
     }
 

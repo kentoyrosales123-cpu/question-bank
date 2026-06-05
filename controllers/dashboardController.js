@@ -1,49 +1,124 @@
+const ExcelJS = require("exceljs");
 const User = require("../models/User");
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 const ActivityLog = require("../models/ActivityLog");
 
-const csvCell = (value) => {
-  const text = String(value ?? "");
-  return `"${text.replaceAll('"', '""')}"`;
-};
-
 const formatActivityAction = (action) =>
   action === "generate_exam" ? "Generated Exam" : "Logged In";
 
-const buildActivityCsv = (activities) => {
-  const headers = [
-    "User Name",
-    "Email",
-    "Role",
-    "Activity",
-    "Details",
-    "Date",
-    "Time",
-    "IP Address",
-    "Browser",
+const getActivityDateRange = (query = {}) => {
+  const filter = {};
+  const startValue = String(query.startDate || "").trim();
+  const endValue = String(query.endDate || "").trim();
+  const parseDateOnly = (value, endOfDay = false) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return null;
+    }
+
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(
+      year,
+      month - 1,
+      day,
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 999 : 0,
+    );
+
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
+  };
+
+  if (startValue || endValue) {
+    filter.createdAt = {};
+  }
+
+  if (startValue) {
+    const startDate = parseDateOnly(startValue);
+
+    if (!startDate) {
+      throw new Error("Start date is invalid.");
+    }
+
+    filter.createdAt.$gte = startDate;
+  }
+
+  if (endValue) {
+    const endDate = parseDateOnly(endValue, true);
+
+    if (!endDate) {
+      throw new Error("End date is invalid.");
+    }
+
+    filter.createdAt.$lte = endDate;
+  }
+
+  if (
+    filter.createdAt?.$gte &&
+    filter.createdAt?.$lte &&
+    filter.createdAt.$gte > filter.createdAt.$lte
+  ) {
+    throw new Error("Start date cannot be after end date.");
+  }
+
+  return filter;
+};
+
+const buildActivityWorkbook = async (activities) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Activity Monitor");
+
+  sheet.columns = [
+    { header: "User Name", key: "userName", width: 24 },
+    { header: "Email", key: "email", width: 28 },
+    { header: "Role", key: "role", width: 16 },
+    { header: "Activity", key: "activity", width: 18 },
+    { header: "Details", key: "details", width: 42 },
+    { header: "Date", key: "date", width: 14 },
+    { header: "Time", key: "time", width: 14 },
+    { header: "IP Address", key: "ipAddress", width: 18 },
+    { header: "Browser", key: "browser", width: 60 },
   ];
 
-  const rows = activities.map((activity) => {
-    const activityDate = new Date(activity.createdAt);
-    const user = activity.user || {};
+  sheet.addRows(
+    activities.map((activity) => {
+      const activityDate = new Date(activity.createdAt);
+      const user = activity.user || {};
 
-    return [
-      user.name || "Unknown user",
-      user.email || "",
-      user.role || "",
-      formatActivityAction(activity.action),
-      activity.description,
-      activityDate.toLocaleDateString(),
-      activityDate.toLocaleTimeString(),
-      activity.ipAddress,
-      activity.userAgent,
-    ];
-  });
+      return {
+        userName: user.name || "Unknown user",
+        email: user.email || "",
+        role: user.role || "",
+        activity: formatActivityAction(activity.action),
+        details: activity.description,
+        date: activityDate.toLocaleDateString(),
+        time: activityDate.toLocaleTimeString(),
+        ipAddress: activity.ipAddress,
+        browser: activity.userAgent,
+      };
+    }),
+  );
 
-  return [headers, ...rows]
-    .map((row) => row.map(csvCell).join(","))
-    .join("\r\n");
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF860012" },
+  };
+  sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+  return workbook.xlsx.writeBuffer();
 };
 
 exports.getDashboardStats = async (req, res) => {
@@ -80,7 +155,7 @@ exports.getDashboardStats = async (req, res) => {
     const recentActivity = await ActivityLog.find()
       .populate("user", "name email role")
       .sort({ createdAt: -1 })
-      .limit(20);
+      .limit(10);
 
     res.json({
       success: true,
@@ -106,22 +181,32 @@ exports.getDashboardStats = async (req, res) => {
 
 exports.downloadActivityLog = async (req, res) => {
   try {
-    const activities = await ActivityLog.find()
+    const filter = getActivityDateRange(req.query);
+    const activities = await ActivityLog.find(filter)
       .populate("user", "name email role")
       .sort({ createdAt: -1 });
 
-    const csv = buildActivityCsv(activities);
+    const buffer = await buildActivityWorkbook(activities);
     const today = new Date().toISOString().slice(0, 10);
+    const rangeSuffix =
+      req.query.startDate || req.query.endDate
+        ? `-${req.query.startDate || "start"}-to-${req.query.endDate || today}`
+        : "";
 
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="activity-log-${today}.csv"`,
+      `attachment; filename="activity-log${rangeSuffix}-${today}.xlsx"`,
     );
 
-    res.send(`\uFEFF${csv}`);
+    res.send(Buffer.from(buffer));
   } catch (error) {
-    res.status(500).json({
+    const statusCode = /date/i.test(error.message) ? 400 : 500;
+
+    res.status(statusCode).json({
       success: false,
       message: error.message,
     });
@@ -150,7 +235,7 @@ exports.getReportsSummary = async (req, res) => {
       ActivityLog.find()
         .populate("user", "name email role")
         .sort({ createdAt: -1 })
-        .limit(25),
+        .limit(10),
     ]);
 
     const activityCounts = await ActivityLog.aggregate([

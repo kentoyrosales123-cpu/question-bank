@@ -1,8 +1,5 @@
 protectPage();
 
-const currentUser = getUser();
-const isAdmin = currentUser && currentUser.role === "admin";
-
 document.getElementById("uploadForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -75,15 +72,12 @@ async function parseUpload(uploadId) {
 
     document.getElementById(`parseMsg_${uploadId}`).textContent = data.message;
 
-    if (isAdmin) {
-      setTimeout(() => {
-        location.href = "/parsed-questions.html";
-      }, 1000);
-      return;
-    }
-
     document.getElementById(`parseMsg_${uploadId}`).textContent =
-      `${data.message} Your parsed questions were sent for admin review.`;
+      `${data.message} Opening parsed question review...`;
+
+    setTimeout(() => {
+      location.href = `/parsed-questions.html?uploadId=${encodeURIComponent(uploadId)}`;
+    }, 1000);
   } catch (error) {
     document.getElementById(`parseMsg_${uploadId}`).textContent = error.message;
   }

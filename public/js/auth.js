@@ -73,6 +73,7 @@ function syncDashboardLinks() {
       "/item-analysis-upload.html",
       "/generate-exam.html",
       "/upload.html",
+      "/parsed-questions.html",
     ].forEach((href) => {
       document.querySelectorAll(`a[href="${href}"]`).forEach((link) => {
         link.classList.add("hidden");
@@ -83,7 +84,6 @@ function syncDashboardLinks() {
   [
     "/questions.html",
     "/add-question.html",
-    "/parsed-questions.html",
     "/users.html",
     "/reports.html",
   ].forEach((href) => {

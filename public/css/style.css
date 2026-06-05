@@ -1767,6 +1767,38 @@ pre {
   margin-top: 18px;
 }
 
+.activity-download-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.activity-download-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.activity-download-controls input {
+  min-width: 145px;
+  min-height: 38px;
+}
+
+.activity-table-wrap {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.activity-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .empty-table-cell {
   color: var(--muted);
   text-align: center;
