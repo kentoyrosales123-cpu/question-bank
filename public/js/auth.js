@@ -51,7 +51,7 @@ function adminOnlyPage() {
 function userOnlyPage() {
   const user = getUser();
 
-  if (user && user.role === "admin") {
+  if (user && ["admin", "super_admin"].includes(user.role)) {
     location.href = "/dashboard.html";
   }
 }
@@ -91,6 +91,86 @@ function syncDashboardLinks() {
       link.classList.add("hidden");
     });
   });
+}
+
+function setActiveSidebarLink(sidebar) {
+  const currentPath = location.pathname;
+  const dashboardUrl = getDashboardUrl();
+
+  sidebar.querySelectorAll("a").forEach((link) => {
+    const href = link.getAttribute("href");
+    const linkPath = href && href.startsWith("/") ? new URL(href, location.origin).pathname : "";
+    const isDashboard =
+      (currentPath === "/dashboard.html" || currentPath === "/user-dashboard.html") &&
+      linkPath === dashboardUrl;
+
+    link.classList.toggle(
+      "active",
+      Boolean(linkPath && (linkPath === currentPath || isDashboard)),
+    );
+  });
+}
+
+function initSidebar() {
+  const sidebar = document.querySelector(".sidebar");
+
+  if (!sidebar) {
+    return;
+  }
+
+  sidebar.querySelectorAll('a[onclick*="logout"]').forEach((link) => {
+    link.href = "/login.html";
+    link.setAttribute("role", "button");
+  });
+
+  syncDashboardLinks();
+  setActiveSidebarLink(sidebar);
+
+  if (document.querySelector(".sidebar-toggle")) {
+    return;
+  }
+
+  const toggle = document.createElement("button");
+  toggle.className = "sidebar-toggle";
+  toggle.type = "button";
+  toggle.setAttribute("aria-label", "Open navigation");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.innerHTML = "<span></span><span></span><span></span>";
+
+  const backdrop = document.createElement("button");
+  backdrop.className = "sidebar-backdrop";
+  backdrop.type = "button";
+  backdrop.setAttribute("aria-label", "Close navigation");
+
+  const closeSidebar = () => {
+    document.body.classList.remove("sidebar-open");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation");
+  };
+
+  toggle.addEventListener("click", () => {
+    const isOpen = document.body.classList.toggle("sidebar-open");
+    toggle.setAttribute("aria-expanded", String(isOpen));
+    toggle.setAttribute("aria-label", isOpen ? "Close navigation" : "Open navigation");
+  });
+
+  backdrop.addEventListener("click", closeSidebar);
+  sidebar.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => {
+      if (window.matchMedia("(max-width: 850px)").matches) {
+        closeSidebar();
+      }
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeSidebar();
+    }
+  });
+
+  document.body.prepend(toggle);
+  document.body.append(backdrop);
 }
 
 async function apiRequest(
@@ -154,7 +234,7 @@ function setMessage(elementId, message, isError = true) {
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
-  syncDashboardLinks();
+  initSidebar();
 });
 
 const loginForm = document.getElementById("loginForm");

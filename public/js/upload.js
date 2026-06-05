@@ -5,6 +5,12 @@ document.getElementById("uploadForm").addEventListener("submit", async (e) => {
 
   const file = document.getElementById("questionnaire").files[0];
 
+  if (!file) {
+    document.getElementById("uploadMessage").textContent =
+      "Please choose a file to upload.";
+    return;
+  }
+
   const form = new FormData();
   form.append("questionnaire", file);
 
@@ -21,6 +27,8 @@ document.getElementById("uploadForm").addEventListener("submit", async (e) => {
 
 async function loadUploads() {
   try {
+    const user = getUser();
+    const isAdmin = user && ["admin", "super_admin"].includes(user.role);
     const data = await apiRequest("/uploads");
 
     document.getElementById("uploadsList").innerHTML = data.uploads

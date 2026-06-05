@@ -34,7 +34,8 @@ exports.uploadQuestionnaire = async (req, res) => {
 
 exports.getUploads = async (req, res) => {
   try {
-    const query = req.user.role === "admin" ? {} : { uploadedBy: req.user._id };
+    const isAdmin = ["admin", "super_admin"].includes(req.user.role);
+    const query = isAdmin ? {} : { uploadedBy: req.user._id };
     const uploads = await Upload.find(query)
       .populate("uploadedBy", "name email")
       .sort({ createdAt: -1 });
@@ -66,7 +67,7 @@ exports.deleteUpload = async (req, res) => {
     const isOwner =
       upload.uploadedBy && upload.uploadedBy.toString() === req.user._id.toString();
 
-    if (req.user.role !== "admin" && !isOwner) {
+    if (!["admin", "super_admin"].includes(req.user.role) && !isOwner) {
       return res.status(403).json({
         success: false,
         message: "You do not have access to this uploaded file.",
