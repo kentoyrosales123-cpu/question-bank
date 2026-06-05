@@ -19,6 +19,7 @@ const {
 const ItemAnalysisExam = require("../models/ItemAnalysisExam");
 const ItemAnalysisStudentResult = require("../models/ItemAnalysisStudentResult");
 const Exam = require("../models/Exam");
+const Question = require("../models/Question");
 
 const normalizeHeader = (value) =>
   String(value || "")
@@ -44,6 +45,9 @@ const difficultyInterpretation = (index) => {
   if (index >= 0.3) return "Difficult";
   return "Very Difficult";
 };
+
+const questionDifficultyFromInterpretation = (interpretation) =>
+  interpretation === "Very Difficult" ? "Difficult" : interpretation;
 
 const discriminationInterpretation = (index) => {
   if (index < 0) return "Check Item / Possible Miskey";
@@ -770,6 +774,57 @@ const getExamWithResults = async (analysisExamId, user) => {
   return { exam, results };
 };
 
+const updateGeneratedExamQuestionDifficulties = async (exam, analysis) => {
+  if (
+    !exam?.generatedExamId ||
+    !Array.isArray(analysis?.items) ||
+    Number(analysis.summary?.totalStudents || 0) < 1
+  ) {
+    return { matchedCount: 0, modifiedCount: 0 };
+  }
+
+  const generatedExam = await Exam.findById(exam.generatedExamId)
+    .select("questions")
+    .lean();
+
+  if (!generatedExam?.questions?.length) {
+    return { matchedCount: 0, modifiedCount: 0 };
+  }
+
+  const operations = analysis.items
+    .map((item) => {
+      const questionId = generatedExam.questions[item.itemNo - 1];
+      const difficulty = questionDifficultyFromInterpretation(
+        item.difficultyInterpretation,
+      );
+
+      if (!questionId || !["Easy", "Average", "Difficult"].includes(difficulty)) {
+        return null;
+      }
+
+      return {
+        updateOne: {
+          filter: {
+            _id: questionId,
+            difficulty: { $ne: difficulty },
+          },
+          update: { $set: { difficulty } },
+        },
+      };
+    })
+    .filter(Boolean);
+
+  if (operations.length === 0) {
+    return { matchedCount: 0, modifiedCount: 0 };
+  }
+
+  const result = await Question.bulkWrite(operations);
+  return {
+    matchedCount: result.matchedCount || 0,
+    modifiedCount: result.modifiedCount || 0,
+  };
+};
+
 exports.listItemAnalysisExams = async (req, res) => {
   try {
     const query = {};
@@ -1111,12 +1166,21 @@ exports.saveScannedResult = async (req, res) => {
         setDefaultsOnInsert: true,
       },
     );
+    const results = await ItemAnalysisStudentResult.find({
+      analysisExamId: data.exam._id,
+    }).sort({ totalScore: -1, studentName: 1 });
+    const analysis = computeAnalysis(data.exam, results);
+    const difficultySync = await updateGeneratedExamQuestionDifficulties(
+      data.exam,
+      analysis,
+    );
 
     res.status(201).json({
       success: true,
       message: "Scanned answers saved to item analysis.",
       result,
       analysisExamId: data.exam._id,
+      difficultySync,
     });
   } catch (error) {
     res.status(400).json({
@@ -1205,10 +1269,15 @@ exports.getItemAnalysis = async (req, res) => {
     }
 
     const analysis = computeAnalysis(data.exam, data.results);
+    const difficultySync = await updateGeneratedExamQuestionDifficulties(
+      data.exam,
+      analysis,
+    );
 
     res.json({
       success: true,
       analysis,
+      difficultySync,
     });
   } catch (error) {
     res.status(500).json({
@@ -1265,6 +1334,7 @@ exports.exportItemAnalysis = async (req, res) => {
     }
 
     const analysis = computeAnalysis(data.exam, data.results);
+    await updateGeneratedExamQuestionDifficulties(data.exam, analysis);
     const workbook = new ExcelJS.Workbook();
     const summarySheet = workbook.addWorksheet("Summary");
     const itemSheet = workbook.addWorksheet("Item Analysis");
