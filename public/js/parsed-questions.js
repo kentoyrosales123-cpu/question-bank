@@ -197,7 +197,7 @@ function renderParsedCard(q, index) {
 function renderDuplicateWarning(candidates) {
   return `
     <div class="review-warnings duplicate-warning">
-      <strong>Possible duplicate</strong>
+      <strong>High duplicate risk</strong>
       ${candidates
         .map(
           (candidate) => `
@@ -312,9 +312,7 @@ function getQuestionWarnings(q) {
   if (!q.subject) warnings.push("Missing subject");
   if (!q.topic) warnings.push("Missing topic");
   if (Array.isArray(q.duplicateCandidates) && q.duplicateCandidates.length > 0) {
-    warnings.push(
-      q.duplicateRisk === "High" ? "High duplicate risk" : "Possible duplicate",
-    );
+    warnings.push("High duplicate risk");
   }
 
   return warnings;

@@ -122,8 +122,7 @@ const findDuplicateCandidates = (question, existingQuestions = []) => {
         normalizeQuestionForDuplicateCheck(existing.topic) ===
         normalizeQuestionForDuplicateCheck(question.topic);
       const exactText = normalizedText && normalizedText === existingText;
-      const similarity = getSimilarityScore(question.questionText, existing.questionText);
-      const score = exactText ? 1 : similarity + (sameSubject ? 0.04 : 0) + (sameTopic ? 0.04 : 0);
+      const score = exactText ? 1 : 0;
 
       return {
         questionId: existing._id,
@@ -135,7 +134,7 @@ const findDuplicateCandidates = (question, existingQuestions = []) => {
         exactText,
       };
     })
-    .filter((candidate) => candidate.exactText || candidate.score >= 0.72)
+    .filter((candidate) => candidate.exactText)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 };
@@ -858,9 +857,7 @@ exports.getParsedQuestions = async (req, res) => {
       item.duplicateRisk =
         item.duplicateCandidates.length === 0
           ? "None"
-          : item.duplicateCandidates[0].score >= 0.9
-            ? "High"
-            : "Possible";
+          : "High";
 
       return item;
     });
@@ -915,13 +912,13 @@ exports.approveParsedQuestion = async (req, res) => {
       .select("subject topic questionText difficulty")
       .lean();
     const duplicateCandidates = findDuplicateCandidates(parsed, existingQuestions);
-    const highRiskDuplicate = duplicateCandidates.find((candidate) => candidate.score >= 0.9);
+    const exactDuplicate = duplicateCandidates.find((candidate) => candidate.score === 1);
 
-    if (highRiskDuplicate && req.body?.force !== true) {
+    if (exactDuplicate && req.body?.force !== true) {
       return res.status(409).json({
         success: false,
         message:
-          "Possible duplicate detected. Review the duplicate warning before approving this question.",
+          "High duplicate risk: 100% match detected. Review the duplicate warning before approving this question.",
         duplicateCandidates,
       });
     }
