@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { isAdmin } = require("../utils/roles");
 
 const protect = async (req, res, next) => {
   try {
@@ -42,7 +43,7 @@ const protect = async (req, res, next) => {
 };
 
 const adminOnly = (req, res, next) => {
-  if (!req.user || !["admin", "super_admin"].includes(req.user.role)) {
+  if (!isAdmin(req.user)) {
     return res.status(403).json({
       success: false,
       message: "Admin access only.",

@@ -18,7 +18,7 @@
         <a href="/profile.html">Profile</a>
         <a class="active" href="/users.html">Users</a>
         <a href="/reports.html">Reports</a>
-        <a class="settings-link" href="#settings">Settings</a>
+        <a class="support-link" href="#support">Chat Support</a>
         <div class="nav-divider"></div>
         <a onclick="logout()">Logout</a>
       </aside>
@@ -28,7 +28,7 @@
           <div>
             <h1>User Management</h1>
             <p class="muted-text">
-              Create accounts, update roles, and remove inactive access.
+              Create accounts, update workflow roles, and remove inactive access.
             </p>
           </div>
 
@@ -63,9 +63,9 @@
           <div class="card metric-card metric-easy">
             <div class="metric-icon">P</div>
             <div>
-              <h3>Professors</h3>
+              <h3>Exam Creators</h3>
               <strong id="regularUsers">0</strong>
-              <small>regular users</small>
+              <small>exam creators</small>
             </div>
           </div>
 
@@ -122,11 +122,8 @@
             <label>
               <span class="field-label">Role</span>
               <select id="createUserRole">
-                <option value="professor">Professor</option>
-                <option value="student">Student</option>
-                <option value="user">Regular User</option>
-                <option value="admin">Admin</option>
-                <option value="super_admin">Super Admin</option>
+                <option value="exam_creator">Exam Creator</option>
+                <option value="exam_requestor">Exam Requestor</option>
               </select>
             </label>
 

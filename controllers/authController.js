@@ -9,6 +9,7 @@ const { logActivity } = require("../services/activityLogger");
 const {
   normalizeEmail,
 } = require("../config/loginAccess");
+const { ROLES } = require("../utils/roles");
 
 const OTP_EXPIRY_MINUTES = 10;
 const OTP_RESEND_SECONDS = 60;
@@ -83,7 +84,7 @@ exports.register = async (req, res) => {
       existingUser ||
       new User({
         email: normalizedEmail,
-        role: "user",
+        role: ROLES.EXAM_REQUESTOR,
       });
 
     user.name = String(name).trim();

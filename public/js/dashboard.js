@@ -1,16 +1,41 @@
 protectPage();
 adminOnlyPage();
 
+let dashboardStats = null;
+let activeDashboardModal = null;
+
+function setDashboardLoadingState() {
+  document.getElementById("totalUsers").textContent = "...";
+  document.getElementById("totalQuestions").textContent = "...";
+  document.getElementById("recentQuestions").innerHTML =
+    `<p class="muted-text">Loading recent questions...</p>`;
+  document.getElementById("recentExams").innerHTML =
+    `<p class="muted-text">Loading recent exams...</p>`;
+  document.getElementById("registeredUsers").innerHTML =
+    `<p class="muted-text">Loading registered users...</p>`;
+  document.getElementById("activityBody").innerHTML = `
+    <tr>
+      <td colspan="6" class="empty-table-cell">Loading activity...</td>
+    </tr>
+  `;
+}
+
 async function loadDashboard() {
   try {
+    setDashboardLoadingState();
     const data = await apiRequest("/dashboard/stats");
     const stats = data.stats;
+    dashboardStats = stats;
     const user = getUser();
 
     if (user?.name) {
       document.getElementById("adminWelcome").textContent =
         `Welcome back, ${user.name}! Here's what's happening with your question bank.`;
     }
+
+    document
+      .getElementById("supportTicketsButton")
+      ?.classList.toggle("hidden", !isSuperAdminRole(user));
 
     document.getElementById("totalUsers").textContent = stats.totalUsers;
     document.getElementById("totalQuestions").textContent =
@@ -38,9 +63,13 @@ async function loadDashboard() {
         ? stats.recentActivity.slice(0, 10).map(renderActivityRow).join("")
         : `
           <tr>
-            <td colspan="5" class="empty-table-cell">No activity recorded yet.</td>
+            <td colspan="6" class="empty-table-cell">No activity recorded yet.</td>
           </tr>
         `;
+
+    if (activeDashboardModal) {
+      renderDashboardModal(activeDashboardModal);
+    }
   } catch (error) {
     alert(error.message);
   }
@@ -110,20 +139,139 @@ function renderQuestionItem(question) {
 }
 
 function renderExamItem(exam) {
+  const status = exam.approvalStatus || "Approved";
+  const isPending = status === "Pending";
+  const isRejected = status === "Rejected";
+  const owner = exam.user?.name || exam.user?.email || "Unknown user";
+
   return `
     <div class="dashboard-list-item">
       <span class="item-file">D</span>
       <div>
         <strong>${escapeHTML(exam.title)}</strong>
-        <small>${escapeHTML(exam.totalItems)} items</small>
+        <small>${escapeHTML(exam.totalItems)} items by ${escapeHTML(owner)}</small>
       </div>
-      <small>${relativeTime(exam.createdAt)}</small>
+      <span class="badge ${isPending ? "average" : isRejected ? "difficult" : "easy"}">
+        ${isPending ? "Pending Approval" : isRejected ? "Rejected" : "Released"}
+      </span>
+      ${
+        isPending
+          ? `<div class="action-row">
+              <button class="btn secondary compact-btn" type="button" onclick="approveExam('${exam._id}')">Approve</button>
+              <button class="btn danger compact-btn" type="button" onclick="rejectExam('${exam._id}')">Reject</button>
+            </div>`
+          : `<small>${relativeTime(exam.createdAt)}</small>`
+      }
     </div>
+  `;
+}
+
+async function rejectExam(examId) {
+  if (!confirm("Reject this exam request?")) {
+    return;
+  }
+
+  try {
+    const data = await apiRequest(`/exams/${examId}/reject`, "POST");
+    alert(data.message || "Exam request rejected.");
+    await loadDashboard();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function approveExam(examId) {
+  try {
+    const data = await apiRequest(`/exams/${examId}/approve`, "POST");
+    alert(data.message || "Exam approved.");
+    await loadDashboard();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function openDashboardModal(type) {
+  activeDashboardModal = type;
+  renderDashboardModal(type);
+  document.getElementById("dashboardModal").classList.remove("hidden");
+}
+
+function closeDashboardModal() {
+  activeDashboardModal = null;
+  document.getElementById("dashboardModal").classList.add("hidden");
+  document.getElementById("dashboardModalBody").innerHTML = "";
+}
+
+function renderDashboardModal(type) {
+  if (!dashboardStats) return;
+
+  const title = document.getElementById("dashboardModalTitle");
+  const subtitle = document.getElementById("dashboardModalSubtitle");
+  const body = document.getElementById("dashboardModalBody");
+
+  if (type === "questions") {
+    const questions = dashboardStats.recentQuestions || [];
+    title.textContent = "Recent Questions";
+    subtitle.textContent = `${questions.length} latest question-bank items`;
+    body.innerHTML =
+      questions.length > 0
+        ? questions.map(renderQuestionItem).join("")
+        : `<p class="muted-text">No recent questions.</p>`;
+    return;
+  }
+
+  if (type === "users") {
+    const users = dashboardStats.registeredUsers || [];
+    title.textContent = "Registered Users";
+    subtitle.textContent = `${users.length} latest registered accounts`;
+    body.innerHTML =
+      users.length > 0
+        ? users.map(renderUserItem).join("")
+        : `<p class="muted-text">No registered users.</p>`;
+    return;
+  }
+
+  const exams = dashboardStats.recentExams || [];
+  const pendingExams = exams.filter(
+    (exam) => (exam.approvalStatus || "Approved") === "Pending",
+  );
+  const releasedExams = exams.filter(
+    (exam) => (exam.approvalStatus || "Approved") === "Approved",
+  );
+  const rejectedExams = exams.filter(
+    (exam) => (exam.approvalStatus || "Approved") === "Rejected",
+  );
+
+  title.textContent = "Exam Approval Requests";
+  subtitle.textContent = `${pendingExams.length} pending approval request${pendingExams.length === 1 ? "" : "s"}`;
+  body.innerHTML = `
+    ${
+      pendingExams.length > 0
+        ? pendingExams.map(renderExamItem).join("")
+        : `<p class="muted-text">No pending approval requests.</p>`
+    }
+    <div class="dashboard-modal-divider">
+      <strong>Released Exams</strong>
+    </div>
+    ${
+      releasedExams.length > 0
+        ? releasedExams.map(renderExamItem).join("")
+        : `<p class="muted-text">No released exams yet.</p>`
+    }
+    <div class="dashboard-modal-divider">
+      <strong>Rejected Exams</strong>
+    </div>
+    ${
+      rejectedExams.length > 0
+        ? rejectedExams.map(renderExamItem).join("")
+        : `<p class="muted-text">No rejected exams yet.</p>`
+    }
   `;
 }
 
 function renderUserItem(user) {
   const initial = escapeHTML((user.name || user.email || "?").charAt(0));
+  const isManager = hasAnyRole(user, ["super_admin", "admin"]);
 
   return `
     <div class="dashboard-list-item user-row">
@@ -132,8 +280,8 @@ function renderUserItem(user) {
         <strong>${escapeHTML(user.name)}</strong>
         <small>${escapeHTML(user.email)}</small>
       </div>
-      <span class="badge ${user.role === "admin" ? "difficult" : "easy"}">
-        ${user.role === "admin" ? "Super Admin" : "Professor"}
+      <span class="badge ${isManager ? "difficult" : "easy"}">
+        ${escapeHTML(getRoleLabel(user.role))}
       </span>
     </div>
   `;
@@ -143,14 +291,32 @@ function renderActivityRow(activity) {
   const activityDate = new Date(activity.createdAt);
   const user = activity.user || {};
   const actionLabel =
-    activity.action === "generate_exam" ? "Generated Exam" : "Logged In";
-  const badgeClass = activity.action === "generate_exam" ? "average" : "easy";
+    activity.action === "generate_exam"
+      ? "Generated Exam"
+      : activity.action === "approve_exam"
+      ? "Approved Exam"
+      : activity.action === "reject_exam"
+      ? "Rejected Exam"
+      : "Logged In";
+  const badgeClass =
+    activity.action === "generate_exam"
+      ? "average"
+      : activity.action === "approve_exam"
+      ? "easy"
+      : activity.action === "reject_exam"
+      ? "difficult"
+      : "easy";
 
   return `
     <tr>
       <td>
         <strong>${escapeHTML(user.name || "Unknown user")}</strong><br>
         <small>${escapeHTML(user.email || "")}</small>
+      </td>
+      <td>
+        <span class="badge ${hasAnyRole(user, ["super_admin", "admin"]) ? "difficult" : "easy"}">
+          ${escapeHTML(getRoleLabel(user.role))}
+        </span>
       </td>
       <td><span class="badge ${badgeClass}">${actionLabel}</span></td>
       <td>${escapeHTML(activity.description)}</td>

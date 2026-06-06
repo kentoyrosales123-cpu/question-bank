@@ -1,6 +1,13 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 const { logActivity } = require("../services/activityLogger");
+const { notifyRoles, notifyUsers } = require("../services/notificationService");
+const {
+  canGenerateExam,
+  isAdmin,
+  isExamRequestor,
+  ROLES,
+} = require("../utils/roles");
 
 const {
   Document,
@@ -16,9 +23,21 @@ const {
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
-  if (user.role === "admin") return true;
+  if (isAdmin(user)) return true;
 
   return exam.user && exam.user.toString() === user._id.toString();
+};
+
+const isApprovedExam = (exam) => (exam.approvalStatus || "Approved") === "Approved";
+
+const getBlockedExamMessage = (exam) =>
+  exam.approvalStatus === "Rejected"
+    ? "This exam request was rejected by an admin."
+    : "This exam is pending admin approval.";
+
+const canOpenExamContent = (exam, user) => {
+  if (!canAccessExam(exam, user)) return false;
+  return isAdmin(user) || isApprovedExam(exam);
 };
 
 const normalizeSelection = (value) => {
@@ -154,6 +173,13 @@ exports.getExamOptions = async (req, res) => {
 
 exports.generateExam = async (req, res) => {
   try {
+    if (!canGenerateExam(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins, Exam Creators, and Exam Requestors can generate exams.",
+      });
+    }
+
     const {
       title,
       subject,
@@ -295,6 +321,9 @@ exports.generateExam = async (req, res) => {
       difficultCount,
       questions: allQuestions.map((q) => q._id),
       user: req.user._id,
+      approvalStatus: isExamRequestor(req.user) ? "Pending" : "Approved",
+      approvedBy: isExamRequestor(req.user) ? undefined : req.user._id,
+      approvedAt: isExamRequestor(req.user) ? undefined : new Date(),
     });
 
     const populatedExam = await Exam.findById(exam._id).populate({
@@ -319,9 +348,21 @@ exports.generateExam = async (req, res) => {
       },
     });
 
+    if (isExamRequestor(req.user)) {
+      await notifyRoles([ROLES.ADMIN, ROLES.SUPER_ADMIN], {
+        actor: req.user._id,
+        title: "Exam approval request",
+        message: `${req.user.name} generated "${exam.title}" and needs approval.`,
+        type: "exam_approval",
+        link: "/dashboard.html",
+      });
+    }
+
     res.status(201).json({
       success: true,
-      message: "Exam generated successfully.",
+      message: isExamRequestor(req.user)
+        ? "Exam generated and submitted for admin approval."
+        : "Exam generated successfully.",
       exam: populatedExam,
     });
   } catch (error) {
@@ -352,10 +393,12 @@ exports.submitExam = async (req, res) => {
       });
     }
 
-    if (!canAccessExam(exam, req.user)) {
+    if (!canOpenExamContent(exam, req.user)) {
       return res.status(403).json({
         success: false,
-        message: "You do not have access to this exam.",
+        message: isApprovedExam(exam)
+          ? "You do not have access to this exam."
+          : getBlockedExamMessage(exam),
       });
     }
 
@@ -423,10 +466,12 @@ exports.getExam = async (req, res) => {
       });
     }
 
-    if (!canAccessExam(exam, req.user)) {
+    if (!canOpenExamContent(exam, req.user)) {
       return res.status(403).json({
         success: false,
-        message: "You do not have access to this exam.",
+        message: isApprovedExam(exam)
+          ? "You do not have access to this exam."
+          : getBlockedExamMessage(exam),
       });
     }
 
@@ -444,10 +489,22 @@ exports.getExam = async (req, res) => {
 
 exports.getMyExamSummary = async (req, res) => {
   try {
-    const [totalExams, recentExams, itemSummary] = await Promise.all([
+    const [totalExams, approvedExams, pendingExams, rejectedExams, recentExams, itemSummary] = await Promise.all([
       Exam.countDocuments({ user: req.user._id }),
+      Exam.countDocuments({
+        user: req.user._id,
+        approvalStatus: "Approved",
+      }),
+      Exam.countDocuments({
+        user: req.user._id,
+        approvalStatus: "Pending",
+      }),
+      Exam.countDocuments({
+        user: req.user._id,
+        approvalStatus: "Rejected",
+      }),
       Exam.find({ user: req.user._id })
-        .select("title subject topic totalItems createdAt updatedAt")
+        .select("title subject topic totalItems approvalStatus createdAt updatedAt")
         .sort({ createdAt: -1 })
         .limit(10),
       Exam.aggregate([
@@ -469,9 +526,128 @@ exports.getMyExamSummary = async (req, res) => {
       success: true,
       summary: {
         totalExams,
+        approvedExams,
+        pendingExams,
+        rejectedExams,
         totalItems: itemSummary[0]?.totalItems || 0,
         recentExams,
       },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.approveExam = async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access only.",
+      });
+    }
+
+    const exam = await Exam.findById(req.params.id).populate("user", "name email role");
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    exam.approvalStatus = "Approved";
+    exam.approvedBy = req.user._id;
+    exam.approvedAt = new Date();
+    exam.rejectedBy = undefined;
+    exam.rejectedAt = undefined;
+    await exam.save();
+
+    await logActivity(req, {
+      user: req.user,
+      action: "approve_exam",
+      description: `Approved exam: ${exam.title}`,
+      metadata: {
+        exam: exam._id,
+        owner: exam.user?._id,
+      },
+    });
+
+    if (exam.user?._id) {
+      await notifyUsers([exam.user._id], {
+        actor: req.user._id,
+        title: "Exam approved",
+        message: `"${exam.title}" has been approved and released.`,
+        type: "exam_approved",
+        link: "/user-dashboard.html",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Exam approved and released.",
+      exam,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.rejectExam = async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access only.",
+      });
+    }
+
+    const exam = await Exam.findById(req.params.id).populate("user", "name email role");
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    exam.approvalStatus = "Rejected";
+    exam.rejectedBy = req.user._id;
+    exam.rejectedAt = new Date();
+    exam.approvedBy = undefined;
+    exam.approvedAt = undefined;
+    await exam.save();
+
+    await logActivity(req, {
+      user: req.user,
+      action: "reject_exam",
+      description: `Rejected exam: ${exam.title}`,
+      metadata: {
+        exam: exam._id,
+        owner: exam.user?._id,
+      },
+    });
+
+    if (exam.user?._id) {
+      await notifyUsers([exam.user._id], {
+        actor: req.user._id,
+        title: "Exam rejected",
+        message: `"${exam.title}" was rejected by an admin.`,
+        type: "exam_rejected",
+        link: "/user-dashboard.html",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Exam request rejected.",
+      exam,
     });
   } catch (error) {
     res.status(500).json({
@@ -638,10 +814,12 @@ const sendExamDocx = async (req, res, options = {}) => {
       });
     }
 
-    if (!canAccessExam(exam, req.user)) {
+    if (!canOpenExamContent(exam, req.user)) {
       return res.status(403).json({
         success: false,
-        message: "You do not have access to this exam.",
+        message: isApprovedExam(exam)
+          ? "You do not have access to this exam."
+          : getBlockedExamMessage(exam),
       });
     }
 

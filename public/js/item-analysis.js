@@ -4,8 +4,8 @@ const analysisUser = getUser();
 let analysisId = location.pathname.split("/").filter(Boolean).pop();
 let chartInstances = [];
 
-if (analysisUser && analysisUser.role === "student") {
-  alert("Item analysis is for professors and admins only.");
+if (analysisUser && !isAdminRole(analysisUser) && !isCreatorRole(analysisUser)) {
+  alert("Item analysis is for Admins and Exam Creators only.");
   location.href = getDashboardUrl(analysisUser);
 }
 

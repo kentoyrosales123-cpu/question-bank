@@ -7,8 +7,20 @@ const Exam = require("../models/Exam");
 const { normalizeEmail } = require("../config/loginAccess");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 const imageUpload = require("../middleware/imageUploadMiddleware");
+const {
+  ACTIVE_ROLES,
+  ROLE_LABELS,
+  ROLES,
+  canAssignRole,
+  getCreatableRoles,
+  isAdmin,
+  normalizeRole,
+} = require("../utils/roles");
 
-const allowedRoles = ["user", "admin", "super_admin", "professor", "student"];
+const formatRoleList = (roles) => roles.map((role) => ROLE_LABELS[role]).join(", ");
+
+router.use("/support-tickets", require("./supportTicketRoutes"));
+router.use("/notifications", require("./notificationRoutes"));
 
 router.get("/", protect, adminOnly, async (req, res) => {
   try {
@@ -33,7 +45,7 @@ router.post("/", protect, adminOnly, async (req, res) => {
     const name = String(req.body.name || "").trim();
     const email = normalizeEmail(req.body.email);
     const password = String(req.body.password || "");
-    const role = req.body.role || "user";
+    const role = req.body.role || ROLES.EXAM_REQUESTOR;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -42,10 +54,18 @@ router.post("/", protect, adminOnly, async (req, res) => {
       });
     }
 
-    if (!allowedRoles.includes(role)) {
+    if (!ACTIVE_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Role must be user, professor, student, admin, or super admin.",
+        message: `Role must be ${formatRoleList(ACTIVE_ROLES)}.`,
+      });
+    }
+
+    const creatableRoles = getCreatableRoles(req.user);
+    if (!creatableRoles.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: `You can only create ${formatRoleList(creatableRoles)} accounts.`,
       });
     }
 
@@ -84,13 +104,25 @@ router.post("/", protect, adminOnly, async (req, res) => {
   }
 });
 
+router.get("/roles/options", protect, adminOnly, async (req, res) => {
+  const roles = getCreatableRoles(req.user).map((role) => ({
+    value: role,
+    label: ROLE_LABELS[role],
+  }));
+
+  res.json({
+    success: true,
+    roles,
+  });
+});
+
 router.get("/me/profile", protect, async (req, res) => {
   try {
     const [totalExams, submittedExams, recentExams] = await Promise.all([
       Exam.countDocuments({ user: req.user._id }),
       Exam.countDocuments({ user: req.user._id, submitted: true }),
       Exam.find({ user: req.user._id })
-        .select("title totalItems submitted createdAt")
+        .select("title totalItems submitted approvalStatus createdAt")
         .sort({ createdAt: -1 })
         .limit(4),
     ]);
@@ -133,7 +165,7 @@ router.get("/me/profile-image", protect, async (req, res) => {
 router.get("/me/activity", protect, async (req, res) => {
   try {
     const exams = await Exam.find({ user: req.user._id })
-      .select("title subject topic totalItems submitted score createdAt")
+      .select("title subject topic totalItems submitted score approvalStatus createdAt")
       .sort({ createdAt: -1 });
 
     res.json({
@@ -227,20 +259,43 @@ router.patch("/:id/role", protect, adminOnly, async (req, res) => {
   try {
     const { role } = req.body;
 
-    if (!allowedRoles.includes(role)) {
+    if (!ACTIVE_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Role must be user, professor, student, admin, or super admin.",
+        message: `Role must be ${formatRoleList(ACTIVE_ROLES)}.`,
       });
     }
 
     if (
       req.params.id === req.user._id.toString() &&
-      !["admin", "super_admin"].includes(role)
+      !isAdmin({ role })
     ) {
       return res.status(400).json({
         success: false,
         message: "You cannot remove your own admin role.",
+      });
+    }
+
+    if (!canAssignRole(req.user, role)) {
+      return res.status(403).json({
+        success: false,
+        message: `You can only assign ${formatRoleList(getCreatableRoles(req.user))} roles.`,
+      });
+    }
+
+    const existingUser = await User.findById(req.params.id);
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (!canAssignRole(req.user, normalizeRole(existingUser.role))) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot update an account outside your role hierarchy.",
       });
     }
 
@@ -249,13 +304,6 @@ router.patch("/:id/role", protect, adminOnly, async (req, res) => {
       { role },
       { new: true, runValidators: true },
     ).select("-password");
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
 
     res.json({
       success: true,
@@ -285,6 +333,13 @@ router.delete("/:id", protect, adminOnly, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "User not found.",
+      });
+    }
+
+    if (!canAssignRole(req.user, normalizeRole(user.role))) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot delete an account outside your role hierarchy.",
       });
     }
 

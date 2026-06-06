@@ -2,8 +2,8 @@ protectPage();
 
 const parsedReviewUser = getUser();
 
-if (parsedReviewUser && parsedReviewUser.role === "student") {
-  alert("Parsed question review is for teachers and authorized users only.");
+if (parsedReviewUser && !isAdminRole(parsedReviewUser) && !isCreatorRole(parsedReviewUser)) {
+  alert("Parsed question review is for Admins and Exam Creators only.");
   location.href = getDashboardUrl(parsedReviewUser);
 }
 

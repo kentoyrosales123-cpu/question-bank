@@ -20,6 +20,7 @@ const ItemAnalysisExam = require("../models/ItemAnalysisExam");
 const ItemAnalysisStudentResult = require("../models/ItemAnalysisStudentResult");
 const Exam = require("../models/Exam");
 const Question = require("../models/Question");
+const { isAdmin } = require("../utils/roles");
 
 const normalizeHeader = (value) =>
   String(value || "")
@@ -158,6 +159,7 @@ const maroon = "8A0013";
 const gold = "F2B705";
 const lightGold = "FFF7DF";
 const borderColor = "D7C6C6";
+const omrGridColor = "7A6A6A";
 const omrItemsPerPage = 100;
 const omrRowsPerBlock = 25;
 const omrMaxBlocksPerPage = 4;
@@ -166,6 +168,12 @@ const cellBorders = {
   bottom: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
   left: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
   right: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
+};
+const omrGridBorders = {
+  top: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
+  bottom: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
+  left: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
+  right: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
 };
 
 const omrCell = (text, options = {}) =>
@@ -282,6 +290,31 @@ const buildOmrTemplateBuffer = async ({
       const itemNumberWidth = blockWidth * 0.14;
       const answerWidth = blockWidth * 0.215;
       const bubbleSize = blockCount <= 2 ? 30 : 26;
+      const answerHeaderRow = new TableRow({
+        tableHeader: true,
+        children: Array.from({ length: blockCount }, () => [
+          omrCell("No.", {
+            borders: omrGridBorders,
+            bold: true,
+            color: maroon,
+            fill: lightGold,
+            margin: 14,
+            size: 14,
+            width: { size: itemNumberWidth, type: WidthType.PERCENTAGE },
+          }),
+          ...["A", "B", "C", "D"].map((choice) =>
+            omrCell(choice, {
+              borders: omrGridBorders,
+              bold: true,
+              color: maroon,
+              fill: lightGold,
+              margin: 14,
+              size: 14,
+              width: { size: answerWidth, type: WidthType.PERCENTAGE },
+            }),
+          ),
+        ]).flat(),
+      });
       const rows = Array.from({ length: omrRowsPerBlock }, (_, rowIndex) => {
         const fill = rowIndex % 2 === 0 ? "FFFFFF" : "FCF7F7";
 
@@ -293,6 +326,7 @@ const buildOmrTemplateBuffer = async ({
 
             return [
               omrCell(hasItem ? String(itemNo) : "", {
+                borders: omrGridBorders,
                 bold: true,
                 fill,
                 margin: 26,
@@ -300,24 +334,28 @@ const buildOmrTemplateBuffer = async ({
                 width: { size: itemNumberWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓐ" : "", {
+                borders: omrGridBorders,
                 fill,
                 margin: 18,
                 size: bubbleSize,
                 width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓑ" : "", {
+                borders: omrGridBorders,
                 fill,
                 margin: 18,
                 size: bubbleSize,
                 width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓒ" : "", {
+                borders: omrGridBorders,
                 fill,
                 margin: 18,
                 size: bubbleSize,
                 width: { size: answerWidth, type: WidthType.PERCENTAGE },
               }),
               omrCell(hasItem ? "Ⓓ" : "", {
+                borders: omrGridBorders,
                 fill,
                 margin: 18,
                 size: bubbleSize,
@@ -326,6 +364,13 @@ const buildOmrTemplateBuffer = async ({
             ];
           }).flat(),
         });
+      });
+      const answerTable = new Table({
+        width: {
+          size: 100,
+          type: WidthType.PERCENTAGE,
+        },
+        rows: [answerHeaderRow, ...rows],
       });
       const headerTable = new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
@@ -498,7 +543,7 @@ const buildOmrTemplateBuffer = async ({
                         size: 16,
                       }),
                       new TextRun({
-                        text: `Scan the page QR before capture. Shade one circle per item.`,
+                        text: `Scan the page QR before capture. Keep the answer table and its grid lines inside the camera frame. Shade one circle per item.`,
                         size: 16,
                       }),
                     ],
@@ -520,13 +565,7 @@ const buildOmrTemplateBuffer = async ({
           ? [spacerParagraph(), infoTable, spacerParagraph(), instructionTable]
           : []),
         spacerParagraph(),
-        new Table({
-          width: {
-            size: 100,
-            type: WidthType.PERCENTAGE,
-          },
-          rows,
-        }),
+        answerTable,
       ];
     }),
   );
@@ -783,7 +822,7 @@ const computeAnalysis = (exam, results) => {
 const getExamWithResults = async (analysisExamId, user) => {
   const query = { _id: analysisExamId };
 
-  if (!["admin", "super_admin"].includes(user.role)) {
+  if (!isAdmin(user)) {
     query.uploadedBy = user._id;
   }
 
@@ -858,7 +897,7 @@ exports.listItemAnalysisExams = async (req, res) => {
   try {
     const query = {};
 
-    if (!["admin", "super_admin"].includes(req.user.role)) {
+    if (!isAdmin(req.user)) {
       query.uploadedBy = req.user._id;
     }
 
@@ -995,7 +1034,7 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
   try {
     const generatedExamQuery = { _id: req.params.examId };
 
-    if (!["admin", "super_admin"].includes(req.user.role)) {
+    if (!isAdmin(req.user)) {
       generatedExamQuery.user = req.user._id;
     }
 

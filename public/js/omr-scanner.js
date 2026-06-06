@@ -9,8 +9,8 @@ if ("serviceWorker" in navigator) {
 
 const scannerUser = getUser();
 
-if (scannerUser && scannerUser.role === "student") {
-  alert("OMR scanning is for professors and admins only.");
+if (scannerUser && !isAdminRole(scannerUser) && !isCreatorRole(scannerUser)) {
+  alert("OMR scanning is for Admins and Exam Creators only.");
   location.href = getDashboardUrl(scannerUser);
 }
 

@@ -3,8 +3,8 @@ protectPage();
 const analysisUser = getUser();
 let generatedExams = [];
 
-if (analysisUser && analysisUser.role === "student") {
-  alert("Item analysis is for professors and admins only.");
+if (analysisUser && !isAdminRole(analysisUser) && !isCreatorRole(analysisUser)) {
+  alert("Item analysis is for Admins and Exam Creators only.");
   location.href = getDashboardUrl(analysisUser);
 }
 
@@ -159,7 +159,9 @@ function renderGeneratedExamOptions() {
 async function loadGeneratedExamChoices() {
   try {
     const data = await apiRequest("/users/me/activity");
-    generatedExams = data.exams || [];
+    generatedExams = (data.exams || []).filter(
+      (exam) => (exam.approvalStatus || "Approved") === "Approved",
+    );
     renderGeneratedExamOptions();
   } catch (error) {
     const select = document.getElementById("generatedExamSelect");

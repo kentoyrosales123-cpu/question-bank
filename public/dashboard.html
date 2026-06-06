@@ -18,7 +18,7 @@
         <a href="/profile.html">Profile</a>
         <a href="/users.html">Users</a>
         <a href="/reports.html">Reports</a>
-        <a class="settings-link" href="#settings">Settings</a>
+        <a class="support-link" href="#support">Chat Support</a>
         <div class="nav-divider"></div>
         <a onclick="logout()">Logout</a>
       </aside>
@@ -41,6 +41,14 @@
               T
             </button>
             <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+            <button
+              class="btn secondary hidden"
+              id="supportTicketsButton"
+              type="button"
+              onclick="openSupportModal()"
+            >
+              Support Tickets
+            </button>
           </div>
         </div>
 
@@ -68,28 +76,28 @@
           <div class="card dashboard-panel">
             <div class="panel-heading">
               <h2>Recent Questions</h2>
-              <a href="/questions.html">View All</a>
+              <button class="panel-action" type="button" onclick="openDashboardModal('questions')">View All</button>
             </div>
-            <div id="recentQuestions"></div>
-            <a class="panel-footer" href="/questions.html">View All Questions</a>
+            <div class="dashboard-list-scroll" id="recentQuestions"></div>
+            <button class="panel-footer" type="button" onclick="openDashboardModal('questions')">View All Questions</button>
           </div>
 
           <div class="card dashboard-panel">
             <div class="panel-heading">
               <h2>Recent Exams</h2>
-              <a href="/generate-exam.html">View All</a>
+              <button class="panel-action" type="button" onclick="openDashboardModal('exams')">View All</button>
             </div>
-            <div id="recentExams"></div>
-            <a class="panel-footer" href="/generate-exam.html">View All Exams</a>
+            <div class="dashboard-list-scroll" id="recentExams"></div>
+            <button class="panel-footer" type="button" onclick="openDashboardModal('exams')">View All Exams</button>
           </div>
 
           <div class="card dashboard-panel">
             <div class="panel-heading">
               <h2>Registered Users</h2>
-              <a href="#activityBody">View All</a>
+              <button class="panel-action" type="button" onclick="openDashboardModal('users')">View All</button>
             </div>
-            <div id="registeredUsers"></div>
-            <a class="panel-footer" href="#activityBody">View All Users</a>
+            <div class="dashboard-list-scroll" id="registeredUsers"></div>
+            <button class="panel-footer" type="button" onclick="openDashboardModal('users')">View All Users</button>
           </div>
         </section>
 
@@ -155,6 +163,7 @@
               <thead>
                 <tr>
                   <th>User</th>
+                  <th>Role</th>
                   <th>Activity</th>
                   <th>Details</th>
                   <th>Date</th>
@@ -166,6 +175,19 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <div class="modal hidden" id="dashboardModal">
+      <div class="modal-panel dashboard-modal-panel">
+        <div class="modal-header">
+          <div>
+            <h2 id="dashboardModalTitle">Dashboard Details</h2>
+            <p class="muted-text" id="dashboardModalSubtitle"></p>
+          </div>
+          <button class="btn secondary" type="button" onclick="closeDashboardModal()">Close</button>
+        </div>
+        <div class="dashboard-modal-list" id="dashboardModalBody"></div>
+      </div>
     </div>
 
     <script src="/js/auth.js"></script>

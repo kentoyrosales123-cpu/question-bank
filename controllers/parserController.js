@@ -8,10 +8,13 @@ const { createWorker } = require("tesseract.js");
 const Upload = require("../models/Upload");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
+const {
+  canApproveQuestionBank,
+  canCreateContent,
+  isAdmin,
+} = require("../utils/roles");
 
-const adminRoles = ["admin", "super_admin"];
-
-const isAdminUser = (user) => adminRoles.includes(user?.role);
+const isAdminUser = (user) => isAdmin(user);
 
 const isUploadOwner = (upload, user) =>
   Boolean(
@@ -695,6 +698,13 @@ function parseDocxQuestions(filePath) {
 
 exports.parseUploadedQuestionnaire = async (req, res) => {
   try {
+    if (!canCreateContent(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins and Exam Creators can parse questionnaires.",
+      });
+    }
+
     const { uploadId, subject, topic } = req.body;
 
     const upload = await Upload.findById(uploadId);
@@ -882,6 +892,13 @@ exports.getParsedQuestions = async (req, res) => {
 
 exports.approveParsedQuestion = async (req, res) => {
   try {
+    if (!canApproveQuestionBank(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins can approve parsed questions.",
+      });
+    }
+
     const { parsed, hasAccess } = await getParsedQuestionForUser(
       req.params.id,
       req.user,
@@ -993,6 +1010,13 @@ exports.updateParsedQuestion = async (req, res) => {
 
 exports.rejectParsedQuestion = async (req, res) => {
   try {
+    if (!canApproveQuestionBank(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins can reject parsed questions.",
+      });
+    }
+
     const { parsed, hasAccess } = await getParsedQuestionForUser(
       req.params.id,
       req.user,

@@ -22,6 +22,23 @@ const DEFAULT_API_BASE_URL =
 const choices = ["A", "B", "C", "D"];
 const OMR_ITEMS_PER_PAGE = 100;
 const OMR_ROWS_PER_BLOCK = 25;
+const OMR_MAX_BLOCKS_PER_PAGE = 4;
+const DEFAULT_SCAN_SETTINGS = {
+  top: 12,
+  bottom: 94,
+  left: 10,
+  right: 90,
+  numberColumn: 12,
+  headerRow: 3,
+};
+const scanSettingLimits = {
+  top: { min: 0, max: 45, step: 1 },
+  bottom: { min: 55, max: 100, step: 1 },
+  left: { min: 0, max: 45, step: 1 },
+  right: { min: 55, max: 100, step: 1 },
+  numberColumn: { min: 0, max: 30, step: 1 },
+  headerRow: { min: 0, max: 12, step: 1 },
+};
 
 function parseQrMetadata(value = "") {
   try {
@@ -145,9 +162,53 @@ function getQrScanRange(metadata, exam) {
   };
 }
 
-function buildDetectorHtml(imageUri, numberOfItems) {
+function clampScanSetting(key, value) {
+  const limits = scanSettingLimits[key];
+  const next = Number(value);
+
+  if (!limits || Number.isNaN(next)) {
+    return DEFAULT_SCAN_SETTINGS[key] || 0;
+  }
+
+  return Math.min(limits.max, Math.max(limits.min, next));
+}
+
+function normalizeScanSettings(settings = DEFAULT_SCAN_SETTINGS) {
+  const next = {
+    top: clampScanSetting("top", settings.top),
+    bottom: clampScanSetting("bottom", settings.bottom),
+    left: clampScanSetting("left", settings.left),
+    right: clampScanSetting("right", settings.right),
+    numberColumn: clampScanSetting("numberColumn", settings.numberColumn),
+    headerRow: clampScanSetting("headerRow", settings.headerRow),
+  };
+
+  if (next.bottom <= next.top) {
+    next.bottom = Math.min(100, next.top + 10);
+  }
+
+  if (next.right <= next.left) {
+    next.right = Math.min(100, next.left + 10);
+  }
+
+  return {
+    top: next.top / 100,
+    bottom: next.bottom / 100,
+    left: next.left / 100,
+    right: next.right / 100,
+    numberColumn: next.numberColumn / 100,
+    headerRow: next.headerRow / 100,
+  };
+}
+
+function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
   const safeUri = JSON.stringify(imageUri);
   const items = Number(numberOfItems || 0);
+  const scan = JSON.stringify(normalizeScanSettings(scanSettings));
+  const blockCount = Math.min(
+    OMR_MAX_BLOCKS_PER_PAGE,
+    Math.max(1, Math.ceil(items / OMR_ROWS_PER_BLOCK)),
+  );
 
   return `
 <!doctype html>
@@ -158,7 +219,7 @@ function buildDetectorHtml(imageUri, numberOfItems) {
       const imageUri = ${safeUri};
       const numberOfItems = ${items};
       const labels = ["A", "B", "C", "D"];
-      const scan = { top: 0.12, bottom: 0.94, left: 0.06, right: 0.94, numberColumn: 0.16, headerRow: 0 };
+      const scan = ${scan};
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
 
@@ -170,11 +231,22 @@ function buildDetectorHtml(imageUri, numberOfItems) {
         let total = 0;
         let darkPixels = 0;
         let count = 0;
+        const center = size / 2;
 
         for (let index = 0; index < imageData.length; index += 4) {
+          const pixelIndex = index / 4;
+          const px = pixelIndex % size;
+          const py = Math.floor(pixelIndex / size);
+          const dx = px - center;
+          const dy = py - center;
+
+          if (Math.sqrt(dx * dx + dy * dy) > center) {
+            continue;
+          }
+
           const brightness = (imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3;
           total += 255 - brightness;
-          if (brightness < 135) {
+          if (brightness < 165) {
             darkPixels += 1;
           }
           count += 1;
@@ -183,6 +255,103 @@ function buildDetectorHtml(imageUri, numberOfItems) {
         return {
           darkness: count ? total / count : 0,
           darkRatio: count ? darkPixels / count : 0,
+        };
+      }
+
+      function sampleStrip(x, y, width, height) {
+        const startX = Math.max(0, Math.round(x));
+        const startY = Math.max(0, Math.round(y));
+        const sampleWidth = Math.max(1, Math.min(canvas.width - startX, Math.round(width)));
+        const sampleHeight = Math.max(1, Math.min(canvas.height - startY, Math.round(height)));
+
+        if (sampleWidth <= 0 || sampleHeight <= 0) {
+          return { darkness: 0, darkRatio: 0 };
+        }
+
+        const imageData = ctx.getImageData(startX, startY, sampleWidth, sampleHeight).data;
+        let total = 0;
+        let darkPixels = 0;
+        let count = 0;
+
+        for (let index = 0; index < imageData.length; index += 4) {
+          const brightness = (imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3;
+          total += 255 - brightness;
+
+          if (brightness < 225) {
+            darkPixels += 1;
+          }
+
+          count += 1;
+        }
+
+        return {
+          darkness: count ? total / count : 0,
+          darkRatio: count ? darkPixels / count : 0,
+        };
+      }
+
+      function detectOmrTable(bounds, answerY, answerHeight, rowHeight, blockWidth, blockCount) {
+        const lineThickness = Math.max(2, Math.round(Math.min(rowHeight, blockWidth) * 0.04));
+        const horizontalSamples = [];
+        const verticalSamples = [];
+
+        for (let rowIndex = 0; rowIndex <= ${OMR_ROWS_PER_BLOCK}; rowIndex += 1) {
+          const y = answerY + rowHeight * rowIndex - lineThickness / 2;
+          horizontalSamples.push(
+            sampleStrip(
+              bounds.x + bounds.width * 0.02,
+              y,
+              bounds.width * 0.96,
+              lineThickness,
+            ),
+          );
+        }
+
+        for (let blockIndex = 0; blockIndex < blockCount; blockIndex += 1) {
+          const blockX = bounds.x + blockWidth * blockIndex;
+          const answerX = blockX + blockWidth * scan.numberColumn;
+          const answerWidth = blockWidth * (1 - scan.numberColumn);
+          const columnWidth = answerWidth / labels.length;
+          const xPositions = [
+            blockX,
+            answerX,
+            answerX + columnWidth,
+            answerX + columnWidth * 2,
+            answerX + columnWidth * 3,
+            answerX + columnWidth * 4,
+          ];
+
+          xPositions.forEach((x) => {
+            verticalSamples.push(
+              sampleStrip(
+                x - lineThickness / 2,
+                answerY,
+                lineThickness,
+                answerHeight,
+              ),
+            );
+          });
+        }
+
+        const allSamples = [...horizontalSamples, ...verticalSamples];
+        const averageDarkness =
+          allSamples.reduce((sum, sample) => sum + sample.darkness, 0) /
+          Math.max(1, allSamples.length);
+        const lineHits = allSamples.filter(
+          (sample) => sample.darkness > 12 && sample.darkRatio > 0.08,
+        ).length;
+        const horizontalHits = horizontalSamples.filter(
+          (sample) => sample.darkness > 10 && sample.darkRatio > 0.07,
+        ).length;
+        const verticalHits = verticalSamples.filter(
+          (sample) => sample.darkness > 10 && sample.darkRatio > 0.07,
+        ).length;
+
+        return {
+          averageDarkness,
+          hitRatio: lineHits / Math.max(1, allSamples.length),
+          horizontalHitRatio: horizontalHits / Math.max(1, horizontalSamples.length),
+          verticalHitRatio: verticalHits / Math.max(1, verticalSamples.length),
         };
       }
 
@@ -203,34 +372,72 @@ function buildDetectorHtml(imageUri, numberOfItems) {
             height: canvas.height * (scan.bottom - scan.top),
           };
           const rowsPerBlock = ${OMR_ROWS_PER_BLOCK};
-          const blockCount = 4;
-          const rowHeight = bounds.height / rowsPerBlock;
+          const blockCount = ${blockCount};
+          const answerY = bounds.y + bounds.height * scan.headerRow;
+          const answerHeight = bounds.height * (1 - scan.headerRow);
+          const rowHeight = answerHeight / rowsPerBlock;
           const blockWidth = bounds.width / blockCount;
           const answers = [];
           const diagnostics = [];
+          const tableEvidence = detectOmrTable(
+            bounds,
+            answerY,
+            answerHeight,
+            rowHeight,
+            blockWidth,
+            blockCount,
+          );
+
+          if (
+            tableEvidence.averageDarkness < 10 ||
+            tableEvidence.hitRatio < 0.22 ||
+            tableEvidence.horizontalHitRatio < 0.2 ||
+            tableEvidence.verticalHitRatio < 0.18
+          ) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: "no_sheet",
+              message: "No OMR sheet detected. Align the answer table inside the camera guide and capture again.",
+              tableEvidence,
+            }));
+            return;
+          }
 
           for (let itemIndex = 0; itemIndex < numberOfItems; itemIndex += 1) {
             const blockIndex = Math.floor(itemIndex / rowsPerBlock);
             const rowIndex = itemIndex % rowsPerBlock;
             const blockX = bounds.x + blockWidth * blockIndex;
-            const y = bounds.y + rowHeight * (rowIndex + 0.5);
+            const y = answerY + rowHeight * (rowIndex + 0.5);
             const answerX = blockX + blockWidth * scan.numberColumn;
             const answerWidth = blockWidth * (1 - scan.numberColumn);
             const columnWidth = answerWidth / labels.length;
-            const sampleRadius = Math.max(3, Math.min(rowHeight, columnWidth) * 0.18);
+            const sampleRadius = Math.max(4, Math.min(rowHeight, columnWidth) * 0.24);
             const scores = labels.map((label, labelIndex) => {
               const x = answerX + columnWidth * (labelIndex + 0.5);
               return { label, ...sampleBubble(x, y, sampleRadius) };
             });
-            const sorted = scores.sort((a, b) => b.darkness - a.darkness);
+            const sorted = [...scores].sort((a, b) => b.darkness - a.darkness);
             const confidence = sorted[0].darkness - sorted[1].darkness;
             const rowAverage =
               scores.reduce((sum, score) => sum + score.darkness, 0) / scores.length;
+            const variance =
+              scores.reduce((sum, score) => sum + Math.pow(score.darkness - rowAverage, 2), 0) /
+              scores.length;
+            const rowSpread = Math.sqrt(variance);
+            const rowDarkRatio =
+              scores.reduce((sum, score) => sum + score.darkRatio, 0) / scores.length;
+            const relativeLift = sorted[0].darkness - rowAverage;
+            const darkRatioLift = sorted[0].darkRatio - rowDarkRatio;
+            const duplicateMark =
+              sorted[1].darkRatio > 0.1 &&
+              sorted[1].darkness > rowAverage + 5 &&
+              confidence < Math.max(8, rowSpread * 0.45);
             const answer =
-              sorted[0].darkness > 38 &&
-              sorted[0].darkRatio > 0.06 &&
-              confidence > 9 &&
-              sorted[0].darkness > rowAverage + 12
+              !duplicateMark &&
+              sorted[0].darkness > 20 &&
+              sorted[0].darkRatio > 0.035 &&
+              confidence >= Math.max(4.5, rowSpread * 0.35) &&
+              relativeLift >= Math.max(5, rowSpread * 0.45) &&
+              darkRatioLift > 0.01
                 ? sorted[0].label
                 : "";
 
@@ -241,6 +448,10 @@ function buildDetectorHtml(imageUri, numberOfItems) {
               confidence,
               darkness: sorted[0].darkness,
               darkRatio: sorted[0].darkRatio,
+              duplicateMark,
+              relativeLift,
+              rowAverage,
+              rowSpread,
             });
           }
 
@@ -305,6 +516,7 @@ export default function App() {
   const [detectorHtml, setDetectorHtml] = useState("");
   const [detectionStatus, setDetectionStatus] = useState("Ready to scan.");
   const [activeScanRange, setActiveScanRange] = useState(null);
+  const [scanSettings, setScanSettings] = useState(DEFAULT_SCAN_SETTINGS);
   const [qrScanEnabled, setQrScanEnabled] = useState(true);
   const [qrStatus, setQrStatus] = useState("QR scanner ready.");
   const [qrMetadata, setQrMetadata] = useState(null);
@@ -572,7 +784,9 @@ export default function App() {
       setActiveScanRange(scanRange);
       const imageUri = `data:image/jpg;base64,${photo.base64}`;
       setCapturedImage(imageUri);
-      setDetectorHtml(buildDetectorHtml(imageUri, scanRange.itemsOnPage));
+      setDetectorHtml(
+        buildDetectorHtml(imageUri, scanRange.itemsOnPage, scanSettings),
+      );
       setDetectionStatus(
         `Detecting page ${scanRange.pageNo}/${scanRange.pageCount}, items ${scanRange.startItem}-${scanRange.endItem}...`,
       );
@@ -624,6 +838,13 @@ export default function App() {
           detected > 0
             ? `Page ${scanRange.pageNo}/${scanRange.pageCount}: ${detected} answer${detected === 1 ? "" : "s"} detected for items ${scanRange.startItem}-${scanRange.endItem}.`
             : `Page ${scanRange.pageNo}/${scanRange.pageCount}: no confident shaded answers detected. Align this page and retake.`,
+        );
+        setActiveScanRange(null);
+        activeScanRangeRef.current = null;
+      } else if (payload.type === "no_sheet") {
+        setDetectionStatus(
+          payload.message ||
+            "No OMR sheet detected. Align the answer table and retake.",
         );
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
@@ -874,17 +1095,31 @@ export default function App() {
                     onPress={requestPermission}
                   />
                 ) : (
-                  <CameraView
-                    ref={cameraRef}
-                    style={styles.camera}
-                    facing="back"
-                    barcodeScannerSettings={{
-                      barcodeTypes: ["qr"],
-                    }}
-                    onBarcodeScanned={
-                      qrScanEnabled ? handleQrScanned : undefined
-                    }
-                  />
+                  <View style={styles.cameraFrame}>
+                    <CameraView
+                      ref={cameraRef}
+                      style={styles.camera}
+                      facing="back"
+                      barcodeScannerSettings={{
+                        barcodeTypes: ["qr"],
+                      }}
+                      onBarcodeScanned={
+                        qrScanEnabled ? handleQrScanned : undefined
+                      }
+                    />
+                    <CameraAlignmentGuide
+                      itemsOnPage={
+                        qrMetadata
+                          ? getQrScanRange(qrMetadata, selectedExam).itemsOnPage
+                          : Math.min(
+                              selectedExam?.numberOfItems ||
+                                OMR_ITEMS_PER_PAGE,
+                              OMR_ITEMS_PER_PAGE,
+                            )
+                      }
+                      scanSettings={scanSettings}
+                    />
+                  </View>
                 )}
                 <QrStatusCard
                   metadata={qrMetadata}
@@ -896,6 +1131,10 @@ export default function App() {
                   Align the printed OMR table in the camera preview, then
                   capture and detect. Review answers before saving.
                 </Text>
+                <ScanAreaControls
+                  scanSettings={scanSettings}
+                  setScanSettings={setScanSettings}
+                />
                 <PrimaryButton
                   disabled={loading || !selectedExam}
                   label="Capture and Detect"
@@ -924,6 +1163,124 @@ export default function App() {
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function ScanAreaControls({ scanSettings, setScanSettings }) {
+  const fields = [
+    ["top", "Top"],
+    ["bottom", "Bottom"],
+    ["left", "Left"],
+    ["right", "Right"],
+    ["numberColumn", "No. Column"],
+    ["headerRow", "Header Row"],
+  ];
+
+  const adjustValue = (key, delta) => {
+    setScanSettings((current) => ({
+      ...current,
+      [key]: clampScanSetting(key, (current[key] || 0) + delta),
+    }));
+  };
+
+  const resetScanArea = () => {
+    setScanSettings(DEFAULT_SCAN_SETTINGS);
+  };
+
+  return (
+    <View style={styles.scanAreaPanel}>
+      <View style={styles.rowBetween}>
+        <Text style={styles.scanAreaTitle}>Scan Area</Text>
+        <Pressable onPress={resetScanArea}>
+          <Text style={styles.linkText}>Reset</Text>
+        </Pressable>
+      </View>
+      <View style={styles.scanAreaGrid}>
+        {fields.map(([key, label]) => (
+          <View key={key} style={styles.scanField}>
+            <Text style={styles.scanFieldLabel}>{label}</Text>
+            <View style={styles.stepper}>
+              <Pressable
+                style={styles.stepButton}
+                onPress={() => adjustValue(key, -scanSettingLimits[key].step)}
+              >
+                <Text style={styles.stepButtonText}>-</Text>
+              </Pressable>
+              <Text style={styles.stepValue}>{scanSettings[key]}%</Text>
+              <Pressable
+                style={styles.stepButton}
+                onPress={() => adjustValue(key, scanSettingLimits[key].step)}
+              >
+                <Text style={styles.stepButtonText}>+</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CameraAlignmentGuide({ itemsOnPage, scanSettings }) {
+  const scan = normalizeScanSettings(scanSettings);
+  const blockCount = Math.min(
+    OMR_MAX_BLOCKS_PER_PAGE,
+    Math.max(1, Math.ceil(Number(itemsOnPage || 0) / OMR_ROWS_PER_BLOCK)),
+  );
+  const guideStyle = {
+    top: `${scan.top * 100}%`,
+    left: `${scan.left * 100}%`,
+    width: `${(scan.right - scan.left) * 100}%`,
+    height: `${(scan.bottom - scan.top) * 100}%`,
+  };
+  const headerStyle = {
+    top: `${scan.headerRow * 100}%`,
+  };
+  const numberColumnStyle = {
+    left: `${scan.numberColumn * 100}%`,
+  };
+  const bubbleGuides = Array.from({ length: blockCount }, (_, blockIndex) => {
+    const blockLeft = blockIndex / blockCount;
+    const blockWidth = 1 / blockCount;
+    const answerLeft = blockLeft + blockWidth * scan.numberColumn;
+    const answerWidth = blockWidth * (1 - scan.numberColumn);
+
+    return choices.map((choice, choiceIndex) => ({
+      choice,
+      key: `${blockIndex}-${choice}`,
+      left: `${(answerLeft + answerWidth * ((choiceIndex + 0.5) / choices.length)) * 100}%`,
+    }));
+  }).flat();
+
+  return (
+    <View pointerEvents="none" style={styles.cameraGuideLayer}>
+      <View style={[styles.cameraGuideBox, guideStyle]}>
+        <View style={[styles.cameraGuideHeaderLine, headerStyle]} />
+        <View style={[styles.cameraGuideNumberLine, numberColumnStyle]} />
+        {bubbleGuides.map((guide) => (
+          <View
+            key={guide.key}
+            style={[styles.cameraBubbleGuideLine, { left: guide.left }]}
+          >
+            <Text style={styles.cameraBubbleGuideLabel}>{guide.choice}</Text>
+          </View>
+        ))}
+        {Array.from({ length: Math.max(0, blockCount - 1) }, (_, index) => (
+          <View
+            key={String(index)}
+            style={[
+              styles.cameraGuideBlockLine,
+              { left: `${((index + 1) / blockCount) * 100}%` },
+            ]}
+          />
+        ))}
+        <View style={[styles.corner, styles.cornerTopLeft]} />
+        <View style={[styles.corner, styles.cornerTopRight]} />
+        <View style={[styles.corner, styles.cornerBottomLeft]} />
+        <View style={[styles.corner, styles.cornerBottomRight]} />
+        <Text style={styles.cameraGuideText}>Align answer table edges</Text>
+      </View>
+    </View>
   );
 }
 
@@ -1364,11 +1721,108 @@ const styles = StyleSheet.create({
     color: "#5b000b",
     fontWeight: "800",
   },
-  camera: {
+  cameraFrame: {
     height: 260,
     borderRadius: 8,
     overflow: "hidden",
     marginBottom: 10,
+    backgroundColor: "#24000a",
+    position: "relative",
+  },
+  camera: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  cameraGuideLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  cameraGuideBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "#f0b318",
+    backgroundColor: "rgba(240,179,24,0.05)",
+  },
+  cameraGuideHeaderLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.9)",
+  },
+  cameraGuideNumberLine: {
+    position: "absolute",
+    bottom: 0,
+    top: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.9)",
+  },
+  cameraGuideBlockLine: {
+    position: "absolute",
+    bottom: 0,
+    top: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(240,179,24,0.7)",
+  },
+  cameraBubbleGuideLine: {
+    position: "absolute",
+    bottom: 0,
+    top: 0,
+    alignItems: "center",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(63,212,255,0.65)",
+  },
+  cameraBubbleGuideLabel: {
+    backgroundColor: "rgba(36,0,10,0.72)",
+    borderRadius: 5,
+    color: "#ffffff",
+    fontSize: 9,
+    fontWeight: "900",
+    marginTop: 24,
+    minWidth: 16,
+    overflow: "hidden",
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    textAlign: "center",
+  },
+  cameraGuideText: {
+    alignSelf: "center",
+    backgroundColor: "rgba(36,0,10,0.72)",
+    borderRadius: 6,
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  corner: {
+    position: "absolute",
+    borderColor: "#ffffff",
+    height: 22,
+    width: 22,
+  },
+  cornerTopLeft: {
+    borderLeftWidth: 3,
+    borderTopWidth: 3,
+    left: -2,
+    top: -2,
+  },
+  cornerTopRight: {
+    borderRightWidth: 3,
+    borderTopWidth: 3,
+    right: -2,
+    top: -2,
+  },
+  cornerBottomLeft: {
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    bottom: -2,
+    left: -2,
+  },
+  cornerBottomRight: {
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    bottom: -2,
+    right: -2,
   },
   detectorWebView: {
     height: 1,
@@ -1378,6 +1832,60 @@ const styles = StyleSheet.create({
     color: "#4d1b23",
     fontWeight: "800",
     marginTop: 8,
+  },
+  scanAreaPanel: {
+    borderWidth: 1,
+    borderColor: "#ead5c8",
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    marginBottom: 10,
+    padding: 10,
+  },
+  scanAreaTitle: {
+    color: "#24000a",
+    fontWeight: "900",
+  },
+  scanAreaGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  scanField: {
+    width: "48%",
+  },
+  scanFieldLabel: {
+    color: "#6d5960",
+    fontSize: 11,
+    fontWeight: "900",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  stepper: {
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ead5c8",
+    borderRadius: 8,
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+  stepButton: {
+    alignItems: "center",
+    backgroundColor: "#fff1e1",
+    justifyContent: "center",
+    minHeight: 34,
+    width: 34,
+  },
+  stepButtonText: {
+    color: "#980018",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  stepValue: {
+    color: "#24000a",
+    flex: 1,
+    fontWeight: "900",
+    textAlign: "center",
   },
   qrCard: {
     borderWidth: 1,

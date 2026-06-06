@@ -281,11 +281,17 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   try {
     const data = await apiRequest("/exams/generate", "POST", body);
     localStorage.setItem("current_exam_id", data.exam._id);
+    const isPending = (data.exam.approvalStatus || "Approved") === "Pending";
     document.getElementById("examMessage").textContent =
-      "Exam generated successfully. You can preview or download it now.";
+      data.message ||
+      (isPending
+        ? "Exam generated and submitted for admin approval."
+        : "Exam generated successfully. You can preview or download it now.");
     document.getElementById("examMessage").classList.remove("wrong");
     document.getElementById("examMessage").classList.add("correct");
-    document.getElementById("generatedExamActions").classList.remove("hidden");
+    document
+      .getElementById("generatedExamActions")
+      .classList.toggle("hidden", isPending);
   } catch (error) {
     document.getElementById("examMessage").textContent = error.message;
     document.getElementById("examMessage").classList.add("wrong");

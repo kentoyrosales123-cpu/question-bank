@@ -1,9 +1,17 @@
 const Upload = require("../models/Upload");
 const fs = require("fs");
 const path = require("path");
+const { canCreateContent, isAdmin } = require("../utils/roles");
 
 exports.uploadQuestionnaire = async (req, res) => {
   try {
+    if (!canCreateContent(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins and Exam Creators can upload questionnaires.",
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -34,8 +42,7 @@ exports.uploadQuestionnaire = async (req, res) => {
 
 exports.getUploads = async (req, res) => {
   try {
-    const isAdmin = ["admin", "super_admin"].includes(req.user.role);
-    const query = isAdmin ? {} : { uploadedBy: req.user._id };
+    const query = isAdmin(req.user) ? {} : { uploadedBy: req.user._id };
     const uploads = await Upload.find(query)
       .populate("uploadedBy", "name email")
       .sort({ createdAt: -1 });
@@ -67,7 +74,7 @@ exports.deleteUpload = async (req, res) => {
     const isOwner =
       upload.uploadedBy && upload.uploadedBy.toString() === req.user._id.toString();
 
-    if (!["admin", "super_admin"].includes(req.user.role) && !isOwner) {
+    if (!isAdmin(req.user) && !isOwner) {
       return res.status(403).json({
         success: false,
         message: "You do not have access to this uploaded file.",

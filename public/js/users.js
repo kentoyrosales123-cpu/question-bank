@@ -2,6 +2,7 @@ protectPage();
 adminOnlyPage();
 
 let users = [];
+let assignableRoles = [];
 
 document.getElementById("userSearch").addEventListener("input", renderUsers);
 document
@@ -10,8 +11,13 @@ document
 
 async function loadUsers() {
   try {
-    const data = await apiRequest("/users");
-    users = data.users || [];
+    const [usersData, rolesData] = await Promise.all([
+      apiRequest("/users"),
+      apiRequest("/users/roles/options"),
+    ]);
+    users = usersData.users || [];
+    assignableRoles = rolesData.roles || [];
+    renderRoleOptions();
     updateUserStats();
     renderUsers();
   } catch (error) {
@@ -22,14 +28,26 @@ async function loadUsers() {
 function updateUserStats() {
   document.getElementById("totalUsers").textContent = users.length;
   document.getElementById("adminUsers").textContent = users.filter(
-    (user) => ["admin", "super_admin"].includes(user.role),
+    (user) => hasAnyRole(user, ["admin", "super_admin"]),
   ).length;
   document.getElementById("regularUsers").textContent = users.filter(
-    (user) => ["user", "professor"].includes(user.role),
+    (user) => hasAnyRole(user, ["exam_creator"]),
   ).length;
   document.getElementById("verifiedUsers").textContent = users.filter(
     (user) => user.isEmailVerified !== false,
   ).length;
+}
+
+function renderRoleOptions() {
+  const select = document.getElementById("createUserRole");
+
+  select.innerHTML = assignableRoles
+    .map(
+      (role) =>
+        `<option value="${escapeHTML(role.value)}">${escapeHTML(role.label)}</option>`,
+    )
+    .join("");
+  select.disabled = assignableRoles.length === 0;
 }
 
 function renderUsers() {
@@ -52,6 +70,20 @@ function renderUserRow(user) {
   const currentUser = getUser();
   const isCurrentUser = currentUser && currentUser.id === user._id;
   const registeredDate = new Date(user.createdAt).toLocaleDateString();
+  const currentRole = normalizeRole(user.role);
+  const canChangeRole = assignableRoles.some((role) => role.value === currentRole);
+  const roleOptions = (canChangeRole
+    ? assignableRoles
+    : [{ value: currentRole, label: getRoleLabel(user.role) }]
+  )
+    .map(
+      (role) => `
+          <option value="${escapeHTML(role.value)}" ${currentRole === role.value ? "selected" : ""}>
+            ${escapeHTML(role.label)}
+          </option>
+        `,
+    )
+    .join("");
 
   return `
     <tr>
@@ -61,13 +93,9 @@ function renderUserRow(user) {
         <select
           class="role-select"
           onchange="updateUserRole('${user._id}', this.value)"
-          ${isCurrentUser ? "disabled" : ""}
+          ${isCurrentUser || !canChangeRole ? "disabled" : ""}
         >
-          <option value="user" ${user.role === "user" ? "selected" : ""}>Regular User</option>
-          <option value="professor" ${user.role === "professor" ? "selected" : ""}>Professor</option>
-          <option value="student" ${user.role === "student" ? "selected" : ""}>Student</option>
-          <option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option>
-          <option value="super_admin" ${user.role === "super_admin" ? "selected" : ""}>Super Admin</option>
+          ${roleOptions}
         </select>
       </td>
       <td>

@@ -1,5 +1,11 @@
 protectPage();
 
+const uploadUser = getUser();
+if (uploadUser && !isAdminRole(uploadUser) && !isCreatorRole(uploadUser)) {
+  alert("Questionnaire upload is for Admins and Exam Creators only.");
+  location.href = getDashboardUrl(uploadUser);
+}
+
 document.getElementById("uploadForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -28,7 +34,7 @@ document.getElementById("uploadForm").addEventListener("submit", async (e) => {
 async function loadUploads() {
   try {
     const user = getUser();
-    const isAdmin = user && ["admin", "super_admin"].includes(user.role);
+    const isAdmin = isAdminRole(user);
     const data = await apiRequest("/uploads");
 
     document.getElementById("uploadsList").innerHTML = data.uploads

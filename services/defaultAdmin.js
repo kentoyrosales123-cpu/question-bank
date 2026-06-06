@@ -20,18 +20,18 @@ const seedDefaultAdmin = async () => {
       name,
       email,
       password: hashedPassword,
-      role: "admin",
+      role: "super_admin",
       isEmailVerified: true,
     });
 
-    console.log(`Default admin created: ${email}`);
+    console.log(`Default super admin created: ${email}`);
     return;
   }
 
   const passwordMatches = await bcrypt.compare(password, user.password);
 
   user.name = user.name || name;
-  user.role = "admin";
+  user.role = "super_admin";
   user.isEmailVerified = true;
 
   if (!passwordMatches) {
@@ -46,7 +46,7 @@ const seedDefaultAdmin = async () => {
   user.passwordResetLastSentAt = undefined;
 
   await user.save();
-  console.log(`Default admin ready: ${email}`);
+  console.log(`Default super admin ready: ${email}`);
 };
 
 module.exports = seedDefaultAdmin;

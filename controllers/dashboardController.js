@@ -5,7 +5,13 @@ const Exam = require("../models/Exam");
 const ActivityLog = require("../models/ActivityLog");
 
 const formatActivityAction = (action) =>
-  action === "generate_exam" ? "Generated Exam" : "Logged In";
+  action === "generate_exam"
+    ? "Generated Exam"
+    : action === "approve_exam"
+    ? "Approved Exam"
+    : action === "reject_exam"
+    ? "Rejected Exam"
+    : "Logged In";
 
 const getActivityDateRange = (query = {}) => {
   const filter = {};
@@ -123,39 +129,56 @@ const buildActivityWorkbook = async (activities) => {
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalQuestions = await Question.countDocuments();
+    const [
+      totalUsers,
+      totalQuestions,
+      difficultyCounts,
+      recentQuestions,
+      recentExams,
+      registeredUsers,
+      recentActivity,
+    ] = await Promise.all([
+      User.countDocuments(),
+      Question.countDocuments(),
+      Question.aggregate([
+        {
+          $group: {
+            _id: "$difficulty",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Question.find()
+        .select("subject topic difficulty createdAt")
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .lean(),
+      Exam.find()
+        .select("title totalItems approvalStatus user createdAt")
+        .populate("user", "name email role")
+        .sort({ approvalStatus: -1, createdAt: -1 })
+        .limit(50)
+        .lean(),
+      User.find()
+        .select("name email role createdAt")
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+      ActivityLog.find()
+        .populate("user", "name email role")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
 
-    const easyQuestions = await Question.countDocuments({
-      difficulty: "Easy",
-    });
+    const difficultyMap = difficultyCounts.reduce((counts, item) => {
+      counts[item._id] = item.count;
+      return counts;
+    }, {});
 
-    const averageQuestions = await Question.countDocuments({
-      difficulty: "Average",
-    });
-
-    const difficultQuestions = await Question.countDocuments({
-      difficulty: "Difficult",
-    });
-
-    const recentQuestions = await Question.find()
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    const recentExams = await Exam.find()
-      .populate("user", "name email")
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    const registeredUsers = await User.find()
-      .select("name email role createdAt")
-      .sort({ createdAt: -1 })
-      .limit(20);
-
-    const recentActivity = await ActivityLog.find()
-      .populate("user", "name email role")
-      .sort({ createdAt: -1 })
-      .limit(10);
+    const easyQuestions = difficultyMap.Easy || 0;
+    const averageQuestions = difficultyMap.Average || 0;
+    const difficultQuestions = difficultyMap.Difficult || 0;
 
     res.json({
       success: true,

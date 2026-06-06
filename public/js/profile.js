@@ -17,8 +17,8 @@ async function loadProfile() {
 
 function renderProfile(user, stats) {
   const initials = getInitials(user.name || user.email);
-  const roleLabel = user.role === "admin" ? "Super Admin" : "Professor";
-  const roleClass = user.role === "admin" ? "difficult" : "easy";
+  const roleLabel = getRoleLabel(user.role);
+  const roleClass = hasAnyRole(user, ["super_admin", "admin"]) ? "difficult" : "easy";
 
   document.getElementById("profileInitials").textContent = initials;
   document.getElementById("profileName").textContent = user.name;
@@ -39,7 +39,7 @@ function renderProfile(user, stats) {
 
   document.getElementById("profileTotalExams").textContent = stats.totalExams;
   document.querySelectorAll(".admin-profile-action").forEach((link) => {
-    link.classList.toggle("hidden", user.role !== "admin");
+    link.classList.toggle("hidden", !isAdminRole(user));
   });
   document.getElementById("profileRecentActivity").innerHTML =
     stats.recentExams && stats.recentExams.length > 0
@@ -113,10 +113,17 @@ function relativeTime(value) {
 }
 
 function renderRecentExam(exam) {
-  const statusText = exam.submitted
+  const status = exam.approvalStatus || "Approved";
+  const isPending = status === "Pending";
+  const isRejected = status === "Rejected";
+  const statusText = isPending
+    ? `Exam "${exam.title}" is pending admin approval`
+    : isRejected
+    ? `Exam "${exam.title}" was rejected`
+    : exam.submitted
     ? `Generated exam "${exam.title}"`
     : `Exam "${exam.title}" is pending`;
-  const statusClass = exam.submitted ? "purple" : "red";
+  const statusClass = isPending || isRejected ? "red" : exam.submitted ? "purple" : "red";
 
   return `
     <div class="profile-recent-item">
@@ -162,6 +169,10 @@ function closeActivityModal() {
 }
 
 function renderActivityExamRow(exam) {
+  const status = exam.approvalStatus || "Approved";
+  const isPending = status === "Pending";
+  const isRejected = status === "Rejected";
+
   return `
     <tr>
       <td>
@@ -172,19 +183,23 @@ function renderActivityExamRow(exam) {
       <td>${escapeHTML(exam.totalItems)}</td>
       <td>
         <span class="badge ${exam.submitted ? "easy" : "average"}">
-          ${exam.submitted ? "Submitted" : "Generated"}
+          ${isPending ? "Pending Approval" : isRejected ? "Rejected" : exam.submitted ? "Submitted" : "Generated"}
         </span>
       </td>
       <td>${formatDate(exam.createdAt)}</td>
       <td>
-        <div class="action-row">
-          <button class="btn secondary" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-docx')">
-            No Answer Key
-          </button>
-          <button class="btn" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-answer-key-docx')">
-            With Answer Key
-          </button>
-        </div>
+        ${
+          isPending || isRejected
+            ? `<span class="muted-text">${isRejected ? "Rejected by admin" : "Awaiting admin approval"}</span>`
+            : `<div class="action-row">
+                <button class="btn secondary" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-docx')">
+                  No Answer Key
+                </button>
+                <button class="btn" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-answer-key-docx')">
+                  With Answer Key
+                </button>
+              </div>`
+        }
       </td>
     </tr>
   `;
