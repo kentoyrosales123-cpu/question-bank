@@ -25,7 +25,7 @@ async function loadReports() {
         ? report.recentActivity.slice(0, 10).map(renderActivityRow).join("")
         : `
           <tr>
-            <td colspan="5" class="empty-table-cell">No activity recorded yet.</td>
+            <td colspan="6" class="empty-table-cell">No activity recorded yet.</td>
           </tr>
         `;
 
@@ -71,8 +71,19 @@ function renderActivityRow(activity) {
   const user = activity.user || {};
   const initials = getInitials(user.name || user.email || "?");
   const actionLabel =
-    activity.action === "generate_exam" ? "Generated Exam" : "Logged In";
-  const badgeClass = activity.action === "generate_exam" ? "average" : "easy";
+    activity.action === "generate_exam"
+      ? "Generated Exam"
+      : activity.action === "approve_exam"
+      ? "Approved Exam"
+      : activity.action === "reject_exam"
+      ? "Rejected Exam"
+      : "Logged In";
+  const badgeClass =
+    activity.action === "generate_exam"
+      ? "average"
+      : activity.action === "reject_exam"
+      ? "difficult"
+      : "easy";
 
   return `
     <tr>
@@ -88,6 +99,11 @@ function renderActivityRow(activity) {
             <small>${escapeHTML(user.email || "")}</small>
           </div>
         </div>
+      </td>
+      <td>
+        <span class="badge ${hasAnyRole(user, ["super_admin", "admin"]) ? "difficult" : "easy"}">
+          ${escapeHTML(getRoleLabel(user.role))}
+        </span>
       </td>
       <td><span class="badge ${badgeClass}">${actionLabel}</span></td>
       <td>${escapeHTML(activity.description)}</td>
