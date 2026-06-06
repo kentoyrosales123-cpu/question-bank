@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   generateExam,
+  getGenerationJobStatus,
   getExamOptions,
   getExam,
   getMyExamSummary,
@@ -15,6 +16,7 @@ const {
 const { protect } = require("../middleware/authMiddleware");
 
 router.post("/generate", protect, generateExam);
+router.get("/generate/jobs/:id", protect, getGenerationJobStatus);
 router.get("/my/summary", protect, getMyExamSummary);
 router.get("/options", protect, getExamOptions);
 router.post("/:id/approve", protect, approveExam);

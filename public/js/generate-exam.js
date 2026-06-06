@@ -2,6 +2,7 @@ protectPage();
 
 let examOptionData = [];
 let blueprintRows = [];
+let generationPollTimer = null;
 
 const summaryFields = [
   "title",
@@ -279,7 +280,35 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   }
 
   try {
+    setGenerateButtonBusy(true);
+    showGenerationQueueModal({
+      status: "queued",
+      queueNumber: "-",
+      message: "Submitting your exam generation request...",
+    });
     const data = await apiRequest("/exams/generate", "POST", body);
+
+    if (data.queued) {
+      updateGenerationQueueModal(data);
+      pollGenerationJob(data.jobId);
+      return;
+    }
+
+    handleGeneratedExamResult(data);
+  } catch (error) {
+    hideGenerationQueueModal();
+    setGenerateButtonBusy(false);
+    document.getElementById("examMessage").textContent = error.message;
+    document.getElementById("examMessage").classList.add("wrong");
+    document.getElementById("examMessage").classList.remove("correct");
+  }
+});
+
+function handleGeneratedExamResult(data) {
+  if (!data.exam) {
+    throw new Error(data.message || "Exam generation finished without an exam.");
+  }
+
     localStorage.setItem("current_exam_id", data.exam._id);
     const isPending = (data.exam.approvalStatus || "Approved") === "Pending";
     document.getElementById("examMessage").textContent =
@@ -292,12 +321,104 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
     document
       .getElementById("generatedExamActions")
       .classList.toggle("hidden", isPending);
-  } catch (error) {
-    document.getElementById("examMessage").textContent = error.message;
-    document.getElementById("examMessage").classList.add("wrong");
-    document.getElementById("examMessage").classList.remove("correct");
+  hideGenerationQueueModal();
+  setGenerateButtonBusy(false);
+}
+
+async function pollGenerationJob(jobId) {
+  clearInterval(generationPollTimer);
+
+  const checkStatus = async () => {
+    try {
+      const data = await apiRequest(`/exams/generate/jobs/${jobId}`);
+
+      if (data.status === "completed") {
+        clearInterval(generationPollTimer);
+        handleGeneratedExamResult(data.result);
+        return;
+      }
+
+      if (data.status === "failed") {
+        clearInterval(generationPollTimer);
+        hideGenerationQueueModal();
+        setGenerateButtonBusy(false);
+        throw new Error(data.result?.message || "Exam generation failed.");
+      }
+
+      updateGenerationQueueModal(data);
+    } catch (error) {
+      clearInterval(generationPollTimer);
+      hideGenerationQueueModal();
+      setGenerateButtonBusy(false);
+      document.getElementById("examMessage").textContent = error.message;
+      document.getElementById("examMessage").classList.add("wrong");
+      document.getElementById("examMessage").classList.remove("correct");
+    }
+  };
+
+  generationPollTimer = setInterval(checkStatus, 1500);
+  await checkStatus();
+}
+
+function setGenerateButtonBusy(isBusy) {
+  const button = document.querySelector(".generate-btn");
+  button.disabled = isBusy;
+  button.textContent = isBusy ? "Generating..." : "Generate Exam";
+}
+
+function ensureGenerationQueueModal() {
+  if (document.getElementById("generationQueueModal")) {
+    return;
   }
-});
+
+  const modal = document.createElement("div");
+  modal.className = "modal hidden";
+  modal.id = "generationQueueModal";
+  modal.innerHTML = `
+    <div class="modal-panel generation-queue-panel">
+      <div class="modal-header">
+        <div>
+          <h2>Exam Generation Queue</h2>
+          <p class="muted-text">Only 2 users can generate exams at the same time.</p>
+        </div>
+      </div>
+      <div class="generation-queue-body">
+        <strong id="generationQueueNumber">Queue #...</strong>
+        <p id="generationQueueStatus">Waiting for an available generation slot...</p>
+        <small id="generationQueueHint">Please keep this page open while your exam is generated.</small>
+      </div>
+    </div>
+  `;
+  document.body.append(modal);
+}
+
+function showGenerationQueueModal(data) {
+  ensureGenerationQueueModal();
+  updateGenerationQueueModal(data);
+  document.getElementById("generationQueueModal").classList.remove("hidden");
+}
+
+function hideGenerationQueueModal() {
+  document.getElementById("generationQueueModal")?.classList.add("hidden");
+}
+
+function updateGenerationQueueModal(data) {
+  ensureGenerationQueueModal();
+  const isProcessing = data.status === "processing";
+  const queueNumber = data.queueNumber || "-";
+
+  document.getElementById("generationQueueNumber").textContent = isProcessing
+    ? "Now processing"
+    : `Queue #${queueNumber}`;
+  document.getElementById("generationQueueStatus").textContent =
+    data.message ||
+    (isProcessing
+      ? "Your exam is being generated now."
+      : "Waiting for an available generation slot...");
+  document.getElementById("generationQueueHint").textContent = isProcessing
+    ? "This usually takes a moment."
+    : "Your request will start automatically when one of the 2 slots opens.";
+}
 
 loadExamOptions();
 renderBlueprintRows();

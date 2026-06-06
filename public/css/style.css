@@ -1849,6 +1849,31 @@ pre {
   color: var(--muted);
 }
 
+.generation-queue-panel {
+  width: min(520px, 100%);
+}
+
+.generation-queue-body {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 4px;
+  text-align: center;
+}
+
+.generation-queue-body strong {
+  font-size: 34px;
+  color: var(--primary);
+}
+
+.generation-queue-body p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.generation-queue-body small {
+  color: var(--muted);
+}
+
 .item-dot,
 .item-file,
 .avatar {

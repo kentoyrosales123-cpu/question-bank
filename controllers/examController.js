@@ -142,6 +142,115 @@ const getBlueprintQuestions = async (blueprint) => {
   return unique;
 };
 
+const MAX_CONCURRENT_GENERATIONS = 2;
+const GENERATION_JOB_TTL_MS = 10 * 60 * 1000;
+const generationJobs = new Map();
+const generationQueue = [];
+let activeGenerationJobs = 0;
+let generationJobSequence = 0;
+
+const getGenerationQueueNumber = (job) => {
+  if (!job) return 0;
+  if (job.status === "processing") return 1;
+
+  const index = generationQueue.findIndex((queuedJob) => queuedJob.id === job.id);
+  return index >= 0 ? activeGenerationJobs + index + 1 : 0;
+};
+
+const createGenerationResponse = (job) => ({
+  queued: true,
+  jobId: job.id,
+  status: job.status,
+  queueNumber: getGenerationQueueNumber(job),
+  activeSlots: MAX_CONCURRENT_GENERATIONS,
+  message:
+    job.status === "processing"
+      ? "Your exam generation is now processing."
+      : `Your exam generation is queued at number ${getGenerationQueueNumber(job)}.`,
+});
+
+const createMockResponse = (job) => ({
+  statusCode: 200,
+  status(code) {
+    this.statusCode = code;
+    return this;
+  },
+  json(payload) {
+    job.result = {
+      statusCode: this.statusCode,
+      payload,
+    };
+  },
+});
+
+const cleanupGenerationJob = (jobId) => {
+  setTimeout(() => {
+    generationJobs.delete(jobId);
+  }, GENERATION_JOB_TTL_MS);
+};
+
+const runGenerationQueue = () => {
+  while (activeGenerationJobs < MAX_CONCURRENT_GENERATIONS && generationQueue.length > 0) {
+    const job = generationQueue.shift();
+    activeGenerationJobs++;
+    job.status = "processing";
+    job.startedAt = new Date();
+
+    Promise.resolve(generateExamForQueue(job.req, createMockResponse(job)))
+      .then(() => {
+        const result = job.result || {
+          statusCode: 500,
+          payload: {
+            success: false,
+            message: "Exam generation did not return a result.",
+          },
+        };
+
+        job.status = result.statusCode >= 400 ? "failed" : "completed";
+        job.completedAt = new Date();
+      })
+      .catch((error) => {
+        job.status = "failed";
+        job.completedAt = new Date();
+        job.result = {
+          statusCode: 500,
+          payload: {
+            success: false,
+            message: error.message,
+          },
+        };
+      })
+      .finally(() => {
+        activeGenerationJobs--;
+        cleanupGenerationJob(job.id);
+        runGenerationQueue();
+      });
+  }
+};
+
+const enqueueGenerationJob = (req) => {
+  const job = {
+    id: `${Date.now()}-${++generationJobSequence}`,
+    userId: req.user._id.toString(),
+    req: {
+      body: req.body,
+      user: req.user,
+      headers: req.headers,
+      ip: req.ip,
+      originalUrl: req.originalUrl,
+      get: req.get.bind(req),
+    },
+    status: "queued",
+    createdAt: new Date(),
+  };
+
+  generationJobs.set(job.id, job);
+  generationQueue.push(job);
+  runGenerationQueue();
+
+  return job;
+};
+
 exports.getExamOptions = async (req, res) => {
   try {
     const options = await Question.aggregate([
@@ -171,7 +280,7 @@ exports.getExamOptions = async (req, res) => {
   }
 };
 
-exports.generateExam = async (req, res) => {
+const generateExamForQueue = async (req, res) => {
   try {
     if (!canGenerateExam(req.user)) {
       return res.status(403).json({
@@ -485,6 +594,41 @@ exports.getExam = async (req, res) => {
       message: error.message,
     });
   }
+};
+
+exports.generateExam = async (req, res) => {
+  const job = enqueueGenerationJob(req);
+
+  res.status(202).json({
+    success: true,
+    ...createGenerationResponse(job),
+  });
+};
+
+exports.getGenerationJobStatus = async (req, res) => {
+  const job = generationJobs.get(req.params.id);
+
+  if (!job || job.userId !== req.user._id.toString()) {
+    return res.status(404).json({
+      success: false,
+      message: "Generation job not found.",
+    });
+  }
+
+  if (job.status === "completed" || job.status === "failed") {
+    return res.status(job.result?.statusCode || 200).json({
+      success: job.status === "completed",
+      queued: false,
+      jobId: job.id,
+      status: job.status,
+      result: job.result?.payload,
+    });
+  }
+
+  res.json({
+    success: true,
+    ...createGenerationResponse(job),
+  });
 };
 
 exports.getMyExamSummary = async (req, res) => {
