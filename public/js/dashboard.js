@@ -3,6 +3,7 @@ adminOnlyPage();
 
 let dashboardStats = null;
 let activeDashboardModal = null;
+const dashboardUserImageUrls = new Map();
 
 function setDashboardLoadingState() {
   document.getElementById("totalUsers").textContent = "...";
@@ -57,6 +58,7 @@ async function loadDashboard() {
       stats.registeredUsers.length > 0
         ? stats.registeredUsers.map(renderUserItem).join("")
         : `<p class="muted-text">No registered users.</p>`;
+    hydrateDashboardUserProfileImages(stats.registeredUsers);
 
     document.getElementById("activityBody").innerHTML =
       stats.recentActivity && stats.recentActivity.length > 0
@@ -228,6 +230,7 @@ function renderDashboardModal(type) {
       users.length > 0
         ? users.map(renderUserItem).join("")
         : `<p class="muted-text">No registered users.</p>`;
+    hydrateDashboardUserProfileImages(users);
     return;
   }
 
@@ -271,11 +274,12 @@ function renderDashboardModal(type) {
 
 function renderUserItem(user) {
   const initial = escapeHTML((user.name || user.email || "?").charAt(0));
+  const userId = user._id ? String(user._id) : "";
   const isManager = hasAnyRole(user, ["super_admin", "admin"]);
 
   return `
     <div class="dashboard-list-item user-row">
-      <span class="avatar">${initial}</span>
+      <span class="avatar dashboard-user-avatar" ${userId ? `data-user-avatar-id="${escapeHTML(userId)}"` : ""}>${initial}</span>
       <div>
         <strong>${escapeHTML(user.name)}</strong>
         <small>${escapeHTML(user.email)}</small>
@@ -285,6 +289,59 @@ function renderUserItem(user) {
       </span>
     </div>
   `;
+}
+
+async function hydrateDashboardUserProfileImages(users = []) {
+  const token = getToken();
+  if (!token) return;
+
+  const uniqueUsers = new Map();
+  users.forEach((user) => {
+    if (user?._id) {
+      uniqueUsers.set(String(user._id), user);
+    }
+  });
+
+  await Promise.all(
+    Array.from(uniqueUsers.keys()).map(async (userId) => {
+      const avatars = Array.from(
+        document.querySelectorAll(".dashboard-user-avatar"),
+      ).filter((avatar) => avatar.dataset.userAvatarId === userId);
+
+      if (!avatars.length) return;
+
+      try {
+        const res = await fetch(
+          `/api/users/${encodeURIComponent(userId)}/profile-image`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (!res.ok) return;
+
+        const blob = await res.blob();
+        if (!blob.size) return;
+
+        const oldImageUrl = dashboardUserImageUrls.get(userId);
+        if (oldImageUrl) {
+          window.URL.revokeObjectURL(oldImageUrl);
+        }
+
+        const imageUrl = window.URL.createObjectURL(blob);
+        dashboardUserImageUrls.set(userId, imageUrl);
+
+        avatars.forEach((avatar) => {
+          avatar.innerHTML = `<img src="${imageUrl}" alt="Profile picture">`;
+          avatar.classList.add("has-image");
+        });
+      } catch (error) {
+        // Keep the initials fallback when the user has no uploaded picture.
+      }
+    }),
+  );
 }
 
 function renderActivityRow(activity) {

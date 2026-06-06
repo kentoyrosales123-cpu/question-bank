@@ -3,6 +3,7 @@ adminOnlyPage();
 
 let users = [];
 let assignableRoles = [];
+const userProfileImageUrls = new Map();
 
 document.getElementById("userSearch").addEventListener("input", renderUsers);
 document
@@ -64,6 +65,7 @@ function renderUsers() {
           <td colspan="6" class="empty-table-cell">No users found.</td>
         </tr>
       `;
+  hydrateUserTableProfileImages(filteredUsers);
 }
 
 function renderUserRow(user) {
@@ -71,6 +73,7 @@ function renderUserRow(user) {
   const isCurrentUser = currentUser && currentUser.id === user._id;
   const registeredDate = new Date(user.createdAt).toLocaleDateString();
   const currentRole = normalizeRole(user.role);
+  const initial = escapeHTML((user.name || user.email || "?").charAt(0));
   const canChangeRole = assignableRoles.some((role) => role.value === currentRole);
   const roleOptions = (canChangeRole
     ? assignableRoles
@@ -87,7 +90,12 @@ function renderUserRow(user) {
 
   return `
     <tr>
-      <td><strong>${escapeHTML(user.name)}</strong></td>
+      <td>
+        <div class="user-profile-cell">
+          <span class="avatar user-table-avatar" data-user-avatar-id="${escapeHTML(user._id)}">${initial}</span>
+          <strong>${escapeHTML(user.name)}</strong>
+        </div>
+      </td>
       <td>${escapeHTML(user.email)}</td>
       <td>
         <select
@@ -161,6 +169,55 @@ async function deleteUser(id) {
   } catch (error) {
     setMessage("usersMessage", error.message);
   }
+}
+
+async function hydrateUserTableProfileImages(filteredUsers = []) {
+  const token = getToken();
+  if (!token) return;
+
+  await Promise.all(
+    filteredUsers
+      .filter((user) => user?._id)
+      .map(async (user) => {
+        const userId = String(user._id);
+        const avatars = Array.from(
+          document.querySelectorAll(".user-table-avatar"),
+        ).filter((avatar) => avatar.dataset.userAvatarId === userId);
+
+        if (!avatars.length) return;
+
+        try {
+          const res = await fetch(
+            `/api/users/${encodeURIComponent(userId)}/profile-image`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            },
+          );
+
+          if (!res.ok) return;
+
+          const blob = await res.blob();
+          if (!blob.size) return;
+
+          const oldImageUrl = userProfileImageUrls.get(userId);
+          if (oldImageUrl) {
+            window.URL.revokeObjectURL(oldImageUrl);
+          }
+
+          const imageUrl = window.URL.createObjectURL(blob);
+          userProfileImageUrls.set(userId, imageUrl);
+
+          avatars.forEach((avatar) => {
+            avatar.innerHTML = `<img src="${imageUrl}" alt="Profile picture">`;
+            avatar.classList.add("has-image");
+          });
+        } catch (error) {
+          // Keep initials visible if the image endpoint has no upload for this user.
+        }
+      }),
+  );
 }
 
 loadUsers();
