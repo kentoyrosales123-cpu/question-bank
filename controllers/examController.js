@@ -1134,6 +1134,19 @@ const sendExamDocx = async (req, res, options = {}) => {
         ? `${exam.title || "generated-exam"}-answer-key`
         : `${exam.title || "generated-exam"}-no-answer`,
     );
+    const downloadType = includeAnswerKey ? "answer key" : "exam";
+
+    await logActivity(req, {
+      user: req.user,
+      action: "download_exam",
+      description: `Downloaded ${downloadType}: ${exam.title}`,
+      metadata: {
+        exam: exam._id,
+        title: exam.title,
+        includeAnswerKey,
+        fileName,
+      },
+    });
 
     res.setHeader(
       "Content-Type",

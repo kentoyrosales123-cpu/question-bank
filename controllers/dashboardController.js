@@ -11,6 +11,8 @@ const formatActivityAction = (action) =>
     ? "Approved Exam"
     : action === "reject_exam"
     ? "Rejected Exam"
+    : action === "download_exam"
+    ? "Downloaded Exam"
     : "Logged In";
 
 const getActivityDateRange = (query = {}) => {

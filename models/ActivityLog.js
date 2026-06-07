@@ -10,7 +10,13 @@ const activityLogSchema = new mongoose.Schema(
 
     action: {
       type: String,
-      enum: ["login", "generate_exam"],
+      enum: [
+        "login",
+        "generate_exam",
+        "approve_exam",
+        "reject_exam",
+        "download_exam",
+      ],
       required: true,
     },
 

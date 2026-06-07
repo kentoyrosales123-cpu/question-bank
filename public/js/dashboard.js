@@ -363,6 +363,8 @@ function renderActivityRow(activity) {
       ? "Approved Exam"
       : activity.action === "reject_exam"
       ? "Rejected Exam"
+      : activity.action === "download_exam"
+      ? "Downloaded Exam"
       : "Logged In";
   const badgeClass =
     activity.action === "generate_exam"
@@ -371,6 +373,8 @@ function renderActivityRow(activity) {
       ? "easy"
       : activity.action === "reject_exam"
       ? "difficult"
+      : activity.action === "download_exam"
+      ? "easy"
       : "easy";
 
   return `
