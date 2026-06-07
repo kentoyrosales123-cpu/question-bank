@@ -36,6 +36,28 @@ function formatPercent(count, total) {
   return total > 0 ? `${Math.round((count / total) * 100)}%` : "0%";
 }
 
+function updateDifficultyDonut(easy, average, difficult) {
+  const donut = document.getElementById("summaryDifficultyDonut");
+  if (!donut) return;
+
+  const total = easy + average + difficult;
+  if (total <= 0) {
+    donut.style.background = "conic-gradient(#d6d6d6 0 100%)";
+    return;
+  }
+
+  const easyEnd = (easy / total) * 100;
+  const averageEnd = easyEnd + (average / total) * 100;
+
+  donut.style.background = `
+    conic-gradient(
+      #860012 0 ${easyEnd}%,
+      #e3a000 ${easyEnd}% ${averageEnd}%,
+      #a9a9a9 ${averageEnd}% 100%
+    )
+  `;
+}
+
 function adjustTotalItems(amount) {
   const input = document.getElementById("totalItems");
   input.value = Math.max(1, Number(input.value || 0) + amount);
@@ -73,6 +95,7 @@ function updateExamSummary() {
     difficult,
     totalItems,
   );
+  updateDifficultyDonut(easy, average, difficult);
 }
 
 function getAvailableBlueprintTopics() {

@@ -97,11 +97,20 @@ function updateDifficultySummary(stats) {
   document.getElementById("difficultBreakdown").textContent =
     `${difficult} (${difficultPercent}%)`;
   document.getElementById("difficultyTotal").textContent = total;
-  document.getElementById("difficultyDonut").style.background = `
+
+  const donut = document.getElementById("difficultyDonut");
+  if (!donut) return;
+
+  if (total <= 0) {
+    donut.style.background = "conic-gradient(#d6d6d6 0 100%)";
+    return;
+  }
+
+  donut.style.background = `
     conic-gradient(
-      #5fbf68 0 ${easyPercent}%,
-      #f5a623 ${easyPercent}% ${easyPercent + averagePercent}%,
-      #e94b3c ${easyPercent + averagePercent}% 100%
+      #860012 0 ${easyPercent}%,
+      #e3a000 ${easyPercent}% ${easyPercent + averagePercent}%,
+      #a9a9a9 ${easyPercent + averagePercent}% 100%
     )
   `;
 }

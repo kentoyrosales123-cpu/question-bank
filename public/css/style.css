@@ -2020,7 +2020,7 @@ pre {
   width: 140px;
   height: 140px;
   border-radius: 50%;
-  background: conic-gradient(#5fbf68 0 40%, #f5a623 40% 80%, #e94b3c 80%);
+  background: conic-gradient(#860012 0 40%, #e3a000 40% 80%, #a9a9a9 80%);
   position: relative;
 }
 
@@ -2860,7 +2860,7 @@ body.dark {
 .dashboard-donut,
 .donut-chart,
 .report-donut {
-  background: conic-gradient(#860012 0 43%, #e3a000 43% 100%);
+  background: conic-gradient(#860012 0 34%, #e3a000 34% 84%, #a9a9a9 84% 100%);
 }
 
 .student-action-button,
