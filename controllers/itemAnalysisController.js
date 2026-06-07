@@ -15,6 +15,7 @@ const {
   TextRun,
   VerticalAlign,
   WidthType,
+  TableLayoutType,
 } = require("docx");
 const ItemAnalysisExam = require("../models/ItemAnalysisExam");
 const ItemAnalysisStudentResult = require("../models/ItemAnalysisStudentResult");
@@ -159,7 +160,7 @@ const maroon = "8A0013";
 const gold = "F2B705";
 const lightGold = "FFF7DF";
 const borderColor = "D7C6C6";
-const omrGridColor = "7A6A6A";
+const omrGridColor = "000000";
 const omrItemsPerPage = 100;
 const omrRowsPerBlock = 25;
 const omrMaxBlocksPerPage = 4;
@@ -170,10 +171,10 @@ const cellBorders = {
   right: { style: BorderStyle.SINGLE, size: 1, color: borderColor },
 };
 const omrGridBorders = {
-  top: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
-  bottom: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
-  left: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
-  right: { style: BorderStyle.SINGLE, size: 2, color: omrGridColor },
+  top: { style: BorderStyle.SINGLE, size: 4, color: omrGridColor },
+  bottom: { style: BorderStyle.SINGLE, size: 4, color: omrGridColor },
+  left: { style: BorderStyle.SINGLE, size: 4, color: omrGridColor },
+  right: { style: BorderStyle.SINGLE, size: 4, color: omrGridColor },
 };
 
 const omrCell = (text, options = {}) =>
@@ -235,6 +236,30 @@ const spacerParagraph = (size = 4) =>
     children: [new TextRun({ text: "", size })],
   });
 
+const markerCell = () =>
+  new TableCell({
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    },
+    margins: { top: 40, bottom: 40, left: 40, right: 40 },
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: "■",
+            bold: true,
+            size: 30,
+            color: "000000",
+          }),
+        ],
+      }),
+    ],
+  });
+
 const buildOmrTemplateBuffer = async ({
   title = "OMR Answer Sheet",
   subject = "",
@@ -286,10 +311,21 @@ const buildOmrTemplateBuffer = async ({
         omrMaxBlocksPerPage,
         Math.max(1, Math.ceil(pageItemCount / omrRowsPerBlock)),
       );
-      const blockWidth = 100 / blockCount;
-      const itemNumberWidth = blockWidth * 0.14;
-      const answerWidth = blockWidth * 0.215;
-      const bubbleSize = blockCount <= 2 ? 30 : 26;
+      const answerTableDxa = 8200;
+      const blockDxa = Math.floor(answerTableDxa / blockCount);
+      const itemNumberDxa = Math.floor(blockDxa * 0.16);
+      const answerDxa = Math.floor((blockDxa - itemNumberDxa) / 4);
+
+      const itemNumberWidth = {
+        size: itemNumberDxa,
+        type: WidthType.DXA,
+      };
+
+      const answerWidth = {
+        size: answerDxa,
+        type: WidthType.DXA,
+      };
+      const bubbleSize = blockCount <= 2 ? 30 : 28;
       const answerHeaderRow = new TableRow({
         tableHeader: true,
         children: Array.from({ length: blockCount }, () => [
@@ -300,7 +336,7 @@ const buildOmrTemplateBuffer = async ({
             fill: lightGold,
             margin: 14,
             size: 14,
-            width: { size: itemNumberWidth, type: WidthType.PERCENTAGE },
+            width: itemNumberWidth,
           }),
           ...["A", "B", "C", "D"].map((choice) =>
             omrCell(choice, {
@@ -310,7 +346,7 @@ const buildOmrTemplateBuffer = async ({
               fill: lightGold,
               margin: 14,
               size: 14,
-              width: { size: answerWidth, type: WidthType.PERCENTAGE },
+              width: answerWidth,
             }),
           ),
         ]).flat(),
@@ -329,37 +365,37 @@ const buildOmrTemplateBuffer = async ({
                 borders: omrGridBorders,
                 bold: true,
                 fill,
-                margin: 26,
+                margin: 14,
                 size: 18,
-                width: { size: itemNumberWidth, type: WidthType.PERCENTAGE },
+                width: itemNumberWidth,
               }),
-              omrCell(hasItem ? "Ⓐ" : "", {
+              omrCell(hasItem ? "○" : "", {
                 borders: omrGridBorders,
                 fill,
-                margin: 18,
+                margin: 10,
                 size: bubbleSize,
-                width: { size: answerWidth, type: WidthType.PERCENTAGE },
+                width: answerWidth,
               }),
-              omrCell(hasItem ? "Ⓑ" : "", {
+              omrCell(hasItem ? "○" : "", {
                 borders: omrGridBorders,
                 fill,
-                margin: 18,
+                margin: 10,
                 size: bubbleSize,
-                width: { size: answerWidth, type: WidthType.PERCENTAGE },
+                width: answerWidth,
               }),
-              omrCell(hasItem ? "Ⓒ" : "", {
+              omrCell(hasItem ? "○" : "", {
                 borders: omrGridBorders,
                 fill,
-                margin: 18,
+                margin: 10,
                 size: bubbleSize,
-                width: { size: answerWidth, type: WidthType.PERCENTAGE },
+                width: answerWidth,
               }),
-              omrCell(hasItem ? "Ⓓ" : "", {
+              omrCell(hasItem ? "○" : "", {
                 borders: omrGridBorders,
                 fill,
-                margin: 18,
+                margin: 10,
                 size: bubbleSize,
-                width: { size: answerWidth, type: WidthType.PERCENTAGE },
+                width: answerWidth,
               }),
             ];
           }).flat(),
@@ -367,9 +403,11 @@ const buildOmrTemplateBuffer = async ({
       });
       const answerTable = new Table({
         width: {
-          size: 100,
-          type: WidthType.PERCENTAGE,
+          size: answerTableDxa,
+          type: WidthType.DXA,
         },
+        alignment: AlignmentType.CENTER,
+        layout: TableLayoutType.FIXED,
         rows: [answerHeaderRow, ...rows],
       });
       const headerTable = new Table({
@@ -412,7 +450,7 @@ const buildOmrTemplateBuffer = async ({
                 ],
                 {
                   fill: lightGold,
-                  margin: 70,
+                  margin: 35,
                   width: { size: 80, type: WidthType.PERCENTAGE },
                 },
               ),
@@ -448,8 +486,8 @@ const buildOmrTemplateBuffer = async ({
                             data: qrImage,
                             type: "png",
                             transformation: {
-                              width: 72,
-                              height: 72,
+                              width: 58,
+                              height: 58,
                             },
                           }),
                         ],
@@ -479,7 +517,7 @@ const buildOmrTemplateBuffer = async ({
                       }),
                     ],
                 {
-                  margin: 50,
+                  margin: 30,
                   width: { size: 20, type: WidthType.PERCENTAGE },
                 },
               ),
@@ -493,17 +531,17 @@ const buildOmrTemplateBuffer = async ({
           new TableRow({
             children: [
               textCell([infoLine("Subject", subject)], {
-                margin: 55,
+                margin: 28,
                 width: { size: 34, type: WidthType.PERCENTAGE },
               }),
               textCell([infoLine("Section", section)], {
-                margin: 55,
+                margin: 28,
                 width: { size: 33, type: WidthType.PERCENTAGE },
               }),
               textCell(
                 [infoLine("Items", `${startItem}-${endItem} of ${itemCount}`)],
                 {
-                  margin: 55,
+                  margin: 28,
                   width: { size: 33, type: WidthType.PERCENTAGE },
                 },
               ),
@@ -512,15 +550,15 @@ const buildOmrTemplateBuffer = async ({
           new TableRow({
             children: [
               textCell([infoLine("Student Name")], {
-                margin: 55,
+                margin: 28,
                 width: { size: 42, type: WidthType.PERCENTAGE },
               }),
               textCell([infoLine("Student ID")], {
-                margin: 55,
+                margin: 28,
                 width: { size: 34, type: WidthType.PERCENTAGE },
               }),
               textCell([infoLine("Date")], {
-                margin: 55,
+                margin: 28,
                 width: { size: 24, type: WidthType.PERCENTAGE },
               }),
             ],
@@ -549,8 +587,52 @@ const buildOmrTemplateBuffer = async ({
                     ],
                   }),
                 ],
-                { fill: lightGold, margin: 50 },
+                { fill: lightGold, margin: 24 },
               ),
+            ],
+          }),
+        ],
+      });
+
+      const markerTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              markerCell(),
+              textCell(
+                [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                      new TextRun({
+                        text: "",
+                        bold: true,
+                        size: 14,
+                        color: "666666",
+                      }),
+                    ],
+                  }),
+                ],
+                {
+                  borders: {
+                    top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                    bottom: {
+                      style: BorderStyle.NONE,
+                      size: 0,
+                      color: "FFFFFF",
+                    },
+                    left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                    right: {
+                      style: BorderStyle.NONE,
+                      size: 0,
+                      color: "FFFFFF",
+                    },
+                  },
+                  width: { size: 80, type: WidthType.PERCENTAGE },
+                },
+              ),
+              markerCell(),
             ],
           }),
         ],
@@ -564,8 +646,12 @@ const buildOmrTemplateBuffer = async ({
         ...(pageIndex === 0
           ? [spacerParagraph(), infoTable, spacerParagraph(), instructionTable]
           : []),
-        spacerParagraph(),
+        spacerParagraph(10),
+        markerTable,
+        spacerParagraph(4),
         answerTable,
+        spacerParagraph(4),
+        markerTable,
       ];
     }),
   );
@@ -866,7 +952,10 @@ const updateGeneratedExamQuestionDifficulties = async (exam, analysis) => {
         item.difficultyInterpretation,
       );
 
-      if (!questionId || !["Easy", "Average", "Difficult"].includes(difficulty)) {
+      if (
+        !questionId ||
+        !["Easy", "Average", "Difficult"].includes(difficulty)
+      ) {
         return null;
       }
 
