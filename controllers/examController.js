@@ -914,6 +914,7 @@ const createTosCell = (text, options = {}) =>
         }
       : undefined,
     columnSpan: options.columnSpan,
+    rowSpan: options.rowSpan,
     verticalAlign: options.verticalAlign || VerticalAlign.CENTER,
     margins: {
       top: 90,
@@ -938,6 +939,63 @@ const createTosCell = (text, options = {}) =>
         color: options.color,
         size: options.size || 18,
       })),
+  });
+
+const tosBorder = {
+  style: BorderStyle.SINGLE,
+  size: 4,
+  color: "000000",
+};
+
+const tosNoBorder = {
+  style: BorderStyle.NONE,
+  size: 0,
+  color: "FFFFFF",
+};
+
+const createTosBodyCell = (children, options = {}) =>
+  new TableCell({
+    columnSpan: options.columnSpan,
+    verticalAlign: options.verticalAlign || VerticalAlign.CENTER,
+    borders: options.borders,
+    margins: {
+      top: options.marginY ?? 70,
+      bottom: options.marginY ?? 70,
+      left: options.marginX ?? 120,
+      right: options.marginX ?? 120,
+    },
+    children,
+  });
+
+const createTosFormParagraph = (runs, options = {}) =>
+  new Paragraph({
+    alignment: options.alignment || AlignmentType.LEFT,
+    spacing: {
+      before: 0,
+      after: 0,
+      line: options.line || 240,
+    },
+    children: runs,
+  });
+
+const createTosBlankRun = (text = "____________________", options = {}) =>
+  createTextRun(text, {
+    size: options.size || 18,
+    underline: true,
+  });
+
+const createTosFieldRun = (value, blank = "____________________", options = {}) =>
+  createTosBlankRun(value ? `${value}${blank.slice(String(value).length)}` : blank, options);
+
+const createTosFormCell = (runs, options = {}) =>
+  createTosBodyCell([createTosFormParagraph(runs, options)], {
+    ...options,
+    borders: {
+      top: options.topBorder ? tosBorder : tosNoBorder,
+      bottom: options.bottomBorder ? tosBorder : tosNoBorder,
+      left: options.leftBorder ? tosBorder : tosNoBorder,
+      right: options.rightBorder ? tosBorder : tosNoBorder,
+    },
   });
 
 const createTosHeaderCell = (text, options = {}) =>
@@ -1119,72 +1177,140 @@ const buildTosDocxBuffer = async (exam) => {
     })),
   ];
   const totalItems = Number(exam.totalItems || exam.questions.length || 0);
+  const courseText = exam.subject || "";
+  const examText = exam.title || "";
+  const dateCompletedText = formatDateForDocx();
   const children = [
     new Table({
       width: {
-        size: 15240,
-        type: WidthType.DXA,
+        size: 100,
+        type: WidthType.PERCENTAGE,
       },
-      columnWidths: [3000, 3750, 820, 2300, 700, 650, 650, 650, 2720],
+      columnWidths: [3300, 4200, 900, 2350, 820, 700, 650, 950],
       rows: [
         new TableRow({
           children: [
-            createTosCell(
-              `Course: ${exam.subject || ""}        Date Completed: ${formatDateForDocx()}        Page 1 of 1\nCollege/Program:        Term:        Sem.:        S.Y.        Exam: ${exam.title || ""}        Exam Date:`,
+            createTosFormCell(
+              [
+                createTextRun("Course: ", { size: 18 }),
+                createTosFieldRun(courseText, "____________________________", { size: 18 }),
+              ],
+              { columnSpan: 3, topBorder: true, leftBorder: true },
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Date Completed: ", { size: 18 }),
+                createTosFieldRun(dateCompletedText, "________________", { size: 18 }),
+              ],
+              { columnSpan: 2, topBorder: true },
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Page 1", { size: 18 }),
+                createTosBlankRun("__________", { size: 18 }),
+                createTextRun(" of 1", { size: 18 }),
+              ],
+              { columnSpan: 3, topBorder: true, rightBorder: true },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosFormCell(
+              [
+                createTextRun("College/Program:", { size: 18 }),
+                createTosBlankRun("______________________________", { size: 18 }),
+              ],
+              { columnSpan: 2, leftBorder: true },
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Term:", { size: 18 }),
+                createTosBlankRun("_______", { size: 18 }),
+              ],
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Sem.:", { size: 18 }),
+                createTosBlankRun("________", { size: 18 }),
+              ],
+            ),
+            createTosFormCell(
+              [
+                createTextRun("S.Y.", { size: 18 }),
+                createTosBlankRun("_______________", { size: 18 }),
+              ],
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Exam:", { size: 18 }),
+                createTosFieldRun(examText, "________________", { size: 18 }),
+              ],
+              { columnSpan: 2 },
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Exam Date:", { size: 18 }),
+                createTosBlankRun("__", { size: 18 }),
+              ],
+              { rightBorder: true },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosFormCell(
+              [
+                createTextRun("Student Outcome (SO): ", { size: 18 }),
+                createTosBlankRun("____________________________________________________________________________________________", { size: 18 }),
+              ],
+              { columnSpan: 8, leftBorder: true, rightBorder: true },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosFormCell(
+              [
+                createTextRun("Category:      [ ", { size: 18 }),
+                createTosBlankRun("/", { size: 18 }),
+                createTextRun(" ] - Introductory        [ ", { size: 18, italics: true }),
+                createTosBlankRun(" ", { size: 18 }),
+                createTextRun(" ] - Enabling        [ ", { size: 18, italics: true }),
+                createTosBlankRun(" ", { size: 18 }),
+                createTextRun(" ] - Demonstration", { size: 18, italics: true }),
+              ],
+              { columnSpan: 5, leftBorder: true, bottomBorder: true },
+            ),
+            createTosFormCell(
+              [
+                createTextRun("Total Points: ", { size: 18 }),
+                createTosFieldRun(totalItems ? String(totalItems) : "", "________________________", { size: 18 }),
+              ],
               {
-                columnSpan: 9,
-                alignment: AlignmentType.LEFT,
-                size: 18,
+                columnSpan: 3,
+                alignment: AlignmentType.RIGHT,
+                rightBorder: true,
+                bottomBorder: true,
               },
             ),
           ],
         }),
         new TableRow({
           children: [
-            createTosCell(
-              "Student Outcome (SO): ________________________________________________________________________________________________",
-              {
-                columnSpan: 9,
-                alignment: AlignmentType.LEFT,
-                size: 18,
-              },
-            ),
+            createTosHeaderCell("Course Outcome", { rowSpan: 2 }),
+            createTosHeaderCell("Topics", { rowSpan: 2 }),
+            createTosHeaderCell("CogPr", { rowSpan: 2 }),
+            createTosHeaderCell("Assessment Tasks", { rowSpan: 2 }),
+            createTosHeaderCell("Distribution", { columnSpan: 3 }),
+            createTosHeaderCell("Item\nNumbers", { rowSpan: 2 }),
           ],
         }),
         new TableRow({
           children: [
-            createTosCell(
-              `Category: [ / ] - Introductory        [    ] - Enabling        [    ] - Demonstration        Total Points: ${totalItems}`,
-              {
-                columnSpan: 9,
-                alignment: AlignmentType.LEFT,
-                size: 18,
-                italics: true,
-              },
-            ),
-          ],
-        }),
-        new TableRow({
-          children: [
-            createTosHeaderCell("Course Outcome"),
-            createTosHeaderCell("Topics"),
-            createTosHeaderCell("CogPr"),
-            createTosHeaderCell("Assessment Tasks"),
-            createTosHeaderCell("Distribution", { columnSpan: 4 }),
-            createTosHeaderCell("Item Numbers"),
-          ],
-        }),
-        new TableRow({
-          children: [
-            createTosHeaderCell(""),
-            createTosHeaderCell(""),
-            createTosHeaderCell(""),
-            createTosHeaderCell(""),
-            createTosHeaderCell("%"),
-            createTosHeaderCell("Wt"),
+            createTosHeaderCell("%& Wt"),
             createTosHeaderCell("Points"),
             createTosHeaderCell("Items"),
-            createTosHeaderCell(""),
           ],
         }),
         ...visibleTosRows.map(
@@ -1195,28 +1321,13 @@ const buildTosDocxBuffer = async (exam) => {
                 createTosCell(row.topic, { alignment: AlignmentType.LEFT }),
                 createTosCell(row.cogPr),
                 createTosCell(row.assessmentTask, { alignment: AlignmentType.LEFT }),
-                createTosCell(row.percent),
-                createTosCell(row.weight),
+                createTosCell(row.percent && row.weight ? `${row.percent} / ${row.weight}` : ""),
                 createTosCell(row.points),
                 createTosCell(row.weight),
                 createTosCell(row.itemNumbers),
               ],
             }),
         ),
-        new TableRow({
-          children: [
-            createTosCell("Total", {
-              columnSpan: 4,
-              alignment: AlignmentType.RIGHT,
-              bold: true,
-            }),
-            createTosCell("100%", { bold: true }),
-            createTosCell(totalItems, { bold: true }),
-            createTosCell(totalItems, { bold: true }),
-            createTosCell(totalItems, { bold: true }),
-            createTosCell(totalItems, { bold: true }),
-          ],
-        }),
       ],
     }),
   ];
