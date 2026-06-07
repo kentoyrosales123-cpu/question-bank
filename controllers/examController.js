@@ -1,5 +1,7 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
+const fs = require("fs");
+const path = require("path");
 const { logActivity } = require("../services/activityLogger");
 const { notifyRoles, notifyUsers } = require("../services/notificationService");
 const {
@@ -11,6 +13,7 @@ const {
 
 const {
   Document,
+  Footer,
   Header,
   Packer,
   Paragraph,
@@ -21,8 +24,13 @@ const {
   TableRow,
   AlignmentType,
   BorderStyle,
+  PageOrientation,
+  ShadingType,
+  VerticalAlign,
   WidthType,
 } = require("docx");
+
+const TOS_LOGO_DOCX_PATH = path.join(__dirname, "..", "public", "logo-docx.png");
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -815,6 +823,433 @@ const getDocxImageType = (contentType) => {
 const sanitizeFileName = (name) =>
   `${name || "generated-exam"}.docx`.replace(/[^a-z0-9.]/gi, "_").toLowerCase();
 
+const formatDateForDocx = (value = new Date()) =>
+  new Date(value).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+const formatDifficultyCode = (difficulty) => {
+  const normalized = String(difficulty || "").toLowerCase();
+
+  if (normalized === "easy") return "K";
+  if (normalized === "average") return "C";
+  if (normalized === "difficult") return "A";
+
+  return difficulty || "";
+};
+
+const getTopicKey = (question) =>
+  `${question.subject || "General"}|||${question.topic || "General"}`;
+
+const buildTosRows = (exam) => {
+  const totalItems = Number(exam.totalItems || exam.questions.length || 0);
+  const grouped = new Map();
+
+  exam.questions.forEach((question, index) => {
+    const key = getTopicKey(question);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        subject: question.subject || exam.subject || "",
+        topic: question.topic || "General",
+        difficulties: new Set(),
+        itemNumbers: [],
+      });
+    }
+
+    const row = grouped.get(key);
+    row.difficulties.add(formatDifficultyCode(question.difficulty));
+    row.itemNumbers.push(index + 1);
+  });
+
+  return Array.from(grouped.values()).map((row, index) => {
+    const itemCount = row.itemNumbers.length;
+    const percent = totalItems > 0 ? Math.round((itemCount / totalItems) * 100) : 0;
+
+    return {
+      courseOutcome: `CO${index + 1}`,
+      topic: row.subject && row.subject !== exam.subject
+        ? `${row.subject} - ${row.topic}`
+        : row.topic,
+      cogPr: Array.from(row.difficulties).filter(Boolean).join(", "),
+      assessmentTask: "Multiple-choice test item",
+      percent: `${percent}%`,
+      weight: itemCount,
+      points: itemCount,
+      itemNumbers: row.itemNumbers.join(", "),
+    };
+  });
+};
+
+const createTextRun = (text, options = {}) =>
+  new TextRun({
+    text: String(text ?? ""),
+    font: options.font || "Times New Roman",
+    size: options.size || 18,
+    bold: options.bold,
+    italics: options.italics,
+    underline: options.underline ? {} : undefined,
+  });
+
+const createTosParagraph = (text, options = {}) =>
+  new Paragraph({
+    alignment: options.alignment || AlignmentType.LEFT,
+    spacing: {
+      before: options.before || 0,
+      after: options.after || 0,
+      line: options.line || 240,
+    },
+    children: [createTextRun(text, options)],
+  });
+
+const createTosCell = (text, options = {}) =>
+  new TableCell({
+    width: options.width
+      ? {
+          size: options.width,
+          type: WidthType.DXA,
+        }
+      : undefined,
+    columnSpan: options.columnSpan,
+    verticalAlign: options.verticalAlign || VerticalAlign.CENTER,
+    margins: {
+      top: 90,
+      bottom: 90,
+      left: 90,
+      right: 90,
+    },
+    shading: options.shading
+      ? {
+          type: ShadingType.CLEAR,
+          fill: options.shading,
+          color: "auto",
+        }
+      : undefined,
+    children: String(text ?? "")
+      .split("\n")
+      .map((line) => createTosParagraph(line, {
+        alignment: options.alignment || AlignmentType.CENTER,
+        bold: options.bold,
+        italics: options.italics,
+        font: options.font,
+        size: options.size || 18,
+      })),
+  });
+
+const createTosHeaderCell = (text, options = {}) =>
+  createTosCell(text, {
+    ...options,
+    bold: true,
+    shading: "D9D9D9",
+    size: 20,
+  });
+
+let tosLogoPngBufferPromise = null;
+
+const getTosLogoPngBuffer = async () => {
+  if (!tosLogoPngBufferPromise) {
+    tosLogoPngBufferPromise = fs.promises
+      .readFile(TOS_LOGO_DOCX_PATH)
+      .catch(() => null);
+  }
+
+  return tosLogoPngBufferPromise;
+};
+
+const createTosHeaderLogoCell = async () => {
+  const logoBuffer = await getTosLogoPngBuffer();
+
+  return new TableCell({
+    rowSpan: 3,
+    width: {
+      size: 3300,
+      type: WidthType.DXA,
+    },
+    verticalAlign: VerticalAlign.CENTER,
+    margins: {
+      top: 80,
+      bottom: 80,
+      left: 120,
+      right: 120,
+    },
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0 },
+        children: logoBuffer
+          ? [
+              new ImageRun({
+                data: logoBuffer,
+                type: "png",
+                transformation: {
+                  width: 150,
+                  height: 58,
+                },
+              }),
+            ]
+          : [
+              new TextRun({
+                text: "UM",
+                bold: true,
+                color: "B45B6A",
+                size: 48,
+              }),
+            ],
+      }),
+    ],
+  });
+};
+
+const createTosDocHeader = async () =>
+  new Header({
+    children: [
+      new Table({
+        width: {
+          size: 100,
+          type: WidthType.PERCENTAGE,
+        },
+        columnWidths: [3300, 11940],
+        rows: [
+          new TableRow({
+            children: [
+              await createTosHeaderLogoCell(),
+              createTosCell("INSTITUTE OF PEDAGOGICAL ADVANCEMENT AND COMPETITIVENESS", {
+                bold: true,
+                size: 28,
+                font: "Arial Narrow",
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              createTosCell("[ / ] Main        [ ] Branch", {
+                size: 18,
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              createTosCell("TABLE OF SPECIFICATIONS (TOS)", {
+                bold: true,
+                size: 18,
+                font: "Arial",
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
+const createTosFooter = () =>
+  new Footer({
+    children: [
+      new Table({
+        width: {
+          size: 100,
+          type: WidthType.PERCENTAGE,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              createTosCell(
+                "Legend: CogPr (Cognitive Process Category) - Rem = Remember, Und = Understand, App = Apply, Anl = Analyze, Evl = Evaluate",
+                {
+                  columnSpan: 3,
+                  alignment: AlignmentType.LEFT,
+                  size: 14,
+                },
+              ),
+            ],
+          }),
+          new TableRow({
+            children: [
+              createTosCell("Prepared by:\n\n____________________________\nCourse Teacher", {
+                size: 15,
+              }),
+              createTosCell("*Reviewed by:\n\n____________________________\nProgram Head", {
+                size: 15,
+              }),
+              createTosCell("*Approved by:\n\n____________________________\nCollege Dean/Director", {
+                size: 15,
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              createTosCell(
+                "*Please affix your signature over printed name and indicate thereafter the signing date.",
+                {
+                  columnSpan: 3,
+                  alignment: AlignmentType.LEFT,
+                  size: 13,
+                  italics: true,
+                },
+              ),
+            ],
+          }),
+        ],
+      }),
+      createTosParagraph("F-13052-237 / Rev. #0 / Effectivity: March 18, 2022", {
+        alignment: AlignmentType.LEFT,
+        size: 12,
+        before: 40,
+      }),
+    ],
+  });
+
+const buildTosDocxBuffer = async (exam) => {
+  const tosRows = buildTosRows(exam);
+  const visibleTosRows = [
+    ...tosRows,
+    ...Array.from({ length: Math.max(0, 4 - tosRows.length) }, () => ({
+      courseOutcome: "",
+      topic: "",
+      cogPr: "",
+      assessmentTask: "",
+      percent: "",
+      weight: "",
+      points: "",
+      itemNumbers: "",
+    })),
+  ];
+  const totalItems = Number(exam.totalItems || exam.questions.length || 0);
+  const children = [
+    new Table({
+      width: {
+        size: 15240,
+        type: WidthType.DXA,
+      },
+      columnWidths: [3000, 3750, 820, 2300, 700, 650, 650, 650, 2720],
+      rows: [
+        new TableRow({
+          children: [
+            createTosCell(
+              `Course: ${exam.subject || ""}        Date Completed: ${formatDateForDocx()}        Page 1 of 1\nCollege/Program:        Term:        Sem.:        S.Y.        Exam: ${exam.title || ""}        Exam Date:`,
+              {
+                columnSpan: 9,
+                alignment: AlignmentType.LEFT,
+                size: 18,
+              },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosCell(
+              "Student Outcome (SO): ________________________________________________________________________________________________",
+              {
+                columnSpan: 9,
+                alignment: AlignmentType.LEFT,
+                size: 18,
+              },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosCell(
+              `Category: [ / ] - Introductory        [    ] - Enabling        [    ] - Demonstration        Total Points: ${totalItems}`,
+              {
+                columnSpan: 9,
+                alignment: AlignmentType.LEFT,
+                size: 18,
+                italics: true,
+              },
+            ),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosHeaderCell("Course Outcome"),
+            createTosHeaderCell("Topics"),
+            createTosHeaderCell("CogPr"),
+            createTosHeaderCell("Assessment Tasks"),
+            createTosHeaderCell("Distribution", { columnSpan: 4 }),
+            createTosHeaderCell("Item Numbers"),
+          ],
+        }),
+        new TableRow({
+          children: [
+            createTosHeaderCell(""),
+            createTosHeaderCell(""),
+            createTosHeaderCell(""),
+            createTosHeaderCell(""),
+            createTosHeaderCell("%"),
+            createTosHeaderCell("Wt"),
+            createTosHeaderCell("Points"),
+            createTosHeaderCell("Items"),
+            createTosHeaderCell(""),
+          ],
+        }),
+        ...visibleTosRows.map(
+          (row) =>
+            new TableRow({
+              children: [
+                createTosCell(row.courseOutcome),
+                createTosCell(row.topic, { alignment: AlignmentType.LEFT }),
+                createTosCell(row.cogPr),
+                createTosCell(row.assessmentTask, { alignment: AlignmentType.LEFT }),
+                createTosCell(row.percent),
+                createTosCell(row.weight),
+                createTosCell(row.points),
+                createTosCell(row.weight),
+                createTosCell(row.itemNumbers),
+              ],
+            }),
+        ),
+        new TableRow({
+          children: [
+            createTosCell("Total", {
+              columnSpan: 4,
+              alignment: AlignmentType.RIGHT,
+              bold: true,
+            }),
+            createTosCell("100%", { bold: true }),
+            createTosCell(totalItems, { bold: true }),
+            createTosCell(totalItems, { bold: true }),
+            createTosCell(totalItems, { bold: true }),
+            createTosCell(totalItems, { bold: true }),
+          ],
+        }),
+      ],
+    }),
+  ];
+
+  const doc = new Document({
+    sections: [
+      {
+        headers: {
+          default: await createTosDocHeader(),
+        },
+        footers: {
+          default: createTosFooter(),
+        },
+        properties: {
+          page: {
+            size: {
+              orientation: PageOrientation.LANDSCAPE,
+            },
+            margin: {
+              top: 1080,
+              right: 720,
+              bottom: 1260,
+              left: 720,
+              header: 360,
+              footer: 360,
+            },
+          },
+        },
+        children,
+      },
+    ],
+  });
+
+  return Packer.toBuffer(doc);
+};
+
 const buildDocxTables = (tables = []) =>
   tables
     .filter((table) => Array.isArray(table.rows) && table.rows.length > 0)
@@ -1164,10 +1599,65 @@ const sendExamDocx = async (req, res, options = {}) => {
   }
 };
 
+const sendTosDocx = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id).populate("questions");
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    if (!canOpenExamContent(exam, req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: isApprovedExam(exam)
+          ? "You do not have access to this exam."
+          : getBlockedExamMessage(exam),
+      });
+    }
+
+    const buffer = await buildTosDocxBuffer(exam);
+    const fileName = sanitizeFileName(`${exam.title || "generated-exam"}-tos`);
+
+    await logActivity(req, {
+      user: req.user,
+      action: "download_exam",
+      description: `Downloaded TOS: ${exam.title}`,
+      metadata: {
+        exam: exam._id,
+        title: exam.title,
+        fileName,
+        documentType: "tos",
+      },
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 exports.downloadExamDocx = async (req, res) => {
   await sendExamDocx(req, res, { includeAnswerKey: false });
 };
 
 exports.downloadAnswerKeyDocx = async (req, res) => {
   await sendExamDocx(req, res, { includeAnswerKey: true });
+};
+
+exports.downloadTosDocx = async (req, res) => {
+  await sendTosDocx(req, res);
 };

@@ -97,6 +97,10 @@ async function downloadAnswerKeyDocx() {
   );
 }
 
+async function downloadTosDocx() {
+  await downloadExamFile("download-tos-docx", "generated_exam_tos.docx");
+}
+
 async function downloadExamFile(endpoint, fileName) {
   const examId = localStorage.getItem("current_exam_id");
 

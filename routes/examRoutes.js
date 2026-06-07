@@ -9,6 +9,7 @@ const {
   getMyExamSummary,
   downloadExamDocx,
   downloadAnswerKeyDocx,
+  downloadTosDocx,
   approveExam,
   rejectExam,
 } = require("../controllers/examController");
@@ -23,6 +24,7 @@ router.post("/:id/approve", protect, approveExam);
 router.post("/:id/reject", protect, rejectExam);
 router.get("/:id/download-docx", protect, downloadExamDocx);
 router.get("/:id/download-answer-key-docx", protect, downloadAnswerKeyDocx);
+router.get("/:id/download-tos-docx", protect, downloadTosDocx);
 router.get("/:id", protect, getExam);
 
 module.exports = router;

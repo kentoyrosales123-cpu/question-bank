@@ -196,6 +196,9 @@ function renderActivityExamRow(exam) {
                 <button class="btn" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-answer-key-docx')">
                   With Answer Key
                 </button>
+                <button class="btn secondary" type="button" onclick="downloadGeneratedExam('${exam._id}', 'download-tos-docx')">
+                  TOS
+                </button>
               </div>`
         }
       </td>

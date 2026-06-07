@@ -477,6 +477,8 @@ async function downloadGeneratedExam(endpoint) {
     a.download =
       endpoint === "download-answer-key-docx"
         ? "generated_exam_answer_key.docx"
+        : endpoint === "download-tos-docx"
+        ? "generated_exam_tos.docx"
         : "generated_exam_no_answer_key.docx";
 
     document.body.appendChild(a);
