@@ -11,6 +11,7 @@ const {
 
 const {
   Document,
+  Header,
   Packer,
   Paragraph,
   TextRun,
@@ -18,6 +19,8 @@ const {
   Table,
   TableCell,
   TableRow,
+  AlignmentType,
+  BorderStyle,
   WidthType,
 } = require("docx");
 
@@ -836,23 +839,179 @@ const buildDocxTables = (tables = []) =>
         }),
     );
 
+const emptyBorder = {
+  style: BorderStyle.NONE,
+  size: 0,
+  color: "FFFFFF",
+};
+
+const buildUniversityHeader = () =>
+  new Header({
+    children: [
+      new Table({
+        width: {
+          size: 100,
+          type: WidthType.PERCENTAGE,
+        },
+        borders: {
+          top: emptyBorder,
+          bottom: {
+            style: BorderStyle.SINGLE,
+            size: 6,
+            color: "F1D789",
+          },
+          left: emptyBorder,
+          right: emptyBorder,
+          insideHorizontal: emptyBorder,
+          insideVertical: emptyBorder,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: {
+                  size: 46,
+                  type: WidthType.PERCENTAGE,
+                },
+                borders: {
+                  top: emptyBorder,
+                  bottom: emptyBorder,
+                  left: emptyBorder,
+                  right: emptyBorder,
+                },
+                children: [
+                  new Paragraph({
+                    spacing: { after: 0 },
+                    children: [
+                      new TextRun({
+                        text: "UM",
+                        bold: true,
+                        color: "D28D95",
+                        size: 64,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    spacing: { before: 0, after: 80 },
+                    children: [
+                      new TextRun({
+                        text: "The University of Mindanao",
+                        color: "7A7A7A",
+                        size: 20,
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: {
+                  size: 54,
+                  type: WidthType.PERCENTAGE,
+                },
+                borders: {
+                  top: emptyBorder,
+                  bottom: emptyBorder,
+                  left: emptyBorder,
+                  right: emptyBorder,
+                },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { after: 0 },
+                    children: [
+                      new TextRun({
+                        text: "College of Engineering Education",
+                        bold: true,
+                        italics: true,
+                        color: "6F6F6F",
+                        size: 19,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { after: 0 },
+                    children: [
+                      new TextRun({
+                        text: "2nd Floor, BE Building",
+                        italics: true,
+                        color: "6F6F6F",
+                        size: 18,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { after: 0 },
+                    children: [
+                      new TextRun({
+                        text: "Matina Campus, Davao City",
+                        italics: true,
+                        color: "6F6F6F",
+                        size: 18,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { after: 0 },
+                    children: [
+                      new TextRun({
+                        text: "Telefax: (082) 296-1084",
+                        italics: true,
+                        color: "6F6F6F",
+                        size: 18,
+                      }),
+                    ],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    spacing: { after: 80 },
+                    children: [
+                      new TextRun({
+                        text: "Phone No.: (082)300-5456/300-0647 Local 131",
+                        italics: true,
+                        color: "6F6F6F",
+                        size: 18,
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
 const buildExamDocxBuffer = async (exam, options = {}) => {
   const { includeAnswerKey = false } = options;
   const children = [];
+  const examTitle = (exam.title || "").trim();
+  const hasCustomTitle =
+    examTitle && examTitle.toLowerCase() !== "generated exam";
+  const documentTitle = includeAnswerKey
+    ? hasCustomTitle
+      ? `${examTitle} - Answer Key`
+      : "Answer Key"
+    : hasCustomTitle
+      ? examTitle
+      : "";
 
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: includeAnswerKey
-            ? `${exam.title || "Generated Exam"} - Answer Key`
-            : exam.title || "Generated Exam",
-          bold: true,
-          size: 32,
-        }),
-      ],
-    }),
-  );
+  if (documentTitle) {
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: documentTitle,
+            bold: true,
+            size: 32,
+          }),
+        ],
+      }),
+    );
+  }
 
   children.push(new Paragraph(`Subject: ${exam.subject}`));
   children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
@@ -865,7 +1024,6 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
         children: [
           new TextRun({
             text: `${index + 1}. ${q.questionText}`,
-            bold: true,
           }),
         ],
       }),
@@ -937,6 +1095,9 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
   const doc = new Document({
     sections: [
       {
+        headers: {
+          default: buildUniversityHeader(),
+        },
         children,
       },
     ],
