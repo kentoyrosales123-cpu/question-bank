@@ -53,7 +53,7 @@ function renderExamItem(exam) {
         <strong>${escapeHTML(exam.title)}</strong>
         <small>${subtitle}</small>
         <span class="badge ${isPending ? "average" : isRejected ? "difficult" : "easy"}">
-          ${isPending ? "Pending Approval" : isRejected ? "Rejected" : `${exam.totalItems} items`}
+          ${isPending ? "Pending Approval" : isRejected ? "Rejected" : `Approved - ${exam.totalItems} items`}
         </span>
       </div>
       <span class="student-exam-date">${formatDate(exam.createdAt)}</span>

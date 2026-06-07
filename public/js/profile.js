@@ -120,10 +120,8 @@ function renderRecentExam(exam) {
     ? `Exam "${exam.title}" is pending admin approval`
     : isRejected
     ? `Exam "${exam.title}" was rejected`
-    : exam.submitted
-    ? `Generated exam "${exam.title}"`
-    : `Exam "${exam.title}" is pending`;
-  const statusClass = isPending || isRejected ? "red" : exam.submitted ? "purple" : "red";
+    : `Exam "${exam.title}" is approved`;
+  const statusClass = isPending || isRejected ? "red" : "purple";
 
   return `
     <div class="profile-recent-item">
@@ -182,8 +180,8 @@ function renderActivityExamRow(exam) {
       <td>${escapeHTML(exam.subject || "-")}</td>
       <td>${escapeHTML(exam.totalItems)}</td>
       <td>
-        <span class="badge ${exam.submitted ? "easy" : "average"}">
-          ${isPending ? "Pending Approval" : isRejected ? "Rejected" : exam.submitted ? "Submitted" : "Generated"}
+        <span class="badge ${isPending ? "average" : isRejected ? "difficult" : "easy"}">
+          ${isPending ? "Pending Approval" : isRejected ? "Rejected" : exam.submitted ? "Submitted" : "Approved"}
         </span>
       </td>
       <td>${formatDate(exam.createdAt)}</td>

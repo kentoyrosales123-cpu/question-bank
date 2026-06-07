@@ -652,7 +652,7 @@ exports.getMyExamSummary = async (req, res) => {
       }),
       Exam.find({ user: req.user._id })
         .select("title subject topic totalItems approvalStatus createdAt updatedAt")
-        .sort({ createdAt: -1 })
+        .sort({ updatedAt: -1, createdAt: -1 })
         .limit(10),
       Exam.aggregate([
         {
