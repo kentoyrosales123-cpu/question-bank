@@ -1,15 +1,37 @@
 protectPage();
 
 let currentQuestionsEndpoint = "/questions";
+let currentQuestions = [];
+let currentQuestionsPage = 1;
+const questionsPerPage = 20;
 
-async function loadQuestions(endpoint = "/questions") {
+async function loadQuestions(endpoint = "/questions", page = 1) {
   try {
     currentQuestionsEndpoint = endpoint;
     const data = await apiRequest(endpoint);
+    currentQuestions = data.questions || [];
+    currentQuestionsPage = page;
 
-    document.getElementById("questionsBody").innerHTML = data.questions
-      .map(
-        (q) => `
+    renderQuestionsPage();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function renderQuestionsPage() {
+  const totalPages = Math.max(1, Math.ceil(currentQuestions.length / questionsPerPage));
+  currentQuestionsPage = Math.min(
+    totalPages,
+    Math.max(1, Number(currentQuestionsPage) || 1),
+  );
+
+  const startIndex = (currentQuestionsPage - 1) * questionsPerPage;
+  const pageQuestions = currentQuestions.slice(startIndex, startIndex + questionsPerPage);
+
+  document.getElementById("questionsBody").innerHTML = pageQuestions.length
+    ? pageQuestions
+        .map(
+          (q) => `
       <tr>
         <td>${escapeHTML(q.subject)}</td>
         <td>${escapeHTML(q.topic)}</td>
@@ -31,11 +53,45 @@ async function loadQuestions(endpoint = "/questions") {
         </td>
       </tr>
     `,
-      )
-      .join("");
-  } catch (error) {
-    alert(error.message);
-  }
+        )
+        .join("")
+    : `<tr><td colspan="6" class="muted-text">No questions found.</td></tr>`;
+
+  renderQuestionsPagination(totalPages);
+}
+
+function renderQuestionsPagination(totalPages) {
+  const pagination = document.getElementById("questionsPagination");
+
+  if (!pagination) return;
+
+  const firstItem = currentQuestions.length
+    ? (currentQuestionsPage - 1) * questionsPerPage + 1
+    : 0;
+  const lastItem = Math.min(
+    currentQuestions.length,
+    currentQuestionsPage * questionsPerPage,
+  );
+
+  pagination.innerHTML = `
+    <span class="pagination-summary">
+      Showing ${firstItem}-${lastItem} of ${currentQuestions.length} questions
+    </span>
+    <div class="pagination-actions">
+      <button class="btn secondary" type="button" onclick="goToQuestionsPage(${currentQuestionsPage - 1})" ${currentQuestionsPage <= 1 ? "disabled" : ""}>
+        Previous
+      </button>
+      <span class="pagination-page">Page ${currentQuestionsPage} of ${totalPages}</span>
+      <button class="btn secondary" type="button" onclick="goToQuestionsPage(${currentQuestionsPage + 1})" ${currentQuestionsPage >= totalPages ? "disabled" : ""}>
+        Next
+      </button>
+    </div>
+  `;
+}
+
+function goToQuestionsPage(page) {
+  currentQuestionsPage = page;
+  renderQuestionsPage();
 }
 
 function truncateText(value, maxLength) {
@@ -51,7 +107,7 @@ async function filterQuestions() {
 
   const query = new URLSearchParams({ subject, topic, difficulty }).toString();
 
-  loadQuestions(`/questions/filter?${query}`);
+  loadQuestions(`/questions/filter?${query}`, 1);
 }
 
 async function viewQuestion(id) {
@@ -325,7 +381,7 @@ async function saveQuestionEdits(event, id) {
   try {
     await apiRequest(`/questions/${id}`, "PUT", form, true);
     setMessage("editQuestionMessage", "Question updated successfully.", false);
-    await loadQuestions(currentQuestionsEndpoint);
+    await loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
     setTimeout(closeQuestionModal, 500);
   } catch (error) {
     setMessage("editQuestionMessage", error.message);
@@ -346,7 +402,7 @@ async function deleteQuestion(id) {
 
   try {
     await apiRequest(`/questions/${id}`, "DELETE");
-    loadQuestions(currentQuestionsEndpoint);
+    loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
   } catch (error) {
     alert(error.message);
   }
