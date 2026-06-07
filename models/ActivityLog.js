@@ -16,6 +16,7 @@ const activityLogSchema = new mongoose.Schema(
         "approve_exam",
         "reject_exam",
         "download_exam",
+        "download_tos",
       ],
       required: true,
     },

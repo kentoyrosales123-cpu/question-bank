@@ -1624,7 +1624,7 @@ const sendTosDocx = async (req, res) => {
 
     await logActivity(req, {
       user: req.user,
-      action: "download_exam",
+      action: "download_tos",
       description: `Downloaded TOS: ${exam.title}`,
       metadata: {
         exam: exam._id,

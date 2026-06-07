@@ -4,8 +4,19 @@ const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 const ActivityLog = require("../models/ActivityLog");
 
-const formatActivityAction = (action) =>
-  action === "generate_exam"
+const getActivityAction = (activityOrAction) =>
+  typeof activityOrAction === "string" ? activityOrAction : activityOrAction?.action;
+
+const isTosDownloadActivity = (activityOrAction) =>
+  getActivityAction(activityOrAction) === "download_tos" ||
+  activityOrAction?.metadata?.documentType === "tos";
+
+const formatActivityAction = (activityOrAction) => {
+  const action = getActivityAction(activityOrAction);
+
+  return isTosDownloadActivity(activityOrAction)
+    ? "Downloaded TOS"
+    : action === "generate_exam"
     ? "Generated Exam"
     : action === "approve_exam"
     ? "Approved Exam"
@@ -14,6 +25,7 @@ const formatActivityAction = (action) =>
     : action === "download_exam"
     ? "Downloaded Exam"
     : "Logged In";
+};
 
 const getActivityDateRange = (query = {}) => {
   const filter = {};
@@ -107,7 +119,7 @@ const buildActivityWorkbook = async (activities) => {
         userName: user.name || "Unknown user",
         email: user.email || "",
         role: user.role || "",
-        activity: formatActivityAction(activity.action),
+        activity: formatActivityAction(activity),
         details: activity.description,
         date: activityDate.toLocaleDateString(),
         time: activityDate.toLocaleTimeString(),
@@ -271,6 +283,10 @@ exports.getReportsSummary = async (req, res) => {
         },
       },
     ]);
+    const totalActivityCount = activityCounts.reduce(
+      (total, item) => total + item.count,
+      0,
+    );
 
     res.json({
       success: true,
@@ -288,6 +304,10 @@ exports.getReportsSummary = async (req, res) => {
         generatedExamCount:
           activityCounts.find((item) => item._id === "generate_exam")?.count ||
           0,
+        downloadedTosCount:
+          activityCounts.find((item) => item._id === "download_tos")?.count ||
+          0,
+        activityCount: totalActivityCount,
         recentActivity,
       },
     });

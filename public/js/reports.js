@@ -11,12 +11,14 @@ async function loadReports() {
       report.totalQuestions;
     document.getElementById("reportExams").textContent = report.totalExams;
     document.getElementById("reportActivity").textContent =
-      report.loginCount + report.generatedExamCount;
+      report.activityCount ?? report.loginCount + report.generatedExamCount;
     document.getElementById("reportGenerated").textContent = report.totalExams;
     document.getElementById("reportSubmitted").textContent =
       report.submittedExams;
     document.getElementById("reportPending").textContent = report.pendingExams;
     document.getElementById("reportLogins").textContent = report.loginCount;
+    document.getElementById("reportTosDownloads").textContent =
+      report.downloadedTosCount || 0;
 
     updateDifficultyReport(report);
 
@@ -70,8 +72,12 @@ function renderActivityRow(activity) {
   const activityDate = new Date(activity.createdAt);
   const user = activity.user || {};
   const initials = getInitials(user.name || user.email || "?");
+  const isTosDownload =
+    activity.action === "download_tos" || activity.metadata?.documentType === "tos";
   const actionLabel =
-    activity.action === "generate_exam"
+    isTosDownload
+      ? "Downloaded TOS"
+      : activity.action === "generate_exam"
       ? "Generated Exam"
       : activity.action === "approve_exam"
       ? "Approved Exam"
@@ -81,7 +87,9 @@ function renderActivityRow(activity) {
       ? "Downloaded Exam"
       : "Logged In";
   const badgeClass =
-    activity.action === "generate_exam"
+    isTosDownload
+      ? "average"
+      : activity.action === "generate_exam"
       ? "average"
       : activity.action === "approve_exam" || activity.action === "download_exam"
       ? "easy"

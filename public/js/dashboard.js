@@ -356,8 +356,12 @@ async function hydrateDashboardUserProfileImages(users = []) {
 function renderActivityRow(activity) {
   const activityDate = new Date(activity.createdAt);
   const user = activity.user || {};
+  const isTosDownload =
+    activity.action === "download_tos" || activity.metadata?.documentType === "tos";
   const actionLabel =
-    activity.action === "generate_exam"
+    isTosDownload
+      ? "Downloaded TOS"
+      : activity.action === "generate_exam"
       ? "Generated Exam"
       : activity.action === "approve_exam"
       ? "Approved Exam"
@@ -367,7 +371,9 @@ function renderActivityRow(activity) {
       ? "Downloaded Exam"
       : "Logged In";
   const badgeClass =
-    activity.action === "generate_exam"
+    isTosDownload
+      ? "average"
+      : activity.action === "generate_exam"
       ? "average"
       : activity.action === "approve_exam"
       ? "easy"
