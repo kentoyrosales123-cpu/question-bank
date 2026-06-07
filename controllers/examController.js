@@ -888,6 +888,7 @@ const createTextRun = (text, options = {}) =>
     text: String(text ?? ""),
     font: options.font || "Times New Roman",
     size: options.size || 18,
+    color: options.color,
     bold: options.bold,
     italics: options.italics,
     underline: options.underline ? {} : undefined,
@@ -934,6 +935,7 @@ const createTosCell = (text, options = {}) =>
         bold: options.bold,
         italics: options.italics,
         font: options.font,
+        color: options.color,
         size: options.size || 18,
       })),
   });
@@ -1017,8 +1019,9 @@ const createTosDocHeader = async () =>
               await createTosHeaderLogoCell(),
               createTosCell("INSTITUTE OF PEDAGOGICAL ADVANCEMENT AND COMPETITIVENESS", {
                 bold: true,
-                size: 28,
-                font: "Arial Narrow",
+                color: "2F5B8A",
+                size: 56,
+                font: "Bodoni MT Condensed",
               }),
             ],
           }),
