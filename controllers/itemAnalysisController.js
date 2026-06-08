@@ -947,41 +947,51 @@ const updateGeneratedExamQuestionDifficulties = async (exam, analysis) => {
     return { matchedCount: 0, modifiedCount: 0 };
   }
 
-  const operations = analysis.items
-    .map((item) => {
-      const questionId = generatedExam.questions[item.itemNo - 1];
-      const difficulty = questionDifficultyFromInterpretation(
-        item.difficultyInterpretation,
-      );
+  let matchedCount = 0;
+  let modifiedCount = 0;
 
-      if (
-        !questionId ||
-        !["Easy", "Average", "Difficult"].includes(difficulty)
-      ) {
-        return null;
-      }
+  for (const item of analysis.items) {
+    const questionId = generatedExam.questions[item.itemNo - 1];
+    const newDifficulty = questionDifficultyFromInterpretation(
+      item.difficultyInterpretation,
+    );
 
-      return {
-        updateOne: {
-          filter: {
-            _id: questionId,
-            difficulty: { $ne: difficulty },
-          },
-          update: { $set: { difficulty } },
-        },
-      };
-    })
-    .filter(Boolean);
+    if (
+      !questionId ||
+      !["Easy", "Average", "Difficult"].includes(newDifficulty)
+    ) {
+      continue;
+    }
 
-  if (operations.length === 0) {
-    return { matchedCount: 0, modifiedCount: 0 };
+    const question = await Question.findById(questionId);
+
+    if (!question) continue;
+
+    matchedCount++;
+
+    if (question.difficulty === newDifficulty) continue;
+
+    const oldDifficulty = question.difficulty;
+
+    question.versionHistory.push({
+      editedBy: exam.uploadedBy,
+      editedAt: new Date(),
+      before: {
+        difficulty: oldDifficulty,
+      },
+      after: {
+        difficulty: newDifficulty,
+      },
+      changedFields: ["difficulty"],
+    });
+
+    question.difficulty = newDifficulty;
+
+    await question.save();
+    modifiedCount++;
   }
 
-  const result = await Question.bulkWrite(operations);
-  return {
-    matchedCount: result.matchedCount || 0,
-    modifiedCount: result.modifiedCount || 0,
-  };
+  return { matchedCount, modifiedCount };
 };
 
 exports.listItemAnalysisExams = async (req, res) => {

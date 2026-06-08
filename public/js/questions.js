@@ -19,14 +19,20 @@ async function loadQuestions(endpoint = "/questions", page = 1) {
 }
 
 function renderQuestionsPage() {
-  const totalPages = Math.max(1, Math.ceil(currentQuestions.length / questionsPerPage));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(currentQuestions.length / questionsPerPage),
+  );
   currentQuestionsPage = Math.min(
     totalPages,
     Math.max(1, Number(currentQuestionsPage) || 1),
   );
 
   const startIndex = (currentQuestionsPage - 1) * questionsPerPage;
-  const pageQuestions = currentQuestions.slice(startIndex, startIndex + questionsPerPage);
+  const pageQuestions = currentQuestions.slice(
+    startIndex,
+    startIndex + questionsPerPage,
+  );
 
   document.getElementById("questionsBody").innerHTML = pageQuestions.length
     ? pageQuestions
@@ -114,7 +120,9 @@ async function viewQuestion(id) {
   try {
     const data = await apiRequest(`/questions/${id}`);
     const [analyticsData, historyData] = await Promise.all([
-      apiRequest(`/questions/${id}/analytics`).catch(() => ({ analytics: null })),
+      apiRequest(`/questions/${id}/analytics`).catch(() => ({
+        analytics: null,
+      })),
       apiRequest(`/questions/${id}/history`).catch(() => ({ history: [] })),
     ]);
     const question = data.question;
@@ -222,21 +230,71 @@ function renderQuestionHistory(history) {
   return `
     <div class="question-detail-block">
       <span class="field-label">Version History</span>
+
       ${
         history.length
           ? `<div class="recommendation-list">
               ${history
-                .map(
-                  (entry) => `
-                    <article class="recommendation-item">
-                      <strong>${escapeHTML(entry.changedFields?.join(", ") || "Updated")}</strong>
-                      <p>
-                        ${new Date(entry.editedAt).toLocaleString()} by
-                        ${escapeHTML(entry.editedBy?.name || entry.editedBy?.email || "Unknown user")}
+                .map((entry, index) => {
+                  const changes = (entry.changedFields || [])
+                    .map((field) => {
+                      const before = entry.before?.[field] ?? "Empty";
+
+                      const after = entry.after?.[field] ?? "Empty";
+
+                      return `
+                        <div class="version-change">
+                          <strong>${escapeHTML(field)}</strong>
+
+                          <div class="version-compare">
+                            <div class="version-before">
+                              <span>Before</span>
+                              <p>${escapeHTML(
+                                typeof before === "object"
+                                  ? JSON.stringify(before, null, 2)
+                                  : String(before),
+                              )}</p>
+                            </div>
+
+                            <div class="version-after">
+                              <span>After</span>
+                              <p>${escapeHTML(
+                                typeof after === "object"
+                                  ? JSON.stringify(after, null, 2)
+                                  : String(after),
+                              )}</p>
+                            </div>
+                          </div>
+                        </div>
+                      `;
+                    })
+                    .join("");
+
+                  return `
+                    <article class="recommendation-item version-card">
+                      <div class="version-header">
+                        <strong>
+                          Version ${history.length - index}
+                        </strong>
+
+                        <small>
+                          ${new Date(entry.editedAt).toLocaleString()}
+                        </small>
+                      </div>
+
+                      <p class="muted-text">
+                        Edited by:
+                        ${escapeHTML(
+                          entry.editedBy?.name ||
+                            entry.editedBy?.email ||
+                            "Unknown user",
+                        )}
                       </p>
+
+                      ${changes}
                     </article>
-                  `,
-                )
+                  `;
+                })
                 .join("")}
             </div>`
           : `<p class="muted-text">No edits recorded yet.</p>`
@@ -250,8 +308,7 @@ async function editQuestion(id) {
     const data = await apiRequest(`/questions/${id}`);
     const question = data.question;
 
-    document.getElementById("questionModalTitle").textContent =
-      "Edit Question";
+    document.getElementById("questionModalTitle").textContent = "Edit Question";
     document.getElementById("questionDetails").innerHTML = `
       <form id="editQuestionForm">
         <div class="field-grid two">
