@@ -15,6 +15,11 @@ document
 
     const form = new FormData(event.target);
     const message = document.getElementById("itemAnalysisMessage");
+    const selectedGeneratedExam = getSelectedGeneratedExam();
+
+    if (selectedGeneratedExam && formMatchesGeneratedExam(selectedGeneratedExam)) {
+      form.append("generatedExamId", selectedGeneratedExam._id);
+    }
 
     try {
       message.textContent = "Uploading and computing item analysis...";

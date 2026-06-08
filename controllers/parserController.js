@@ -955,12 +955,11 @@ exports.approveParsedQuestion = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    parsed.status = "Approved";
-    await parsed.save();
+    await parsed.deleteOne();
 
     res.json({
       success: true,
-      message: "Question approved and saved to question bank.",
+      message: "Question approved, saved to question bank, and removed from parsed review.",
       question,
     });
   } catch (error) {

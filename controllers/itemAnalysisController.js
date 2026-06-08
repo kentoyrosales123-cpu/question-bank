@@ -853,6 +853,7 @@ const computeAnalysis = (exam, results) => {
             .length / lowerGroup.length
         : 0;
     const discriminationIndex = upperCorrectRate - lowerCorrectRate;
+    const difficultyLabel = difficultyInterpretation(difficultyIndex);
     const recommendation = recommendationFor(
       difficultyIndex,
       discriminationIndex,
@@ -863,7 +864,8 @@ const computeAnalysis = (exam, results) => {
       correctCount,
       incorrectCount,
       difficultyIndex: roundMetric(difficultyIndex),
-      difficultyInterpretation: difficultyInterpretation(difficultyIndex),
+      difficultyInterpretation: difficultyLabel,
+      questionDifficulty: questionDifficultyFromInterpretation(difficultyLabel),
       discriminationIndex: roundMetric(discriminationIndex),
       discriminationInterpretation:
         discriminationInterpretation(discriminationIndex),
@@ -1018,6 +1020,7 @@ exports.createItemAnalysisExam = async (req, res) => {
       schoolYear,
       numberOfItems,
       answerKey,
+      generatedExamId,
     } = req.body;
     const itemCount = Number(numberOfItems);
 
@@ -1357,6 +1360,7 @@ exports.uploadItemAnalysis = async (req, res) => {
       schoolYear,
       numberOfItems,
       answerKey,
+      generatedExamId,
     } = req.body;
     const itemCount = Number(numberOfItems);
     const resultFile = req.files?.resultFile?.[0];
@@ -1381,18 +1385,89 @@ exports.uploadItemAnalysis = async (req, res) => {
       parseResultRows(resultFile, itemCount),
       parseAnswerKey(answerKey, answerKeyFile),
     ]);
+    const linkedGeneratedExamId = normalizeValue(generatedExamId);
+    let linkedGeneratedExam = null;
+    let finalAnswerKey = parsedAnswerKey;
 
-    const exam = await ItemAnalysisExam.create({
-      title,
-      subject,
-      section,
-      semester,
-      schoolYear,
-      numberOfItems: itemCount,
-      answerKey: parsedAnswerKey,
-      uploadedBy: req.user._id,
-      uploadedAt: new Date(),
-    });
+    if (linkedGeneratedExamId) {
+      const generatedExamQuery = { _id: linkedGeneratedExamId };
+
+      if (!isAdmin(req.user)) {
+        generatedExamQuery.user = req.user._id;
+      }
+
+      linkedGeneratedExam = await Exam.findOne(generatedExamQuery).populate(
+        "questions",
+        "correctAnswer",
+      );
+
+      if (!linkedGeneratedExam) {
+        return res.status(404).json({
+          success: false,
+          message: "Linked generated exam not found.",
+        });
+      }
+
+      if (Number(linkedGeneratedExam.totalItems || 0) !== itemCount) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Uploaded item count does not match the linked generated exam.",
+        });
+      }
+
+      if (finalAnswerKey.length === 0) {
+        finalAnswerKey = (linkedGeneratedExam.questions || []).map(
+          (question, index) => ({
+            itemNo: index + 1,
+            answer: normalizeValue(question.correctAnswer).toUpperCase(),
+          }),
+        );
+      }
+    }
+
+    const exam = linkedGeneratedExam
+      ? await ItemAnalysisExam.findOneAndUpdate(
+          {
+            generatedExamId: linkedGeneratedExam._id,
+            uploadedBy: req.user._id,
+          },
+          {
+            title,
+            subject,
+            section,
+            semester,
+            schoolYear,
+            numberOfItems: itemCount,
+            answerKey: finalAnswerKey,
+            generatedExamId: linkedGeneratedExam._id,
+            uploadedBy: req.user._id,
+            uploadedAt: new Date(),
+          },
+          {
+            new: true,
+            upsert: true,
+            runValidators: true,
+            setDefaultsOnInsert: true,
+          },
+        )
+      : await ItemAnalysisExam.create({
+          title,
+          subject,
+          section,
+          semester,
+          schoolYear,
+          numberOfItems: itemCount,
+          answerKey: finalAnswerKey,
+          uploadedBy: req.user._id,
+          uploadedAt: new Date(),
+        });
+
+    if (linkedGeneratedExam) {
+      await ItemAnalysisStudentResult.deleteMany({
+        analysisExamId: exam._id,
+      });
+    }
 
     await ItemAnalysisStudentResult.insertMany(
       rows.map((row) => ({
@@ -1400,11 +1475,23 @@ exports.uploadItemAnalysis = async (req, res) => {
         analysisExamId: exam._id,
       })),
     );
+    const results = await ItemAnalysisStudentResult.find({
+      analysisExamId: exam._id,
+    }).sort({ totalScore: -1, studentName: 1 });
+    const analysis = computeAnalysis(exam, results);
+    const difficultySync = await updateGeneratedExamQuestionDifficulties(
+      exam,
+      analysis,
+    );
 
     res.status(201).json({
       success: true,
-      message: "Item analysis uploaded successfully.",
+      message:
+        difficultySync.modifiedCount > 0
+          ? `Item analysis uploaded successfully. ${difficultySync.modifiedCount} question difficult${difficultySync.modifiedCount === 1 ? "y" : "ies"} updated.`
+          : "Item analysis uploaded successfully.",
       analysisExamId: exam._id,
+      difficultySync,
     });
   } catch (error) {
     res.status(400).json({
@@ -1518,6 +1605,11 @@ exports.exportItemAnalysis = async (req, res) => {
         header: "Difficulty Interpretation",
         key: "difficultyInterpretation",
         width: 28,
+      },
+      {
+        header: "Question Difficulty",
+        key: "questionDifficulty",
+        width: 22,
       },
       { header: "Discrimination Index", key: "discriminationIndex", width: 22 },
       {

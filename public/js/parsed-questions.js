@@ -11,6 +11,13 @@ let pendingQuestions = [];
 const selectedParsedIds = new Set();
 const parsedReviewParams = new URLSearchParams(location.search);
 const parsedReviewUploadId = parsedReviewParams.get("uploadId") || "";
+const approvalQueue = [];
+const approvalQueuedIds = new Set();
+const approvalQueueStates = new Map();
+let isApprovalQueueRunning = false;
+let approvalQueueTotal = 0;
+let approvalQueueCompleted = 0;
+let approvalQueueFailed = 0;
 
 async function loadParsedQuestions() {
   try {
@@ -86,9 +93,12 @@ function renderParsedCard(q, index) {
   const hasImage = q.image && q.image.contentType;
   const hasTables = Array.isArray(q.tables) && q.tables.length > 0;
   const duplicateCandidates = q.duplicateCandidates || [];
+  const queueState = approvalQueueStates.get(q._id);
+  const isQueueLocked =
+    queueState?.state === "queued" || queueState?.state === "processing";
 
   return `
-    <article class="review-card" id="parsed_card_${q._id}">
+    <article class="review-card ${queueState ? `queue-${queueState.state}` : ""}" id="parsed_card_${q._id}">
       <header class="review-card-header">
         <label class="review-select">
           <input
@@ -96,6 +106,7 @@ function renderParsedCard(q, index) {
             type="checkbox"
             value="${escapeHTML(q._id)}"
             ${selectedParsedIds.has(q._id) ? "checked" : ""}
+            ${isQueueLocked ? "disabled" : ""}
             onchange="toggleParsedSelection('${q._id}', this.checked)"
           />
           <span>Select</span>
@@ -183,10 +194,12 @@ function renderParsedCard(q, index) {
           <textarea id="explanation_${q._id}" class="explanation-textarea">${escapeHTML(q.explanation || "")}</textarea>
 
           <footer class="review-actions">
-            <button class="btn secondary" onclick="saveParsed('${q._id}')">Save Edit</button>
-            <button class="btn success" onclick="approveParsed('${q._id}')">Add to Question Bank</button>
-            <button class="btn danger" onclick="rejectParsed('${q._id}')">Reject</button>
-            <p class="message" id="msg_${q._id}"></p>
+            <button class="btn secondary" onclick="saveParsed('${q._id}')" ${isQueueLocked ? "disabled" : ""}>Save Edit</button>
+            <button class="btn success" onclick="approveParsed('${q._id}')" ${isQueueLocked ? "disabled" : ""}>Add to Question Bank</button>
+            <button class="btn danger" onclick="rejectParsed('${q._id}')" ${isQueueLocked ? "disabled" : ""}>Reject</button>
+            <p class="message ${queueState?.state === "error" ? "wrong" : queueState ? "correct" : ""}" id="msg_${q._id}">
+              ${queueState ? escapeHTML(queueState.message) : ""}
+            </p>
           </footer>
         </section>
       </div>
@@ -278,6 +291,7 @@ function setBulkReviewMessage(text, type = "success") {
 function removeParsedQuestionFromList(id) {
   pendingQuestions = pendingQuestions.filter((q) => q._id !== id);
   selectedParsedIds.delete(id);
+  approvalQueueStates.delete(id);
 }
 
 function renderField(label, id, value) {
@@ -341,16 +355,7 @@ async function approveParsed(id) {
     return;
   }
 
-  try {
-    await apiRequest(`/parser/${id}`, "PUT", body);
-    const data = await apiRequest(`/parser/${id}/approve`, "POST");
-
-    setMessage(id, data.message, "success");
-    removeParsedQuestionFromList(id);
-    setTimeout(loadParsedQuestions, 500);
-  } catch (error) {
-    setMessage(id, error.message, "error");
-  }
+  enqueueApprovalJobs([{ id, body }]);
 }
 
 function isParsedQuestionReadyForApproval(body) {
@@ -412,33 +417,183 @@ async function approveSelectedParsed() {
     return;
   }
 
+  enqueueApprovalJobs(ids.map((id) => ({ id, body: getParsedFormBody(id) })));
+}
+
+function enqueueApprovalJobs(jobs) {
+  const newJobs = jobs.filter((job) => !approvalQueuedIds.has(job.id));
+
+  if (newJobs.length === 0) {
+    setBulkReviewMessage("Selected questions are already in the approval queue.", "error");
+    return;
+  }
+
+  if (!isApprovalQueueRunning) {
+    approvalQueueTotal = 0;
+    approvalQueueCompleted = 0;
+    approvalQueueFailed = 0;
+  }
+
+  newJobs.forEach((job) => {
+    approvalQueue.push(job);
+    approvalQueuedIds.add(job.id);
+    approvalQueueTotal += 1;
+    setCardQueueState(job.id, "queued", "Queued for approval.");
+  });
+
+  setBulkReviewMessage(
+    `${newJobs.length} question${newJobs.length > 1 ? "s" : ""} added to approval queue.`,
+  );
+  updateApprovalQueuePanel();
+  processApprovalQueue();
+}
+
+async function processApprovalQueue() {
+  if (isApprovalQueueRunning) {
+    return;
+  }
+
+  isApprovalQueueRunning = true;
   setBulkActionState(true);
-  setBulkReviewMessage(`Adding ${ids.length} selected question${ids.length > 1 ? "s" : ""}...`);
 
-  let approvedCount = 0;
+  while (approvalQueue.length > 0) {
+    const job = approvalQueue.shift();
+    const position = approvalQueueCompleted + approvalQueueFailed + 1;
 
-  try {
-    for (const id of ids) {
-      await apiRequest(`/parser/${id}`, "PUT", getParsedFormBody(id));
-      const data = await apiRequest(`/parser/${id}/approve`, "POST");
-      approvedCount++;
-      setMessage(id, data.message, "success");
-      removeParsedQuestionFromList(id);
+    setCardQueueState(
+      job.id,
+      "processing",
+      `Processing approval ${position}/${approvalQueueTotal}...`,
+    );
+    updateApprovalQueuePanel(job.id);
+
+    try {
+      await apiRequest(`/parser/${job.id}`, "PUT", job.body);
+      const data = await apiRequest(`/parser/${job.id}/approve`, "POST");
+
+      approvalQueueCompleted += 1;
+      setCardQueueState(job.id, "done", data.message || "Added to question bank.");
+      removeParsedQuestionFromList(job.id);
+      updateReviewStats(pendingQuestions);
+      fadeApprovedCard(job.id);
+    } catch (error) {
+      approvalQueueFailed += 1;
+      setCardQueueState(job.id, "error", error.message);
+      setCardControlsDisabled(job.id, false);
+    } finally {
+      approvalQueuedIds.delete(job.id);
+      updateApprovalQueuePanel();
     }
+  }
 
-    setBulkReviewMessage(`${approvedCount} selected question${approvedCount > 1 ? "s" : ""} added to the question bank.`);
-    renderParsedQuestions(getFilteredQuestions());
-    updateReviewStats(pendingQuestions);
-  } catch (error) {
+  const completed = approvalQueueCompleted;
+  const failed = approvalQueueFailed;
+
+  isApprovalQueueRunning = false;
+  setBulkActionState(false);
+  selectedParsedIds.clear();
+  renderParsedQuestions(getFilteredQuestions());
+  updateReviewStats(pendingQuestions);
+  updateApprovalQueuePanel();
+
+  if (failed > 0) {
     setBulkReviewMessage(
-      `${approvedCount} approved before an error occurred: ${error.message}`,
+      `${completed} approved, ${failed} failed. Review the failed card messages and try again.`,
       "error",
     );
-    renderParsedQuestions(getFilteredQuestions());
-    updateReviewStats(pendingQuestions);
-  } finally {
-    setBulkActionState(false);
+  } else {
+    setBulkReviewMessage(
+      `${completed} question${completed === 1 ? "" : "s"} added to the question bank.`,
+    );
   }
+}
+
+function setCardQueueState(id, state, message) {
+  const card = document.getElementById(`parsed_card_${id}`);
+
+  approvalQueueStates.set(id, { state, message });
+  setMessage(id, message, state === "error" ? "error" : "success");
+
+  if (!card) return;
+
+  card.classList.toggle("queue-queued", state === "queued");
+  card.classList.toggle("queue-processing", state === "processing");
+  card.classList.toggle("queue-done", state === "done");
+  card.classList.toggle("queue-error", state === "error");
+  setCardControlsDisabled(id, state === "queued" || state === "processing");
+}
+
+function setCardControlsDisabled(id, isDisabled) {
+  const card = document.getElementById(`parsed_card_${id}`);
+
+  if (!card) return;
+
+  card
+    .querySelectorAll("button, input, select, textarea")
+    .forEach((control) => {
+      control.disabled = isDisabled;
+    });
+}
+
+function fadeApprovedCard(id) {
+  const card = document.getElementById(`parsed_card_${id}`);
+
+  if (!card) return;
+
+  card.style.transition = "opacity 0.25s ease, transform 0.25s ease";
+  card.style.opacity = "0.58";
+  card.style.transform = "translateY(4px)";
+}
+
+function updateApprovalQueuePanel(activeId = "") {
+  const panel = document.getElementById("approvalQueuePanel");
+  const title = document.getElementById("approvalQueueTitle");
+  const progress = document.getElementById("approvalQueueProgress");
+  const detail = document.getElementById("approvalQueueDetail");
+
+  if (!panel || !title || !progress || !detail) return;
+
+  const processed = approvalQueueCompleted + approvalQueueFailed;
+  const percent = approvalQueueTotal
+    ? Math.round((processed / approvalQueueTotal) * 100)
+    : 0;
+  const activeQuestion = activeId
+    ? pendingQuestions.find((question) => question._id === activeId)
+    : null;
+
+  panel.classList.toggle(
+    "hidden",
+    !isApprovalQueueRunning && approvalQueueTotal === 0,
+  );
+  title.textContent = isApprovalQueueRunning
+    ? `Processing ${processed + 1 > approvalQueueTotal ? approvalQueueTotal : processed + 1} of ${approvalQueueTotal}`
+    : `Completed ${approvalQueueCompleted} of ${approvalQueueTotal}`;
+  progress.style.width = `${percent}%`;
+  detail.textContent = isApprovalQueueRunning
+    ? activeQuestion
+      ? `Now approving: ${truncateQueueText(activeQuestion.questionText)}`
+      : `${approvalQueue.length} waiting in queue...`
+    : approvalQueueFailed > 0
+      ? `${approvalQueueFailed} question${approvalQueueFailed === 1 ? "" : "s"} need attention.`
+      : "Approval queue finished.";
+
+  if (!isApprovalQueueRunning && approvalQueueTotal > 0 && approvalQueueFailed === 0) {
+    setTimeout(() => {
+      if (!isApprovalQueueRunning) {
+        panel.classList.add("hidden");
+        approvalQueueTotal = 0;
+        approvalQueueCompleted = 0;
+        approvalQueueFailed = 0;
+        progress.style.width = "0%";
+      }
+    }, 2500);
+  }
+}
+
+function truncateQueueText(value) {
+  const text = String(value || "Untitled question");
+
+  return text.length > 90 ? `${text.slice(0, 90)}...` : text;
 }
 
 async function rejectSelectedParsed() {

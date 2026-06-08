@@ -44,6 +44,7 @@ function renderAnalysisRow(item) {
       <td>${item.incorrectCount}</td>
       <td>${item.difficultyIndex}</td>
       <td>${escapeHTML(item.difficultyInterpretation)}</td>
+      <td><span class="badge ${escapeHTML(item.questionDifficulty.toLowerCase())}">${escapeHTML(item.questionDifficulty)}</span></td>
       <td>${item.discriminationIndex}</td>
       <td>${escapeHTML(item.discriminationInterpretation)}</td>
       <td>

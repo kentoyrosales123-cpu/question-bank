@@ -1205,6 +1205,60 @@ label small {
   margin: 0;
 }
 
+.approval-queue-panel {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 18px;
+  padding: 14px;
+}
+
+.approval-queue-panel.hidden {
+  display: none;
+}
+
+.approval-queue-panel p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.approval-progress-track {
+  background: var(--border);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.approval-progress-track span {
+  background: var(--primary);
+  display: block;
+  height: 100%;
+  transition: width 0.2s ease;
+  width: 0%;
+}
+
+.review-card.queue-queued,
+.review-card.queue-processing {
+  border-color: var(--primary);
+}
+
+.review-card.queue-processing {
+  box-shadow: 0 0 0 3px rgba(138, 0, 19, 0.1), var(--shadow-soft);
+}
+
+.review-card.queue-done {
+  border-color: var(--success);
+}
+
+.review-card.queue-error {
+  border-color: var(--danger);
+}
+
 .review-stat {
   border: 1px solid var(--border);
   background: var(--card);
