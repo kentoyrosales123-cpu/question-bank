@@ -4,43 +4,58 @@
     <title>Question Bank</title>
     <link rel="stylesheet" href="/css/style.css" />
   </head>
+
   <body>
     <div class="dashboard-layout">
       <aside class="sidebar">
         <h2>Question Bank</h2>
+
         <a href="/dashboard.html">Dashboard</a>
         <a class="active" href="/questions.html">Questions</a>
         <a href="/add-question.html">Add Question</a>
         <a href="/upload.html">Upload Questionnaire</a>
         <a href="/generate-exam.html">Generate Exam</a>
         <a href="/item-analysis-upload.html">Item Analysis</a>
+
         <div class="nav-divider"></div>
+
         <a href="/profile.html">Profile</a>
         <a href="/users.html">Users</a>
         <a href="/reports.html">Reports</a>
-        <a class="support-link" href="#support">Chat Support</a>
+        <a class="support-link" href="#support"> Chat Support </a>
+
         <div class="nav-divider"></div>
+
         <a onclick="logout()">Logout</a>
       </aside>
 
       <main class="main">
         <div class="topbar">
           <h1>Questions</h1>
-          <button class="btn secondary" onclick="toggleTheme()">
-            Toggle Theme
-          </button>
+
+          <div class="action-row">
+            <button class="btn secondary" onclick="toggleTheme()">
+              Toggle Theme
+            </button>
+          </div>
         </div>
 
         <div class="card">
           <div class="grid grid-4">
             <input id="filterSubject" placeholder="Filter subject" />
+
             <input id="filterTopic" placeholder="Filter topic" />
+
             <select id="filterDifficulty">
               <option value="">All Difficulty</option>
+
               <option value="Easy">Easy</option>
+
               <option value="Average">Average</option>
+
               <option value="Difficult">Difficult</option>
             </select>
+
             <button class="btn" onclick="filterQuestions()">Filter</button>
           </div>
         </div>
@@ -59,20 +74,28 @@
                 <th>Action</th>
               </tr>
             </thead>
+
             <tbody id="questionsBody"></tbody>
           </table>
         </div>
 
         <div class="pagination-bar" id="questionsPagination"></div>
 
+        <!-- QUESTION VIEW / EDIT MODAL -->
         <div class="modal hidden" id="questionModal">
           <div class="modal-panel">
             <div class="modal-header">
               <h2 id="questionModalTitle">Question Details</h2>
-              <button class="btn secondary" type="button" onclick="closeQuestionModal()">
+
+              <button
+                class="btn secondary"
+                type="button"
+                onclick="closeQuestionModal()"
+              >
                 Close
               </button>
             </div>
+
             <div id="questionDetails"></div>
           </div>
         </div>
@@ -80,9 +103,11 @@
     </div>
 
     <script src="/js/auth.js"></script>
+
     <script>
       adminOnlyPage();
     </script>
+
     <script src="/js/questions.js"></script>
   </body>
 </html>

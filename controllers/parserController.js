@@ -19,8 +19,8 @@ const isAdminUser = (user) => isAdmin(user);
 const isUploadOwner = (upload, user) =>
   Boolean(
     upload?.uploadedBy &&
-      user?._id &&
-      upload.uploadedBy.toString() === user._id.toString(),
+    user?._id &&
+    upload.uploadedBy.toString() === user._id.toString(),
   );
 
 const getAccessibleUploadIds = async (user) => {
@@ -28,7 +28,9 @@ const getAccessibleUploadIds = async (user) => {
     return null;
   }
 
-  const uploads = await Upload.find({ uploadedBy: user._id }).select("_id").lean();
+  const uploads = await Upload.find({ uploadedBy: user._id })
+    .select("_id")
+    .lean();
   return uploads.map((upload) => upload._id);
 };
 
@@ -113,11 +115,15 @@ const getSimilarityScore = (left = "", right = "") => {
 };
 
 const findDuplicateCandidates = (question, existingQuestions = []) => {
-  const normalizedText = normalizeQuestionForDuplicateCheck(question.questionText);
+  const normalizedText = normalizeQuestionForDuplicateCheck(
+    question.questionText,
+  );
 
   return existingQuestions
     .map((existing) => {
-      const existingText = normalizeQuestionForDuplicateCheck(existing.questionText);
+      const existingText = normalizeQuestionForDuplicateCheck(
+        existing.questionText,
+      );
       const sameSubject =
         normalizeQuestionForDuplicateCheck(existing.subject) ===
         normalizeQuestionForDuplicateCheck(question.subject);
@@ -385,7 +391,8 @@ function getDocxRelationships(zip) {
   }
 
   const relsXml = relsEntry.getData().toString("utf8");
-  const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*>/g;
+  const relRegex =
+    /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*>/g;
   let match;
 
   while ((match = relRegex.exec(relsXml))) {
@@ -598,7 +605,9 @@ function choiceCount(question) {
 }
 
 function shouldSaveParsedQuestion(question) {
-  return Boolean(question && question.questionText && choiceCount(question) >= 2);
+  return Boolean(
+    question && question.questionText && choiceCount(question) >= 2,
+  );
 }
 
 function parseDocxQuestions(filePath) {
@@ -633,9 +642,7 @@ function parseDocxQuestions(filePath) {
       return;
     }
 
-    const questionMatch = block.text.match(
-      /^(?:QUESTION\s*)?\d+[:).\s]+(.+)/i,
-    );
+    const questionMatch = block.text.match(/^(?:QUESTION\s*)?\d+[:).\s]+(.+)/i);
 
     if (questionMatch) {
       saveCurrentQuestion();
@@ -675,7 +682,9 @@ function parseDocxQuestions(filePath) {
 
     if (currentQuestion && choiceCount(currentQuestion) === 0) {
       currentQuestion.questionText = `${currentQuestion.questionText}\n${block.text}`;
-      currentQuestion.difficulty = detectDifficulty(currentQuestion.questionText);
+      currentQuestion.difficulty = detectDifficulty(
+        currentQuestion.questionText,
+      );
     }
   });
 
@@ -717,7 +726,8 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
     }
 
     const isOwner =
-      upload.uploadedBy && upload.uploadedBy.toString() === req.user._id.toString();
+      upload.uploadedBy &&
+      upload.uploadedBy.toString() === req.user._id.toString();
 
     if (!isAdminUser(req.user) && !isOwner) {
       return res.status(403).json({
@@ -770,7 +780,8 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
     let imageIndex = 0;
     const shouldAttachImagesByOrder =
-      extractedImages.length > 0 && extractedImages.length === parsedQuestions.length;
+      extractedImages.length > 0 &&
+      extractedImages.length === parsedQuestions.length;
 
     const saved = await ParsedQuestion.insertMany(
       parsedQuestions.map((q) => {
@@ -863,11 +874,12 @@ exports.getParsedQuestions = async (req, res) => {
     const parsedQuestionsWithDuplicates = parsedQuestions.map((question) => {
       const item = question.toObject();
 
-      item.duplicateCandidates = findDuplicateCandidates(item, existingQuestions);
+      item.duplicateCandidates = findDuplicateCandidates(
+        item,
+        existingQuestions,
+      );
       item.duplicateRisk =
-        item.duplicateCandidates.length === 0
-          ? "None"
-          : "High";
+        item.duplicateCandidates.length === 0 ? "None" : "High";
 
       return item;
     });
@@ -928,8 +940,13 @@ exports.approveParsedQuestion = async (req, res) => {
     const existingQuestions = await Question.find()
       .select("subject topic questionText difficulty")
       .lean();
-    const duplicateCandidates = findDuplicateCandidates(parsed, existingQuestions);
-    const exactDuplicate = duplicateCandidates.find((candidate) => candidate.score === 1);
+    const duplicateCandidates = findDuplicateCandidates(
+      parsed,
+      existingQuestions,
+    );
+    const exactDuplicate = duplicateCandidates.find(
+      (candidate) => candidate.score === 1,
+    );
 
     if (exactDuplicate && req.body?.force !== true) {
       return res.status(409).json({
@@ -959,7 +976,8 @@ exports.approveParsedQuestion = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Question approved, saved to question bank, and removed from parsed review.",
+      message:
+        "Question approved, saved to question bank, and removed from parsed review.",
       question,
     });
   } catch (error) {

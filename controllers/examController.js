@@ -30,7 +30,12 @@ const {
   WidthType,
 } = require("docx");
 
-const TOS_LOGO_DOCX_PATH = path.join(__dirname, "..", "public", "logo-docx.png");
+const TOS_LOGO_DOCX_PATH = path.join(
+  __dirname,
+  "..",
+  "public",
+  "logo-docx.png",
+);
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -39,7 +44,8 @@ const canAccessExam = (exam, user) => {
   return exam.user && exam.user.toString() === user._id.toString();
 };
 
-const isApprovedExam = (exam) => (exam.approvalStatus || "Approved") === "Approved";
+const isApprovedExam = (exam) =>
+  (exam.approvalStatus || "Approved") === "Approved";
 
 const getBlockedExamMessage = (exam) =>
   exam.approvalStatus === "Rejected"
@@ -68,9 +74,7 @@ const getRandomQuestions = async (subjects, topics, difficulty, count) => {
     return [];
   }
 
-  const match = {
-    difficulty,
-  };
+  const match = { difficulty };
 
   if (subjects.length > 0) {
     match.subject = { $in: subjects };
@@ -107,7 +111,12 @@ const getBlueprintQuestions = async (blueprint) => {
 
   for (const row of blueprint) {
     const rowQuestions = [
-      ...(await getRandomQuestions([row.subject], [row.topic], "Easy", row.easyCount)),
+      ...(await getRandomQuestions(
+        [row.subject],
+        [row.topic],
+        "Easy",
+        row.easyCount,
+      )),
       ...(await getRandomQuestions(
         [row.subject],
         [row.topic],
@@ -164,7 +173,9 @@ const getGenerationQueueNumber = (job) => {
   if (!job) return 0;
   if (job.status === "processing") return 1;
 
-  const index = generationQueue.findIndex((queuedJob) => queuedJob.id === job.id);
+  const index = generationQueue.findIndex(
+    (queuedJob) => queuedJob.id === job.id,
+  );
   return index >= 0 ? activeGenerationJobs + index + 1 : 0;
 };
 
@@ -201,7 +212,10 @@ const cleanupGenerationJob = (jobId) => {
 };
 
 const runGenerationQueue = () => {
-  while (activeGenerationJobs < MAX_CONCURRENT_GENERATIONS && generationQueue.length > 0) {
+  while (
+    activeGenerationJobs < MAX_CONCURRENT_GENERATIONS &&
+    generationQueue.length > 0
+  ) {
     const job = generationQueue.shift();
     activeGenerationJobs++;
     job.status = "processing";
@@ -296,7 +310,8 @@ const generateExamForQueue = async (req, res) => {
     if (!canGenerateExam(req.user)) {
       return res.status(403).json({
         success: false,
-        message: "Only Admins, Exam Creators, and Exam Requestors can generate exams.",
+        message:
+          "Only Admins, Exam Creators, and Exam Requestors can generate exams.",
       });
     }
 
@@ -430,7 +445,9 @@ const generateExamForQueue = async (req, res) => {
     const exam = await Exam.create({
       title: title || "Generated Exam",
       subject: useBlueprint
-        ? formatSelectionLabel([...new Set(blueprint.map((row) => row.subject))])
+        ? formatSelectionLabel([
+            ...new Set(blueprint.map((row) => row.subject)),
+          ])
         : formatSelectionLabel(subjects),
       topic: useBlueprint
         ? formatSelectionLabel([...new Set(blueprint.map((row) => row.topic))])
@@ -644,7 +661,14 @@ exports.getGenerationJobStatus = async (req, res) => {
 
 exports.getMyExamSummary = async (req, res) => {
   try {
-    const [totalExams, approvedExams, pendingExams, rejectedExams, recentExams, itemSummary] = await Promise.all([
+    const [
+      totalExams,
+      approvedExams,
+      pendingExams,
+      rejectedExams,
+      recentExams,
+      itemSummary,
+    ] = await Promise.all([
       Exam.countDocuments({ user: req.user._id }),
       Exam.countDocuments({
         user: req.user._id,
@@ -659,7 +683,9 @@ exports.getMyExamSummary = async (req, res) => {
         approvalStatus: "Rejected",
       }),
       Exam.find({ user: req.user._id })
-        .select("title subject topic totalItems approvalStatus createdAt updatedAt")
+        .select(
+          "title subject topic totalItems approvalStatus createdAt updatedAt",
+        )
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(10),
       Exam.aggregate([
@@ -705,7 +731,10 @@ exports.approveExam = async (req, res) => {
       });
     }
 
-    const exam = await Exam.findById(req.params.id).populate("user", "name email role");
+    const exam = await Exam.findById(req.params.id).populate(
+      "user",
+      "name email role",
+    );
 
     if (!exam) {
       return res.status(404).json({
@@ -763,7 +792,10 @@ exports.rejectExam = async (req, res) => {
       });
     }
 
-    const exam = await Exam.findById(req.params.id).populate("user", "name email role");
+    const exam = await Exam.findById(req.params.id).populate(
+      "user",
+      "name email role",
+    );
 
     if (!exam) {
       return res.status(404).json({
@@ -866,13 +898,15 @@ const buildTosRows = (exam) => {
 
   return Array.from(grouped.values()).map((row, index) => {
     const itemCount = row.itemNumbers.length;
-    const percent = totalItems > 0 ? Math.round((itemCount / totalItems) * 100) : 0;
+    const percent =
+      totalItems > 0 ? Math.round((itemCount / totalItems) * 100) : 0;
 
     return {
       courseOutcome: `CO${index + 1}`,
-      topic: row.subject && row.subject !== exam.subject
-        ? `${row.subject} - ${row.topic}`
-        : row.topic,
+      topic:
+        row.subject && row.subject !== exam.subject
+          ? `${row.subject} - ${row.topic}`
+          : row.topic,
       cogPr: Array.from(row.difficulties).filter(Boolean).join(", "),
       assessmentTask: "Multiple-choice test item",
       percent: `${percent}%`,
@@ -931,14 +965,16 @@ const createTosCell = (text, options = {}) =>
       : undefined,
     children: String(text ?? "")
       .split("\n")
-      .map((line) => createTosParagraph(line, {
-        alignment: options.alignment || AlignmentType.CENTER,
-        bold: options.bold,
-        italics: options.italics,
-        font: options.font,
-        color: options.color,
-        size: options.size || 18,
-      })),
+      .map((line) =>
+        createTosParagraph(line, {
+          alignment: options.alignment || AlignmentType.CENTER,
+          bold: options.bold,
+          italics: options.italics,
+          font: options.font,
+          color: options.color,
+          size: options.size || 18,
+        }),
+      ),
   });
 
 const tosBorder = {
@@ -984,8 +1020,15 @@ const createTosBlankRun = (text = "____________________", options = {}) =>
     underline: true,
   });
 
-const createTosFieldRun = (value, blank = "____________________", options = {}) =>
-  createTosBlankRun(value ? `${value}${blank.slice(String(value).length)}` : blank, options);
+const createTosFieldRun = (
+  value,
+  blank = "____________________",
+  options = {},
+) =>
+  createTosBlankRun(
+    value ? `${value}${blank.slice(String(value).length)}` : blank,
+    options,
+  );
 
 const createTosFormCell = (runs, options = {}) =>
   createTosBodyCell([createTosFormParagraph(runs, options)], {
@@ -1075,12 +1118,15 @@ const createTosDocHeader = async () =>
           new TableRow({
             children: [
               await createTosHeaderLogoCell(),
-              createTosCell("INSTITUTE OF PEDAGOGICAL ADVANCEMENT AND COMPETITIVENESS", {
-                bold: true,
-                color: "2F5B8A",
-                size: 56,
-                font: "Bodoni MT Condensed",
-              }),
+              createTosCell(
+                "INSTITUTE OF PEDAGOGICAL ADVANCEMENT AND COMPETITIVENESS",
+                {
+                  bold: true,
+                  color: "2F5B8A",
+                  size: 56,
+                  font: "Bodoni MT Condensed",
+                },
+              ),
             ],
           }),
           new TableRow({
@@ -1127,15 +1173,24 @@ const createTosFooter = () =>
           }),
           new TableRow({
             children: [
-              createTosCell("Prepared by:\n\n____________________________\nCourse Teacher", {
-                size: 15,
-              }),
-              createTosCell("*Reviewed by:\n\n____________________________\nProgram Head", {
-                size: 15,
-              }),
-              createTosCell("*Approved by:\n\n____________________________\nCollege Dean/Director", {
-                size: 15,
-              }),
+              createTosCell(
+                "Prepared by:\n\n____________________________\nCourse Teacher",
+                {
+                  size: 15,
+                },
+              ),
+              createTosCell(
+                "*Reviewed by:\n\n____________________________\nProgram Head",
+                {
+                  size: 15,
+                },
+              ),
+              createTosCell(
+                "*Approved by:\n\n____________________________\nCollege Dean/Director",
+                {
+                  size: 15,
+                },
+              ),
             ],
           }),
           new TableRow({
@@ -1153,11 +1208,14 @@ const createTosFooter = () =>
           }),
         ],
       }),
-      createTosParagraph("F-13052-237 / Rev. #0 / Effectivity: March 18, 2022", {
-        alignment: AlignmentType.LEFT,
-        size: 12,
-        before: 40,
-      }),
+      createTosParagraph(
+        "F-13052-237 / Rev. #0 / Effectivity: March 18, 2022",
+        {
+          alignment: AlignmentType.LEFT,
+          size: 12,
+          before: 40,
+        },
+      ),
     ],
   });
 
@@ -1193,14 +1251,18 @@ const buildTosDocxBuffer = async (exam) => {
             createTosFormCell(
               [
                 createTextRun("Course: ", { size: 18 }),
-                createTosFieldRun(courseText, "____________________________", { size: 18 }),
+                createTosFieldRun(courseText, "____________________________", {
+                  size: 18,
+                }),
               ],
               { columnSpan: 3, topBorder: true, leftBorder: true },
             ),
             createTosFormCell(
               [
                 createTextRun("Date Completed: ", { size: 18 }),
-                createTosFieldRun(dateCompletedText, "________________", { size: 18 }),
+                createTosFieldRun(dateCompletedText, "________________", {
+                  size: 18,
+                }),
               ],
               { columnSpan: 2, topBorder: true },
             ),
@@ -1219,28 +1281,24 @@ const buildTosDocxBuffer = async (exam) => {
             createTosFormCell(
               [
                 createTextRun("College/Program:", { size: 18 }),
-                createTosBlankRun("______________________________", { size: 18 }),
+                createTosBlankRun("______________________________", {
+                  size: 18,
+                }),
               ],
               { columnSpan: 2, leftBorder: true },
             ),
-            createTosFormCell(
-              [
-                createTextRun("Term:", { size: 18 }),
-                createTosBlankRun("_______", { size: 18 }),
-              ],
-            ),
-            createTosFormCell(
-              [
-                createTextRun("Sem.:", { size: 18 }),
-                createTosBlankRun("________", { size: 18 }),
-              ],
-            ),
-            createTosFormCell(
-              [
-                createTextRun("S.Y.", { size: 18 }),
-                createTosBlankRun("_______________", { size: 18 }),
-              ],
-            ),
+            createTosFormCell([
+              createTextRun("Term:", { size: 18 }),
+              createTosBlankRun("_______", { size: 18 }),
+            ]),
+            createTosFormCell([
+              createTextRun("Sem.:", { size: 18 }),
+              createTosBlankRun("________", { size: 18 }),
+            ]),
+            createTosFormCell([
+              createTextRun("S.Y.", { size: 18 }),
+              createTosBlankRun("_______________", { size: 18 }),
+            ]),
             createTosFormCell(
               [
                 createTextRun("Exam:", { size: 18 }),
@@ -1262,7 +1320,10 @@ const buildTosDocxBuffer = async (exam) => {
             createTosFormCell(
               [
                 createTextRun("Student Outcome (SO): ", { size: 18 }),
-                createTosBlankRun("____________________________________________________________________________________________", { size: 18 }),
+                createTosBlankRun(
+                  "____________________________________________________________________________________________",
+                  { size: 18 },
+                ),
               ],
               { columnSpan: 8, leftBorder: true, rightBorder: true },
             ),
@@ -1274,18 +1335,31 @@ const buildTosDocxBuffer = async (exam) => {
               [
                 createTextRun("Category:      [ ", { size: 18 }),
                 createTosBlankRun("/", { size: 18 }),
-                createTextRun(" ] - Introductory        [ ", { size: 18, italics: true }),
+                createTextRun(" ] - Introductory        [ ", {
+                  size: 18,
+                  italics: true,
+                }),
                 createTosBlankRun(" ", { size: 18 }),
-                createTextRun(" ] - Enabling        [ ", { size: 18, italics: true }),
+                createTextRun(" ] - Enabling        [ ", {
+                  size: 18,
+                  italics: true,
+                }),
                 createTosBlankRun(" ", { size: 18 }),
-                createTextRun(" ] - Demonstration", { size: 18, italics: true }),
+                createTextRun(" ] - Demonstration", {
+                  size: 18,
+                  italics: true,
+                }),
               ],
               { columnSpan: 5, leftBorder: true, bottomBorder: true },
             ),
             createTosFormCell(
               [
                 createTextRun("Total Points: ", { size: 18 }),
-                createTosFieldRun(totalItems ? String(totalItems) : "", "________________________", { size: 18 }),
+                createTosFieldRun(
+                  totalItems ? String(totalItems) : "",
+                  "________________________",
+                  { size: 18 },
+                ),
               ],
               {
                 columnSpan: 3,
@@ -1320,8 +1394,14 @@ const buildTosDocxBuffer = async (exam) => {
                 createTosCell(row.courseOutcome),
                 createTosCell(row.topic, { alignment: AlignmentType.LEFT }),
                 createTosCell(row.cogPr),
-                createTosCell(row.assessmentTask, { alignment: AlignmentType.LEFT }),
-                createTosCell(row.percent && row.weight ? `${row.percent} / ${row.weight}` : ""),
+                createTosCell(row.assessmentTask, {
+                  alignment: AlignmentType.LEFT,
+                }),
+                createTosCell(
+                  row.percent && row.weight
+                    ? `${row.percent} / ${row.weight}`
+                    : "",
+                ),
                 createTosCell(row.points),
                 createTosCell(row.weight),
                 createTosCell(row.itemNumbers),

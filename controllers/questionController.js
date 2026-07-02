@@ -275,7 +275,9 @@ exports.getQuestionAnalytics = async (req, res) => {
     }
 
     const exams = await Exam.find({ questions: question._id })
-      .select("title subject topic totalItems submitted answers score createdAt user")
+      .select(
+        "title subject topic totalItems submitted answers score createdAt user",
+      )
       .populate("user", "name email")
       .sort({ createdAt: -1 });
     let submittedUsage = 0;
@@ -284,7 +286,8 @@ exports.getQuestionAnalytics = async (req, res) => {
 
     exams.forEach((exam) => {
       const answer = (exam.answers || []).find(
-        (item) => item.question && item.question.toString() === question._id.toString(),
+        (item) =>
+          item.question && item.question.toString() === question._id.toString(),
       );
 
       if (!answer) {
@@ -301,7 +304,9 @@ exports.getQuestionAnalytics = async (req, res) => {
     });
 
     const accuracy =
-      submittedUsage > 0 ? Math.round((correctCount / submittedUsage) * 1000) / 10 : 0;
+      submittedUsage > 0
+        ? Math.round((correctCount / submittedUsage) * 1000) / 10
+        : 0;
 
     res.json({
       success: true,

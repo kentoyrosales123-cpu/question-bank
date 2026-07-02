@@ -13,30 +13,60 @@ const {
   filterQuestions,
 } = require("../controllers/questionController");
 
-const { protect, adminOnly } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleware");
 const imageUpload = require("../middleware/imageUploadMiddleware");
 
-router.get("/", protect, adminOnly, getQuestions);
-router.get("/filter", protect, adminOnly, filterQuestions);
-router.get("/:id/image", getQuestionImage);
-router.get("/:id/history", protect, adminOnly, getQuestionHistory);
-router.get("/:id/analytics", protect, adminOnly, getQuestionAnalytics);
-router.get("/:id", protect, adminOnly, getQuestion);
+// Allow Admin + Super Admin
+const adminOrSuperAdminOnly = (req, res, next) => {
+  const allowedRoles = ["admin", "super_admin", "Admin", "Super Admin"];
 
+  if (!req.user || !allowedRoles.includes(req.user.role)) {
+    return res.status(403).json({
+      message: "Admin or Super Admin access only.",
+    });
+  }
+
+  next();
+};
+
+// Question routes
+router.get("/", protect, adminOrSuperAdminOnly, getQuestions);
+
+router.get("/filter", protect, adminOrSuperAdminOnly, filterQuestions);
+
+// Question details
+router.get("/:id/image", getQuestionImage);
+
+router.get("/:id/history", protect, adminOrSuperAdminOnly, getQuestionHistory);
+
+router.get(
+  "/:id/analytics",
+  protect,
+  adminOrSuperAdminOnly,
+  getQuestionAnalytics,
+);
+
+router.get("/:id", protect, adminOrSuperAdminOnly, getQuestion);
+
+// Create question
 router.post(
   "/",
   protect,
-  adminOnly,
+  adminOrSuperAdminOnly,
   imageUpload.single("image"),
   createQuestion,
 );
+
+// Update question
 router.put(
   "/:id",
   protect,
-  adminOnly,
+  adminOrSuperAdminOnly,
   imageUpload.single("image"),
   updateQuestion,
 );
-router.delete("/:id", protect, adminOnly, deleteQuestion);
+
+// Delete question
+router.delete("/:id", protect, adminOrSuperAdminOnly, deleteQuestion);
 
 module.exports = router;

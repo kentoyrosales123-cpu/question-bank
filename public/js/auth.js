@@ -5,7 +5,12 @@ function getToken() {
 }
 
 function getUser() {
-  return JSON.parse(localStorage.getItem("qb_user") || "null");
+  try {
+    return JSON.parse(localStorage.getItem("qb_user") || "null");
+  } catch (error) {
+    localStorage.removeItem("qb_user");
+    return null;
+  }
 }
 
 function setAuth(token, user) {
@@ -28,6 +33,7 @@ let activeSupportTicketId = null;
 let notificationsCache = [];
 let notificationStream = null;
 let notificationPollTimer = null;
+let isSidebarNavigationPending = false;
 
 function normalizeRole(role) {
   return {
@@ -75,8 +81,11 @@ function escapeHTML(value) {
 
 function protectPage() {
   if (!getToken()) {
-    location.href = "/login.html";
+    location.replace("/login.html");
+    return false;
   }
+
+  return true;
 }
 
 function adminOnlyPage() {
@@ -84,16 +93,22 @@ function adminOnlyPage() {
 
   if (!isAdminRole(user)) {
     alert("Admin access only.");
-    location.href = getDashboardUrl(user);
+    location.replace(getDashboardUrl(user));
+    return false;
   }
+
+  return true;
 }
 
 function userOnlyPage() {
   const user = getUser();
 
   if (isAdminRole(user)) {
-    location.href = "/dashboard.html";
+    location.replace("/dashboard.html");
+    return false;
   }
+
+  return true;
 }
 
 function syncDashboardLinks() {
@@ -258,6 +273,18 @@ function startNotificationPolling() {
   }
 
   notificationPollTimer = setInterval(loadNotifications, 5000);
+}
+
+function stopNotificationConnections() {
+  if (notificationStream) {
+    notificationStream.close();
+    notificationStream = null;
+  }
+
+  if (notificationPollTimer) {
+    clearInterval(notificationPollTimer);
+    notificationPollTimer = null;
+  }
 }
 
 function renderNotificationCount(count) {
@@ -685,6 +712,80 @@ async function supportTicketRequest(path = "", method = "GET", body = null) {
   }
 }
 
+function ensureSidebarLink(sidebar, { href, label, afterHref }) {
+  if (sidebar.querySelector(`a[href="${href}"]`)) {
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = href;
+  link.textContent = label;
+
+  const anchor = sidebar.querySelector(`a[href="${afterHref}"]`);
+
+  if (anchor) {
+    anchor.after(link);
+    return;
+  }
+
+  const firstDivider = sidebar.querySelector(".nav-divider");
+
+  if (firstDivider) {
+    firstDivider.before(link);
+  } else {
+    sidebar.append(link);
+  }
+}
+
+function normalizeSidebarLinks(sidebar) {
+  if (location.pathname !== "/parsed-questions.html") {
+    sidebar.querySelectorAll('a[href="/parsed-questions.html"]').forEach((link) => {
+      link.remove();
+    });
+  }
+
+  ensureSidebarLink(sidebar, {
+    href: "/questions.html",
+    label: "Questions",
+    afterHref: "/dashboard.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/add-question.html",
+    label: "Add Question",
+    afterHref: "/questions.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/upload.html",
+    label: "Upload Questionnaire",
+    afterHref: "/add-question.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/generate-exam.html",
+    label: "Generate Exam",
+    afterHref: "/upload.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/item-analysis-upload.html",
+    label: "Item Analysis",
+    afterHref: "/generate-exam.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/profile.html",
+    label: "Profile",
+    afterHref: "/item-analysis-upload.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/users.html",
+    label: "Users",
+    afterHref: "/profile.html",
+  });
+  ensureSidebarLink(sidebar, {
+    href: "/reports.html",
+    label: "Reports",
+    afterHref: "/users.html",
+  });
+}
+
 function initSidebar() {
   const sidebar = document.querySelector(".sidebar");
 
@@ -697,6 +798,7 @@ function initSidebar() {
     link.setAttribute("role", "button");
   });
 
+  normalizeSidebarLinks(sidebar);
   ensureSupportLink(sidebar);
   syncDashboardLinks();
   setActiveSidebarLink(sidebar);
@@ -731,10 +833,35 @@ function initSidebar() {
 
   backdrop.addEventListener("click", closeSidebar);
   sidebar.querySelectorAll("a").forEach((link) => {
-    link.addEventListener("click", () => {
+    link.addEventListener("click", (event) => {
       if (window.matchMedia("(max-width: 850px)").matches) {
         closeSidebar();
       }
+
+      const href = link.getAttribute("href") || "";
+
+      if (
+        event.defaultPrevented ||
+        !href.startsWith("/") ||
+        link.matches('[onclick*="logout"]')
+      ) {
+        return;
+      }
+
+      const targetPath = new URL(href, location.origin).pathname;
+
+      if (targetPath === location.pathname) {
+        event.preventDefault();
+        return;
+      }
+
+      if (isSidebarNavigationPending) {
+        event.preventDefault();
+        return;
+      }
+
+      isSidebarNavigationPending = true;
+      stopNotificationConnections();
     });
   });
 
@@ -812,6 +939,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initSidebar();
   ensureNotificationBell();
 });
+
+window.addEventListener("beforeunload", stopNotificationConnections);
 
 const loginForm = document.getElementById("loginForm");
 
