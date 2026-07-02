@@ -42,16 +42,77 @@ function renderQuestionsPage() {
         <td>${escapeHTML(q.subject)}</td>
         <td>${escapeHTML(q.topic)}</td>
         <td>${escapeHTML(truncateText(q.questionText, 80))}</td>
-        <td><span class="badge ${escapeHTML(q.difficulty.toLowerCase())}">${escapeHTML(q.difficulty)}</span></td>
-        <td>${escapeHTML(q.correctAnswer)}</td>
         <td>
+  <span class="badge ${escapeHTML(q.difficulty.toLowerCase())}">
+    ${escapeHTML(q.difficulty)}
+  </span>
+</td>
+
+<td>
+  ${
+    q.isAIGenerated === true
+      ? `
+        <span class="badge ${
+          q.aiStatus === "Approved"
+            ? "success"
+            : q.aiStatus === "Rejected"
+              ? "danger"
+              : "warning"
+        }">
+          ${escapeHTML(q.aiStatus || "Pending")}
+        </span>
+      `
+      : `
+        <span class="badge success">
+          Manual
+        </span>
+      `
+  }
+</td>
+
+<td>${escapeHTML(q.correctAnswer)}</td>
+
+<td>
           <div class="action-row">
             <button class="btn secondary" type="button" onclick="viewQuestion('${q._id}')">View</button>
             ${
-              getUser()?.role === "admin"
+              ["admin", "super_admin", "Admin", "Super Admin"].includes(
+                getUser()?.role,
+              )
                 ? `
-                  <button class="btn" type="button" onclick="editQuestion('${q._id}')">Edit</button>
-                  <button class="btn danger" type="button" onclick="deleteQuestion('${q._id}')">Delete</button>
+                  <button class="btn"
+type="button"
+onclick="editQuestion('${q._id}')">
+Edit
+</button>
+
+${
+  q.isAIGenerated === true && q.aiStatus === "Pending"
+    ? `
+      <button
+        class="btn success"
+        type="button"
+        onclick="approveQuestion('${q._id}')"
+      >
+        Approve
+      </button>
+
+      <button
+        class="btn warning"
+        type="button"
+        onclick="rejectQuestion('${q._id}')"
+      >
+        Reject
+      </button>
+    `
+    : ""
+}
+
+<button class="btn danger"
+type="button"
+onclick="deleteQuestion('${q._id}')">
+Delete
+</button>
                 `
                 : ""
             }
@@ -493,6 +554,84 @@ function renderQuestionTables(tables) {
       `,
     )
     .join("");
+}
+
+function openAIGeneratorModal() {
+  document.getElementById("aiQuestionModal").classList.remove("hidden");
+}
+
+function closeAIGeneratorModal() {
+  document.getElementById("aiQuestionModal").classList.add("hidden");
+}
+
+async function generateAIQuestions() {
+  try {
+    const subject = document.getElementById("aiSubject").value.trim();
+
+    const topic = document.getElementById("aiTopic").value.trim();
+
+    const difficulty = document.getElementById("aiDifficulty").value;
+
+    const numberOfItems = Number(
+      document.getElementById("aiNumberOfItems").value,
+    );
+
+    const message = document.getElementById("aiGenerateMessage");
+
+    if (!subject || !topic) {
+      message.innerText = "Subject and topic are required.";
+      return;
+    }
+
+    message.innerText =
+      "🤖 Your request is in queue. Please wait while AI generates questions...";
+
+    const data = await apiRequest("/ai/generate-and-save", "POST", {
+      subject,
+      topic,
+      difficulty,
+      numberOfItems,
+    });
+
+    message.innerText = `✅ ${data.count} questions generated successfully`;
+
+    await loadQuestions();
+
+    setTimeout(() => {
+      closeAIGeneratorModal();
+    }, 1500);
+  } catch (error) {
+    document.getElementById("aiGenerateMessage").innerText =
+      error.message || "Failed to generate questions.";
+  }
+}
+
+async function approveQuestion(id) {
+  if (!confirm("Approve this AI question?")) return;
+
+  try {
+    const data = await apiRequest(`/questions/${id}/approve`, "PUT");
+
+    alert(data.message);
+
+    loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function rejectQuestion(id) {
+  if (!confirm("Reject this AI question?")) return;
+
+  try {
+    const data = await apiRequest(`/questions/${id}/reject`, "PUT");
+
+    alert(data.message);
+
+    loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
+  } catch (error) {
+    alert(error.message);
+  }
 }
 
 loadQuestions();
