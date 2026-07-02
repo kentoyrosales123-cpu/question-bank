@@ -252,7 +252,7 @@ const markerCell = () =>
           new TextRun({
             text: "■",
             bold: true,
-            size: 30,
+            size: 42,
             color: "000000",
           }),
         ],
@@ -299,7 +299,7 @@ const buildOmrTemplateBuffer = async ({
         : null;
       const qrDataUrl = pagePayload
         ? await QRCode.toDataURL(JSON.stringify(pagePayload), {
-            errorCorrectionLevel: "M",
+            errorCorrectionLevel: "H",
             margin: 1,
             width: 220,
           })
@@ -1049,7 +1049,7 @@ exports.createItemAnalysisExam = async (req, res) => {
       });
     }
 
-    const parsedAnswerKey = await parseAnswerKey(answer);
+    const parsedAnswerKey = await parseAnswerKey(answerKey);
 
     if (parsedAnswerKey.length !== itemCount) {
       return res.status(400).json({

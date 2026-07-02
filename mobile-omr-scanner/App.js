@@ -24,12 +24,12 @@ const OMR_ITEMS_PER_PAGE = 100;
 const OMR_ROWS_PER_BLOCK = 25;
 const OMR_MAX_BLOCKS_PER_PAGE = 4;
 const DEFAULT_SCAN_SETTINGS = {
-  top: 12,
-  bottom: 94,
-  left: 10,
-  right: 90,
-  numberColumn: 12,
-  headerRow: 3,
+  top: 4,
+  bottom: 96,
+  left: 4,
+  right: 96,
+  numberColumn: 18,
+  headerRow: 12,
 };
 const scanSettingLimits = {
   top: { min: 0, max: 45, step: 1 },
@@ -258,6 +258,85 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
         };
       }
 
+      function detectCornerMarkers(manualBounds) {
+  const imageData = ctx.getImageData(
+    Math.round(manualBounds.x),
+    Math.round(manualBounds.y),
+    Math.round(manualBounds.width),
+    Math.round(manualBounds.height),
+  );
+
+  const data = imageData.data;
+  const candidates = [];
+
+  for (let y = 0; y < imageData.height - 15; y += 2) {
+    for (let x = 0; x < imageData.width - 15; x += 2) {
+      let darkCount = 0;
+
+      for (let yy = 0; yy < 12; yy++) {
+        for (let xx = 0; xx < 12; xx++) {
+          const index =
+            ((y + yy) * imageData.width + (x + xx)) * 4;
+
+          const brightness =
+            (data[index] +
+              data[index + 1] +
+              data[index + 2]) / 3;
+
+          if (brightness < 40) {
+            darkCount++;
+          }
+        }
+      }
+
+      if (darkCount > 90) {
+        candidates.push({
+          x: manualBounds.x + x,
+          y: manualBounds.y + y,
+        });
+      }
+    }
+  }
+
+  if (candidates.length < 4) {
+    return null;
+  }
+
+  const topLeft = candidates.reduce((a, b) =>
+    a.x + a.y < b.x + b.y ? a : b
+  );
+
+  const topRight = candidates.reduce((a, b) =>
+    canvas.width - a.x + a.y <
+    canvas.width - b.x + b.y
+      ? a
+      : b
+  );
+
+  const bottomLeft = candidates.reduce((a, b) =>
+    a.x + (canvas.height - a.y) <
+    b.x + (canvas.height - b.y)
+      ? a
+      : b
+  );
+
+  const bottomRight = candidates.reduce((a, b) =>
+    canvas.width - a.x +
+      (canvas.height - a.y) <
+    canvas.width - b.x +
+      (canvas.height - b.y)
+      ? a
+      : b
+  );
+
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: topRight.x - topLeft.x,
+    height: bottomLeft.y - topLeft.y,
+  };
+}
+
       function sampleStrip(x, y, width, height) {
         const startX = Math.max(0, Math.round(x));
         const startY = Math.max(0, Math.round(y));
@@ -365,12 +444,16 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
           canvas.height = Math.round((image.naturalHeight || image.height) * scale);
           ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-          const bounds = {
-            x: canvas.width * scan.left,
-            y: canvas.height * scan.top,
-            width: canvas.width * (scan.right - scan.left),
-            height: canvas.height * (scan.bottom - scan.top),
+          const manualBounds = {
+            x: canvas.width * 0.06,
+            y: canvas.height * 0.08,
+            width: canvas.width * 0.88,
+            height: canvas.height * 0.78,
           };
+
+const markerBounds = detectCornerMarkers(manualBounds);
+
+const bounds = markerBounds || manualBounds;
           const rowsPerBlock = ${OMR_ROWS_PER_BLOCK};
           const blockCount = ${blockCount};
           const answerY = bounds.y + bounds.height * scan.headerRow;
@@ -428,18 +511,18 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
             const relativeLift = sorted[0].darkness - rowAverage;
             const darkRatioLift = sorted[0].darkRatio - rowDarkRatio;
             const duplicateMark =
-              sorted[1].darkRatio > 0.1 &&
-              sorted[1].darkness > rowAverage + 5 &&
-              confidence < Math.max(8, rowSpread * 0.45);
+  sorted[1].darkRatio > 0.18 &&
+  sorted[1].darkness > rowAverage + 12 &&
+  confidence < Math.max(14, rowSpread * 0.7);
             const answer =
-              !duplicateMark &&
-              sorted[0].darkness > 20 &&
-              sorted[0].darkRatio > 0.035 &&
-              confidence >= Math.max(4.5, rowSpread * 0.35) &&
-              relativeLift >= Math.max(5, rowSpread * 0.45) &&
-              darkRatioLift > 0.01
-                ? sorted[0].label
-                : "";
+  !duplicateMark &&
+  sorted[0].darkness > 38 &&
+  sorted[0].darkRatio > 0.12 &&
+  confidence >= Math.max(12, rowSpread * 0.7) &&
+  relativeLift >= Math.max(12, rowSpread * 0.8) &&
+  darkRatioLift > 0.04
+    ? sorted[0].label
+    : "";
 
             answers.push(answer);
             diagnostics.push({
@@ -460,6 +543,12 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
             answers,
             diagnostics,
             detected: answers.filter(Boolean).length,
+            bounds: {
+              x: bounds.x / canvas.width,
+              y: bounds.y / canvas.height,
+              width: bounds.width / canvas.width,
+              height: bounds.height / canvas.height,
+            }
           }));
         };
 
@@ -500,11 +589,18 @@ export default function App() {
   const qrScanLockRef = useRef(false);
   const activeScanRangeRef = useRef(null);
   const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [guideBox, setGuideBox] = useState({
+    top: 12,
+    left: 5,
+    width: 90,
+    height: 72,
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
   const [exams, setExams] = useState([]);
+  const [cameraZoom, setCameraZoom] = useState(0);
   const [selectedExamId, setSelectedExamId] = useState("");
   const [studentName, setStudentName] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -523,6 +619,9 @@ export default function App() {
   const [batchMode, setBatchMode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("scan");
+  const [fullScanner, setFullScanner] = useState(true);
+  const [scanStep, setScanStep] = useState("scan");
+  const [markerGuide, setMarkerGuide] = useState(null);
   const [permission, requestPermission] = useCameraPermissions();
 
   const selectedExam = exams.find((exam) => exam._id === selectedExamId);
@@ -590,6 +689,7 @@ export default function App() {
     setDetectorHtml("");
     setActiveScanRange(null);
     activeScanRangeRef.current = null;
+    setScanStep("scan");
     setDetectionStatus("Ready to scan.");
 
     if (!options.preserveQr) {
@@ -625,6 +725,38 @@ export default function App() {
 
     setQrScanEnabled(false);
     setQrMetadata(metadata);
+    const itemCount = Number(
+      metadata.itemsOnPage || metadata.numberOfItems || 50,
+    );
+
+    if (itemCount <= 10) {
+      setScanSettings({
+        top: 4,
+        bottom: 96,
+        left: 4,
+        right: 96,
+        numberColumn: 18,
+        headerRow: 12,
+      });
+    } else if (itemCount <= 25) {
+      setScanSettings({
+        top: 22,
+        bottom: 88,
+        left: 11,
+        right: 89,
+        numberColumn: 14,
+        headerRow: 4,
+      });
+    } else {
+      setScanSettings({
+        top: 12,
+        bottom: 94,
+        left: 10,
+        right: 90,
+        numberColumn: 12,
+        headerRow: 3,
+      });
+    }
     setQrStatus(
       `QR read: ${metadata.title || "OMR sheet"}. Looking for exam...`,
     );
@@ -718,6 +850,7 @@ export default function App() {
     setScannedPages({});
     setCapturedImage("");
     setDetectorHtml("");
+    setMarkerGuide(null);
     setActiveScanRange(null);
     activeScanRangeRef.current = null;
     setDetectionStatus("Ready to scan.");
@@ -771,7 +904,7 @@ export default function App() {
       setDetectionStatus("Capturing sheet...");
       const photo = await cameraRef.current?.takePictureAsync({
         base64: true,
-        quality: 0.7,
+        quality: 1,
         skipProcessing: false,
       });
 
@@ -803,6 +936,9 @@ export default function App() {
       const payload = JSON.parse(event.nativeEvent.data);
 
       if (payload.type === "detected") {
+        if (payload.bounds) {
+          setMarkerGuide(payload.bounds);
+        }
         const pageAnswers = payload.answers || [];
         const scanRange =
           activeScanRangeRef.current ||
@@ -841,6 +977,9 @@ export default function App() {
         );
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
+        setDetectorHtml("");
+        setCapturedImage("");
+        setScanStep("review");
       } else if (payload.type === "no_sheet") {
         setDetectionStatus(
           payload.message ||
@@ -921,6 +1060,7 @@ export default function App() {
         `${data.message}\nScore: ${data.result.totalScore}/${selectedExam.numberOfItems}`,
       );
       await loadHistory(selectedExam._id);
+      setScanStep("scan");
 
       if (batchMode) {
         setStudentName("");
@@ -931,6 +1071,7 @@ export default function App() {
         setQrScanEnabled(true);
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
+        setScanStep("scan");
       }
     } catch (error) {
       Alert.alert("Save failed", error.message);
@@ -1048,7 +1189,8 @@ export default function App() {
           allowsInlineMediaPlayback
         />
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <View style={{ flex: 1 }}>
+          {/*
           <ExamSelector
             exams={exams}
             loading={loading}
@@ -1056,6 +1198,7 @@ export default function App() {
             onSelect={selectExam}
             selectedExamId={selectedExamId}
           />
+          */}
 
           {mode === "history" ? (
             <HistoryCard
@@ -1065,6 +1208,7 @@ export default function App() {
             />
           ) : (
             <>
+              {/*
               <StudentCard
                 batchMode={batchMode}
                 section={section}
@@ -1075,21 +1219,77 @@ export default function App() {
                 studentId={studentId}
                 studentName={studentName}
               />
+            */}
 
+              {/*
               <ScoreCard
                 liveScore={liveScore}
                 numberOfItems={selectedExam?.numberOfItems || 0}
                 scannedPages={scannedPages}
               />
+              */}
 
-              <View style={styles.card}>
-                <View style={styles.rowBetween}>
+              <View style={{ flex: 1 }}>
+                {/**
+                 *<View style={styles.rowBetween}>
                   <Text style={styles.sectionTitle}>Native OMR Detection</Text>
                   <Text style={styles.historyCount}>
                     {history.length} saved
                   </Text>
                 </View>
-                {!permission?.granted ? (
+                 */}
+
+                <QrStatusCard
+                  metadata={qrMetadata}
+                  qrScanEnabled={qrScanEnabled}
+                  qrStatus={qrStatus}
+                  onToggleQrScan={toggleQrScan}
+                />
+
+                {scanStep === "review" ? (
+                  <ScrollView contentContainerStyle={styles.reviewScreen}>
+                    <TextInput
+                      style={styles.input}
+                      value={studentName}
+                      onChangeText={setStudentName}
+                      placeholder="Student name"
+                    />
+
+                    <TextInput
+                      style={styles.input}
+                      value={studentId}
+                      onChangeText={setStudentId}
+                      placeholder="Student ID"
+                    />
+
+                    <TextInput
+                      style={styles.input}
+                      value={section}
+                      onChangeText={setSection}
+                      placeholder="Section"
+                    />
+                    <AnswerReview
+                      answers={answers}
+                      clearAnswers={clearAnswers}
+                      loading={loading}
+                      saveResult={saveResult}
+                      setAnswer={setAnswer}
+                    />
+
+                    <PrimaryButton
+                      label="Scan Again"
+                      onPress={() => {
+                        setScanStep("scan");
+                      }}
+                    />
+
+                    <PrimaryButton
+                      disabled={loading}
+                      label="Submit Answer"
+                      onPress={() => saveResult()}
+                    />
+                  </ScrollView>
+                ) : !permission?.granted ? (
                   <PrimaryButton
                     label="Allow Camera"
                     onPress={requestPermission}
@@ -1100,6 +1300,7 @@ export default function App() {
                       ref={cameraRef}
                       style={styles.camera}
                       facing="back"
+                      zoom={cameraZoom}
                       barcodeScannerSettings={{
                         barcodeTypes: ["qr"],
                       }}
@@ -1108,38 +1309,167 @@ export default function App() {
                       }
                     />
                     <CameraAlignmentGuide
+                      guideBox={guideBox}
+                      markerGuide={markerGuide}
                       itemsOnPage={
                         qrMetadata
                           ? getQrScanRange(qrMetadata, selectedExam).itemsOnPage
                           : Math.min(
-                              selectedExam?.numberOfItems ||
-                                OMR_ITEMS_PER_PAGE,
+                              selectedExam?.numberOfItems || OMR_ITEMS_PER_PAGE,
                               OMR_ITEMS_PER_PAGE,
                             )
                       }
                       scanSettings={scanSettings}
                     />
+                    <View style={styles.guidePanel}>
+                      <View style={styles.guideControls}>
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              top: Math.max(0, g.top - 1),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>↑</Text>
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.guideControls}>
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              left: Math.max(0, g.left - 1),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>←</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              left: Math.min(50, g.left + 1),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>→</Text>
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.guideControls}>
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              top: Math.min(50, g.top + 1),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>↓</Text>
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.guideControls}>
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              width: Math.max(50, g.width - 2),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>W−</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              width: Math.min(98, g.width + 2),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>W+</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              height: Math.max(50, g.height - 2),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>H−</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.guideButton}
+                          onPress={() =>
+                            setGuideBox((g) => ({
+                              ...g,
+                              height: Math.min(95, g.height + 2),
+                            }))
+                          }
+                        >
+                          <Text style={styles.guideButtonText}>H+</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                    <View style={styles.zoomControls}>
+                      <Pressable
+                        style={styles.zoomButton}
+                        onPress={() =>
+                          setCameraZoom((z) => Math.max(0, z - 0.05))
+                        }
+                      >
+                        <Text style={styles.zoomText}>−</Text>
+                      </Pressable>
+
+                      <Text style={styles.zoomLabel}>
+                        {Math.round(cameraZoom * 100)}%
+                      </Text>
+
+                      <Pressable
+                        style={styles.zoomButton}
+                        onPress={() =>
+                          setCameraZoom((z) => Math.min(1, z + 0.05))
+                        }
+                      >
+                        <Text style={styles.zoomText}>+</Text>
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      style={styles.captureFloating}
+                      onPress={captureAndDetect}
+                    >
+                      <Text style={styles.captureText}>Capture</Text>
+                    </Pressable>
                   </View>
                 )}
-                <QrStatusCard
-                  metadata={qrMetadata}
-                  qrScanEnabled={qrScanEnabled}
-                  qrStatus={qrStatus}
-                  onToggleQrScan={toggleQrScan}
-                />
-                <Text style={styles.muted}>
-                  Align the printed OMR table in the camera preview, then
-                  capture and detect. Review answers before saving.
-                </Text>
+                {/*
+<Text style={styles.muted}>
+  Align the printed OMR table in the camera preview, then
+  capture and detect. Review answers before saving.
+</Text>
+*/}
+                {/*
                 <ScanAreaControls
                   scanSettings={scanSettings}
                   setScanSettings={setScanSettings}
                 />
-                <PrimaryButton
-                  disabled={loading || !selectedExam}
-                  label="Capture and Detect"
-                  onPress={captureAndDetect}
-                />
+                */}
+
                 <Text style={styles.statusText}>{detectionStatus}</Text>
                 {capturedImage && detectorHtml ? (
                   <WebView
@@ -1151,16 +1481,18 @@ export default function App() {
                 ) : null}
               </View>
 
-              <AnswerReview
-                answers={answers}
-                clearAnswers={clearAnswers}
-                loading={loading}
-                saveResult={saveResult}
-                setAnswer={setAnswer}
-              />
+              {/*
+<AnswerReview
+  answers={answers}
+  clearAnswers={clearAnswers}
+  loading={loading}
+  saveResult={saveResult}
+  setAnswer={setAnswer}
+/>
+*/}
             </>
           )}
-        </ScrollView>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -1189,12 +1521,14 @@ function ScanAreaControls({ scanSettings, setScanSettings }) {
 
   return (
     <View style={styles.scanAreaPanel}>
-      <View style={styles.rowBetween}>
+      {/**
+       <View style={styles.rowBetween}>
         <Text style={styles.scanAreaTitle}>Scan Area</Text>
         <Pressable onPress={resetScanArea}>
           <Text style={styles.linkText}>Reset</Text>
         </Pressable>
       </View>
+       */}
       <View style={styles.scanAreaGrid}>
         {fields.map(([key, label]) => (
           <View key={key} style={styles.scanField}>
@@ -1221,21 +1555,30 @@ function ScanAreaControls({ scanSettings, setScanSettings }) {
   );
 }
 
-function CameraAlignmentGuide({ itemsOnPage, scanSettings }) {
+function CameraAlignmentGuide({
+  itemsOnPage,
+  scanSettings,
+  markerGuide,
+  guideBox,
+}) {
   const scan = normalizeScanSettings(scanSettings);
   const blockCount = Math.min(
     OMR_MAX_BLOCKS_PER_PAGE,
     Math.max(1, Math.ceil(Number(itemsOnPage || 0) / OMR_ROWS_PER_BLOCK)),
   );
   const guideStyle = {
-    top: `${scan.top * 100}%`,
-    left: `${scan.left * 100}%`,
-    width: `${(scan.right - scan.left) * 100}%`,
-    height: `${(scan.bottom - scan.top) * 100}%`,
+    top: `${guideBox.top}%`,
+    left: `${guideBox.left}%`,
+    width: `${guideBox.width}%`,
+    height: `${guideBox.height}%`,
   };
-  const headerStyle = {
-    top: `${scan.headerRow * 100}%`,
-  };
+  const headerStyle = markerGuide
+    ? {
+        top: `${scan.headerRow * 100}%`,
+      }
+    : {
+        top: `${scan.headerRow * 100}%`,
+      };
   const numberColumnStyle = {
     left: `${scan.numberColumn * 100}%`,
   };
@@ -1255,17 +1598,24 @@ function CameraAlignmentGuide({ itemsOnPage, scanSettings }) {
   return (
     <View pointerEvents="none" style={styles.cameraGuideLayer}>
       <View style={[styles.cameraGuideBox, guideStyle]}>
+        {/*
         <View style={[styles.cameraGuideHeaderLine, headerStyle]} />
         <View style={[styles.cameraGuideNumberLine, numberColumnStyle]} />
-        {bubbleGuides.map((guide) => (
-          <View
-            key={guide.key}
-            style={[styles.cameraBubbleGuideLine, { left: guide.left }]}
-          >
-            <Text style={styles.cameraBubbleGuideLabel}>{guide.choice}</Text>
-          </View>
-        ))}
-        {Array.from({ length: Math.max(0, blockCount - 1) }, (_, index) => (
+        */}
+        {/*
+          {bubbleGuides.map((guide) => (
+            <View
+              key={guide.key}
+              style={[styles.cameraBubbleGuideLine, { left: guide.left }]}
+            >
+              <Text style={styles.cameraBubbleGuideLabel}>
+                {guide.choice}
+              </Text>
+            </View>
+          ))}
+          */}
+        {/**
+         * {Array.from({ length: Math.max(0, blockCount - 1) }, (_, index) => (
           <View
             key={String(index)}
             style={[
@@ -1274,11 +1624,63 @@ function CameraAlignmentGuide({ itemsOnPage, scanSettings }) {
             ]}
           />
         ))}
+         */}
+        {/* Top edge */}
+        <View
+          style={[
+            styles.guideEdge,
+            {
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+            },
+          ]}
+        />
+
+        {/* Bottom edge */}
+        <View
+          style={[
+            styles.guideEdge,
+            {
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+            },
+          ]}
+        />
+
+        {/* Left edge */}
+        <View
+          style={[
+            styles.guideEdge,
+            {
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 2,
+            },
+          ]}
+        />
+
+        {/* Right edge */}
+        <View
+          style={[
+            styles.guideEdge,
+            {
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 2,
+            },
+          ]}
+        />
         <View style={[styles.corner, styles.cornerTopLeft]} />
         <View style={[styles.corner, styles.cornerTopRight]} />
         <View style={[styles.corner, styles.cornerBottomLeft]} />
         <View style={[styles.corner, styles.cornerBottomRight]} />
-        <Text style={styles.cameraGuideText}>Align answer table edges</Text>
+        <Text style={styles.cameraGuideText}></Text>
       </View>
     </View>
   );
@@ -1473,11 +1875,6 @@ function AnswerReview({
         ))}
       </View>
 
-      <PrimaryButton
-        disabled={loading}
-        label="Save and Next"
-        onPress={() => saveResult()}
-      />
       {loading ? <ActivityIndicator color="#980018" /> : null}
     </View>
   );
@@ -1529,6 +1926,23 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#76000f",
+  },
+  guideControls: {
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+  },
+  guideButton: {
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderColor: "rgba(255,255,255,0.6)",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  guideButtonText: {
+    color: "#ffffff",
+    fontWeight: "900",
   },
   authPage: {
     flex: 1,
@@ -1648,8 +2062,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   content: {
-    padding: 16,
-    paddingBottom: 36,
+    flex: 1,
   },
   card: {
     borderRadius: 10,
@@ -1722,31 +2135,42 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   cameraFrame: {
-    height: 260,
-    borderRadius: 8,
-    overflow: "hidden",
-    marginBottom: 10,
-    backgroundColor: "#24000a",
+    flex: 1,
+    width: "100%",
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
     position: "relative",
   },
   camera: {
-    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
   },
   cameraGuideLayer: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    elevation: 10,
   },
   cameraGuideBox: {
     position: "absolute",
     borderWidth: 2,
-    borderColor: "#f0b318",
-    backgroundColor: "rgba(240,179,24,0.05)",
+    borderColor: "rgba(255,255,255,0.90)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  guideEdge: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.95)",
   },
   cameraGuideHeaderLine: {
     position: "absolute",
     left: 0,
     right: 0,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.9)",
+    borderTopColor: "#00FF00",
+  },
+  reviewScreen: {
+    flex: 1,
+    padding: 12,
   },
   cameraGuideNumberLine: {
     position: "absolute",
@@ -1778,60 +2202,61 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 24,
     minWidth: 16,
-    overflow: "hidden",
     paddingHorizontal: 3,
     paddingVertical: 2,
     textAlign: "center",
   },
   cameraGuideText: {
+    position: "absolute",
+    top: 10,
     alignSelf: "center",
-    backgroundColor: "rgba(36,0,10,0.72)",
+    backgroundColor: "rgba(0,0,0,0.80)",
     borderRadius: 6,
     color: "#ffffff",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
-    marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   corner: {
     position: "absolute",
-    borderColor: "#ffffff",
-    height: 22,
-    width: 22,
+    borderColor: "#00FF00",
+    height: 70,
+    width: 70,
   },
   cornerTopLeft: {
-    borderLeftWidth: 3,
-    borderTopWidth: 3,
-    left: -2,
-    top: -2,
+    borderLeftWidth: 6,
+    borderTopWidth: 6,
+    left: -3,
+    top: -3,
   },
   cornerTopRight: {
-    borderRightWidth: 3,
-    borderTopWidth: 3,
-    right: -2,
-    top: -2,
+    borderRightWidth: 6,
+    borderTopWidth: 6,
+    right: -3,
+    top: -3,
   },
   cornerBottomLeft: {
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    bottom: -2,
-    left: -2,
+    borderBottomWidth: 6,
+    borderLeftWidth: 6,
+    bottom: -3,
+    left: -3,
   },
   cornerBottomRight: {
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    bottom: -2,
-    right: -2,
+    borderBottomWidth: 6,
+    borderRightWidth: 6,
+    bottom: -3,
+    right: -3,
   },
   detectorWebView: {
     height: 1,
     opacity: 0,
   },
   statusText: {
-    color: "#4d1b23",
+    color: "#ffffff",
     fontWeight: "800",
     marginTop: 8,
+    paddingHorizontal: 12,
   },
   scanAreaPanel: {
     borderWidth: 1,
@@ -1840,6 +2265,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     marginBottom: 10,
     padding: 10,
+  },
+  guidePanel: {
+    position: "absolute",
+    left: 10,
+    bottom: 120,
+    zIndex: 60,
+    elevation: 60,
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    padding: 10,
+    borderRadius: 12,
   },
   scanAreaTitle: {
     color: "#24000a",
@@ -1867,7 +2303,6 @@ const styles = StyleSheet.create({
     borderColor: "#ead5c8",
     borderRadius: 8,
     flexDirection: "row",
-    overflow: "hidden",
   },
   stepButton: {
     alignItems: "center",
@@ -1897,6 +2332,38 @@ const styles = StyleSheet.create({
   },
   qrTitle: {
     color: "#24000a",
+    fontWeight: "900",
+  },
+  zoomControls: {
+    position: "absolute",
+    right: 16,
+    top: 16,
+    zIndex: 40,
+    elevation: 40,
+    alignItems: "center",
+    gap: 8,
+  },
+  zoomButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+  },
+  zoomText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  zoomLabel: {
+    color: "#ffffff",
+    backgroundColor: "rgba(0,0,0,0.65)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     fontWeight: "900",
   },
   qrStatus: {
@@ -1983,5 +2450,22 @@ const styles = StyleSheet.create({
     color: "#980018",
     fontSize: 18,
     fontWeight: "900",
+  },
+  captureFloating: {
+    position: "absolute",
+    bottom: 40,
+    alignSelf: "center",
+    backgroundColor: "#980018",
+    paddingHorizontal: 30,
+    paddingVertical: 16,
+    borderRadius: 50,
+    zIndex: 30,
+    elevation: 30,
+  },
+
+  captureText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 18,
   },
 });
