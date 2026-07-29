@@ -109,8 +109,16 @@ function upsertExam(exams, exam) {
   return next;
 }
 
+function getServerUrl(apiBaseUrl, path) {
+  return apiBaseUrl.replace(/\/api\/?$/, path);
+}
+
 function getWebScannerUrl(apiBaseUrl) {
-  return apiBaseUrl.replace(/\/api\/?$/, "/omr-scanner.html");
+  return getServerUrl(apiBaseUrl, "/omr-scanner.html");
+}
+
+function getOpenCvUrl(apiBaseUrl) {
+  return getServerUrl(apiBaseUrl, "/js/opencv.js");
 }
 
 function getAnswerKeyMap(exam) {
@@ -201,8 +209,14 @@ function normalizeScanSettings(settings = DEFAULT_SCAN_SETTINGS) {
   };
 }
 
-function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
+function buildDetectorHtml(
+  imageUri,
+  numberOfItems,
+  scanSettings,
+  opencvScriptUrl,
+) {
   const safeUri = JSON.stringify(imageUri);
+  const safeOpenCvUrl = JSON.stringify(opencvScriptUrl);
   const items = Number(numberOfItems || 0);
   const scan = JSON.stringify(normalizeScanSettings(scanSettings));
   const blockCount = Math.min(
@@ -215,6 +229,7 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
 <html>
   <body>
     <canvas id="canvas"></canvas>
+    <script src=${safeOpenCvUrl}></script>
     <script>
       const imageUri = ${safeUri};
       const numberOfItems = ${items};
@@ -222,8 +237,46 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
       const scan = ${scan};
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
+      let cvReady = false;
+
+      function postMessage(payload) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      }
+
+      function waitForOpenCv() {
+        return new Promise((resolve, reject) => {
+          const startedAt = Date.now();
+          const poll = () => {
+            if (window.cv && typeof cv.Mat === "function") {
+              if (cv.Mat.ones) {
+                cvReady = true;
+                resolve();
+                return;
+              }
+
+              cv.onRuntimeInitialized = () => {
+                cvReady = true;
+                resolve();
+              };
+            }
+
+            if (Date.now() - startedAt > 12000) {
+              reject(new Error("OpenCV did not load. Check that the backend can serve /js/opencv.js to this phone."));
+              return;
+            }
+
+            setTimeout(poll, 100);
+          };
+
+          poll();
+        });
+      }
 
       function sampleBubble(x, y, radius) {
+        if (cvReady) {
+          return sampleBubbleWithOpenCv(x, y, radius);
+        }
+
         const startX = Math.max(0, Math.round(x - radius));
         const startY = Math.max(0, Math.round(y - radius));
         const size = Math.max(2, Math.round(radius * 2));
@@ -258,7 +311,53 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
         };
       }
 
+      function sampleBubbleWithOpenCv(x, y, radius) {
+        const startX = Math.max(0, Math.round(x - radius));
+        const startY = Math.max(0, Math.round(y - radius));
+        const size = Math.max(2, Math.round(radius * 2));
+        const width = Math.max(1, Math.min(canvas.width - startX, size));
+        const height = Math.max(1, Math.min(canvas.height - startY, size));
+
+        if (width <= 0 || height <= 0) {
+          return { darkness: 0, darkRatio: 0 };
+        }
+
+        const imageData = ctx.getImageData(startX, startY, width, height);
+        const src = cv.matFromImageData(imageData);
+        const gray = new cv.Mat();
+        const thresh = new cv.Mat();
+        const mask = cv.Mat.zeros(height, width, cv.CV_8UC1);
+        const masked = new cv.Mat();
+        const center = new cv.Point(width / 2, height / 2);
+        const maskRadius = Math.max(1, Math.round(Math.min(width, height) / 2));
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.threshold(gray, thresh, 165, 255, cv.THRESH_BINARY_INV);
+        cv.circle(mask, center, maskRadius, new cv.Scalar(255), -1);
+
+        cv.bitwise_and(thresh, mask, masked);
+
+        const maskedDarkPixels = cv.countNonZero(masked);
+        const maskPixels = Math.max(1, cv.countNonZero(mask));
+        const darkness = (cv.mean(thresh, mask)[0] / 255) * 100;
+
+        src.delete();
+        gray.delete();
+        thresh.delete();
+        mask.delete();
+        masked.delete();
+
+        return {
+          darkness,
+          darkRatio: maskedDarkPixels / maskPixels,
+        };
+      }
+
       function detectCornerMarkers(manualBounds) {
+  if (cvReady) {
+    return detectCornerMarkersWithOpenCv(manualBounds);
+  }
+
   const imageData = ctx.getImageData(
     Math.round(manualBounds.x),
     Math.round(manualBounds.y),
@@ -337,7 +436,281 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
   };
 }
 
+      function detectCornerMarkersWithOpenCv(manualBounds) {
+        const padding = Math.round(Math.min(manualBounds.width, manualBounds.height) * 0.04);
+        const x = Math.max(0, Math.round(manualBounds.x - padding));
+        const y = Math.max(0, Math.round(manualBounds.y - padding));
+        const width = Math.min(
+          canvas.width - x,
+          Math.round(manualBounds.width + padding * 2),
+        );
+        const height = Math.min(
+          canvas.height - y,
+          Math.round(manualBounds.height + padding * 2),
+        );
+        const imageData = ctx.getImageData(x, y, width, height);
+        const src = cv.matFromImageData(imageData);
+        const gray = new cv.Mat();
+        const thresh = new cv.Mat();
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        const candidates = [];
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.threshold(gray, thresh, 60, 255, cv.THRESH_BINARY_INV);
+
+        const denseBounds = detectDenseCornerMarkers(thresh, x, y);
+        if (denseBounds) {
+          src.delete();
+          gray.delete();
+          thresh.delete();
+          contours.delete();
+          hierarchy.delete();
+          return denseBounds;
+        }
+
+        cv.findContours(
+          thresh,
+          contours,
+          hierarchy,
+          cv.RETR_EXTERNAL,
+          cv.CHAIN_APPROX_SIMPLE,
+        );
+
+        for (let index = 0; index < contours.size(); index += 1) {
+          const contour = contours.get(index);
+          const rect = cv.boundingRect(contour);
+          const area = cv.contourArea(contour);
+          const minSize = Math.max(8, Math.min(width, height) * 0.012);
+          const maxSize = Math.max(24, Math.min(width, height) * 0.12);
+          const aspectRatio = rect.width / Math.max(1, rect.height);
+          const fillRatio = area / Math.max(1, rect.width * rect.height);
+
+          if (
+            rect.width >= minSize &&
+            rect.height >= minSize &&
+            rect.width <= maxSize &&
+            rect.height <= maxSize &&
+            aspectRatio > 0.65 &&
+            aspectRatio < 1.45 &&
+            fillRatio > 0.5
+          ) {
+            candidates.push({
+              x: x + rect.x + rect.width / 2,
+              y: y + rect.y + rect.height / 2,
+            });
+          }
+
+          contour.delete();
+        }
+
+        src.delete();
+        gray.delete();
+        thresh.delete();
+        contours.delete();
+        hierarchy.delete();
+
+        if (candidates.length < 4) {
+          return null;
+        }
+
+        const topLeft = candidates.reduce((a, b) =>
+          a.x + a.y < b.x + b.y ? a : b
+        );
+        const topRight = candidates.reduce((a, b) =>
+          canvas.width - a.x + a.y <
+          canvas.width - b.x + b.y
+            ? a
+            : b
+        );
+        const bottomLeft = candidates.reduce((a, b) =>
+          a.x + (canvas.height - a.y) <
+          b.x + (canvas.height - b.y)
+            ? a
+            : b
+        );
+        const bottomRight = candidates.reduce((a, b) =>
+          canvas.width - a.x +
+            (canvas.height - a.y) <
+          canvas.width - b.x +
+            (canvas.height - b.y)
+            ? a
+            : b
+        );
+
+        return {
+          x: Math.min(topLeft.x, bottomLeft.x),
+          y: Math.min(topLeft.y, topRight.y),
+          width: Math.max(1, Math.max(topRight.x, bottomRight.x) - Math.min(topLeft.x, bottomLeft.x)),
+          height: Math.max(1, Math.max(bottomLeft.y, bottomRight.y) - Math.min(topLeft.y, topRight.y)),
+          points: {
+            topLeft,
+            topRight,
+            bottomLeft,
+            bottomRight,
+          },
+        };
+      }
+
+      function detectDenseCornerMarkers(thresh, offsetX, offsetY) {
+        const markerWindow = Math.max(
+          12,
+          Math.round(Math.min(thresh.cols, thresh.rows) * 0.025),
+        );
+        const cornerWidth = Math.round(thresh.cols * 0.28);
+        const cornerHeight = Math.round(thresh.rows * 0.28);
+        const regions = [
+          { x: 0, y: 0, width: cornerWidth, height: cornerHeight },
+          { x: thresh.cols - cornerWidth, y: 0, width: cornerWidth, height: cornerHeight },
+          { x: 0, y: thresh.rows - cornerHeight, width: cornerWidth, height: cornerHeight },
+          {
+            x: thresh.cols - cornerWidth,
+            y: thresh.rows - cornerHeight,
+            width: cornerWidth,
+            height: cornerHeight,
+          },
+        ];
+        const points = regions.map((region) =>
+          findDarkestPatch(thresh, region, markerWindow),
+        );
+
+        if (points.some((point) => !point || point.ratio < 0.55)) {
+          return null;
+        }
+
+        return {
+          x: offsetX + Math.min(points[0].x, points[2].x),
+          y: offsetY + Math.min(points[0].y, points[1].y),
+          width: Math.max(1, Math.max(points[1].x, points[3].x) - Math.min(points[0].x, points[2].x)),
+          height: Math.max(1, Math.max(points[2].y, points[3].y) - Math.min(points[0].y, points[1].y)),
+          points: {
+            topLeft: { x: offsetX + points[0].x, y: offsetY + points[0].y },
+            topRight: { x: offsetX + points[1].x, y: offsetY + points[1].y },
+            bottomLeft: { x: offsetX + points[2].x, y: offsetY + points[2].y },
+            bottomRight: { x: offsetX + points[3].x, y: offsetY + points[3].y },
+          },
+        };
+      }
+
+      function findDarkestPatch(thresh, region, markerWindow) {
+        const step = Math.max(3, Math.round(markerWindow / 4));
+        const data = thresh.data;
+        let best = null;
+
+        for (
+          let y = region.y;
+          y <= region.y + region.height - markerWindow;
+          y += step
+        ) {
+          for (
+            let x = region.x;
+            x <= region.x + region.width - markerWindow;
+            x += step
+          ) {
+            let dark = 0;
+
+            for (let yy = 0; yy < markerWindow; yy += 1) {
+              const rowOffset = (y + yy) * thresh.cols + x;
+              for (let xx = 0; xx < markerWindow; xx += 1) {
+                if (data[rowOffset + xx] > 0) {
+                  dark += 1;
+                }
+              }
+            }
+
+            const ratio = dark / (markerWindow * markerWindow);
+
+            if (!best || ratio > best.ratio) {
+              best = {
+                x: x + markerWindow / 2,
+                y: y + markerWindow / 2,
+                ratio,
+              };
+            }
+          }
+        }
+
+        return best;
+      }
+
+      function warpCanvasToMarkerBounds(markerBounds) {
+        if (!cvReady || !markerBounds?.points) {
+          return markerBounds;
+        }
+
+        const { topLeft, topRight, bottomLeft, bottomRight } = markerBounds.points;
+        const targetWidth = Math.max(
+          1,
+          Math.round(
+            Math.max(
+              Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y),
+              Math.hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y),
+            ),
+          ),
+        );
+        const targetHeight = Math.max(
+          1,
+          Math.round(
+            Math.max(
+              Math.hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y),
+              Math.hypot(bottomRight.x - topRight.x, bottomRight.y - topRight.y),
+            ),
+          ),
+        );
+        const src = cv.imread(canvas);
+        const warped = new cv.Mat();
+        const srcPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          topLeft.x,
+          topLeft.y,
+          topRight.x,
+          topRight.y,
+          bottomLeft.x,
+          bottomLeft.y,
+          bottomRight.x,
+          bottomRight.y,
+        ]);
+        const dstPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+          0,
+          0,
+          targetWidth,
+          0,
+          0,
+          targetHeight,
+          targetWidth,
+          targetHeight,
+        ]);
+        const transform = cv.getPerspectiveTransform(srcPoints, dstPoints);
+
+        cv.warpPerspective(
+          src,
+          warped,
+          transform,
+          new cv.Size(targetWidth, targetHeight),
+          cv.INTER_LINEAR,
+          cv.BORDER_CONSTANT,
+          new cv.Scalar(255, 255, 255, 255),
+        );
+        cv.imshow(canvas, warped);
+
+        src.delete();
+        warped.delete();
+        srcPoints.delete();
+        dstPoints.delete();
+        transform.delete();
+
+        return {
+          x: 0,
+          y: 0,
+          width: canvas.width,
+          height: canvas.height,
+        };
+      }
+
       function sampleStrip(x, y, width, height) {
+        if (cvReady) {
+          return sampleStripWithOpenCv(x, y, width, height);
+        }
+
         const startX = Math.max(0, Math.round(x));
         const startY = Math.max(0, Math.round(y));
         const sampleWidth = Math.max(1, Math.min(canvas.width - startX, Math.round(width)));
@@ -365,6 +738,38 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
 
         return {
           darkness: count ? total / count : 0,
+          darkRatio: count ? darkPixels / count : 0,
+        };
+      }
+
+      function sampleStripWithOpenCv(x, y, width, height) {
+        const startX = Math.max(0, Math.round(x));
+        const startY = Math.max(0, Math.round(y));
+        const sampleWidth = Math.max(1, Math.min(canvas.width - startX, Math.round(width)));
+        const sampleHeight = Math.max(1, Math.min(canvas.height - startY, Math.round(height)));
+
+        if (sampleWidth <= 0 || sampleHeight <= 0) {
+          return { darkness: 0, darkRatio: 0 };
+        }
+
+        const imageData = ctx.getImageData(startX, startY, sampleWidth, sampleHeight);
+        const src = cv.matFromImageData(imageData);
+        const gray = new cv.Mat();
+        const thresh = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.threshold(gray, thresh, 225, 255, cv.THRESH_BINARY_INV);
+
+        const darkPixels = cv.countNonZero(thresh);
+        const darkness = (cv.mean(thresh)[0] / 255) * 100;
+        const count = sampleWidth * sampleHeight;
+
+        src.delete();
+        gray.delete();
+        thresh.delete();
+
+        return {
+          darkness,
           darkRatio: count ? darkPixels / count : 0,
         };
       }
@@ -427,14 +832,25 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
         ).length;
 
         return {
-          averageDarkness,
-          hitRatio: lineHits / Math.max(1, allSamples.length),
-          horizontalHitRatio: horizontalHits / Math.max(1, horizontalSamples.length),
-          verticalHitRatio: verticalHits / Math.max(1, verticalSamples.length),
-        };
+              averageDarkness,
+              hitRatio: lineHits / Math.max(1, allSamples.length),
+              horizontalHitRatio: horizontalHits / Math.max(1, horizontalSamples.length),
+              verticalHitRatio: verticalHits / Math.max(1, verticalSamples.length),
+              engine: cvReady ? "opencv" : "canvas",
+            };
       }
 
-      function detect() {
+      async function detect() {
+        try {
+          await waitForOpenCv();
+        } catch (error) {
+          postMessage({
+            type: "error",
+            message: error.message,
+          });
+          return;
+        }
+
         const image = new Image();
 
         image.onload = () => {
@@ -453,7 +869,7 @@ function buildDetectorHtml(imageUri, numberOfItems, scanSettings) {
 
 const markerBounds = detectCornerMarkers(manualBounds);
 
-const bounds = markerBounds || manualBounds;
+const bounds = markerBounds ? warpCanvasToMarkerBounds(markerBounds) : manualBounds;
           const rowsPerBlock = ${OMR_ROWS_PER_BLOCK};
           const blockCount = ${blockCount};
           const answerY = bounds.y + bounds.height * scan.headerRow;
@@ -477,11 +893,11 @@ const bounds = markerBounds || manualBounds;
             tableEvidence.horizontalHitRatio < 0.2 ||
             tableEvidence.verticalHitRatio < 0.18
           ) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
+            postMessage({
               type: "no_sheet",
               message: "No OMR sheet detected. Align the answer table inside the camera guide and capture again.",
               tableEvidence,
-            }));
+            });
             return;
           }
 
@@ -538,22 +954,23 @@ const bounds = markerBounds || manualBounds;
             });
           }
 
-          window.ReactNativeWebView.postMessage(JSON.stringify({
+          postMessage({
             type: "detected",
             answers,
             diagnostics,
             detected: answers.filter(Boolean).length,
+            engine: "opencv",
             bounds: {
               x: bounds.x / canvas.width,
               y: bounds.y / canvas.height,
               width: bounds.width / canvas.width,
               height: bounds.height / canvas.height,
             }
-          }));
+          });
         };
 
         image.onerror = () => {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: "error", message: "Unable to read captured image." }));
+          postMessage({ type: "error", message: "Unable to read captured image." });
         };
 
         image.src = imageUri;
@@ -918,7 +1335,12 @@ export default function App() {
       const imageUri = `data:image/jpg;base64,${photo.base64}`;
       setCapturedImage(imageUri);
       setDetectorHtml(
-        buildDetectorHtml(imageUri, scanRange.itemsOnPage, scanSettings),
+        buildDetectorHtml(
+          imageUri,
+          scanRange.itemsOnPage,
+          scanSettings,
+          getOpenCvUrl(apiBaseUrl),
+        ),
       );
       setDetectionStatus(
         `Detecting page ${scanRange.pageNo}/${scanRange.pageCount}, items ${scanRange.startItem}-${scanRange.endItem}...`,

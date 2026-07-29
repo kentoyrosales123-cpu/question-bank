@@ -69,7 +69,13 @@ const normalizeSelection = (value) => {
 const formatSelectionLabel = (values, fallback = "") =>
   values.length > 0 ? values.join(", ") : fallback;
 
-const getRandomQuestions = async (subjects, topics, difficulty, count) => {
+const getRandomQuestions = async (
+  subjects,
+  topics,
+  difficulty,
+  count,
+  obeFilters = {},
+) => {
   if (Number(count) <= 0) {
     return [];
   }
@@ -82,6 +88,18 @@ const getRandomQuestions = async (subjects, topics, difficulty, count) => {
 
   if (topics.length > 0) {
     match.topic = { $in: topics };
+  }
+
+  if (obeFilters.courseOutcomes?.length > 0) {
+    match.courseOutcome = { $in: obeFilters.courseOutcomes };
+  }
+
+  if (obeFilters.programOutcomes?.length > 0) {
+    match.programOutcome = { $in: obeFilters.programOutcomes };
+  }
+
+  if (obeFilters.bloomLevels?.length > 0) {
+    match.bloomLevel = { $in: obeFilters.bloomLevels };
   }
 
   return Question.aggregate([
@@ -287,6 +305,11 @@ exports.getExamOptions = async (req, res) => {
       },
       { $sort: { _id: 1 } },
     ]);
+    const [courseOutcomes, programOutcomes, bloomLevels] = await Promise.all([
+      Question.distinct("courseOutcome", { courseOutcome: { $ne: "" } }),
+      Question.distinct("programOutcome", { programOutcome: { $ne: "" } }),
+      Question.distinct("bloomLevel", { bloomLevel: { $ne: "" } }),
+    ]);
 
     res.json({
       success: true,
@@ -296,6 +319,9 @@ exports.getExamOptions = async (req, res) => {
           subject: item._id,
           topics: item.topics.filter(Boolean).sort(),
         })),
+      courseOutcomes: courseOutcomes.filter(Boolean).sort(),
+      programOutcomes: programOutcomes.filter(Boolean).sort(),
+      bloomLevels: bloomLevels.filter(Boolean).sort(),
     });
   } catch (error) {
     res.status(500).json({
@@ -326,6 +352,11 @@ const generateExamForQueue = async (req, res) => {
     } = req.body;
     const subjects = normalizeSelection(req.body.subjects || subject);
     const topics = normalizeSelection(req.body.topics || topic);
+    const obeFilters = {
+      courseOutcomes: normalizeSelection(req.body.courseOutcomes),
+      programOutcomes: normalizeSelection(req.body.programOutcomes),
+      bloomLevels: normalizeSelection(req.body.bloomLevels),
+    };
     const blueprint = normalizeBlueprint(req.body.blueprint);
     const useBlueprint = blueprint.length > 0;
 
@@ -407,6 +438,7 @@ const generateExamForQueue = async (req, res) => {
         topics,
         "Easy",
         easyCount,
+        obeFilters,
       );
 
       const averageQuestions = await getRandomQuestions(
@@ -414,6 +446,7 @@ const generateExamForQueue = async (req, res) => {
         topics,
         "Average",
         averageCount,
+        obeFilters,
       );
 
       const difficultQuestions = await getRandomQuestions(
@@ -421,6 +454,7 @@ const generateExamForQueue = async (req, res) => {
         topics,
         "Difficult",
         difficultCount,
+        obeFilters,
       );
 
       if (
@@ -482,6 +516,7 @@ const generateExamForQueue = async (req, res) => {
         averageCount,
         difficultCount,
         blueprint,
+        obeFilters,
       },
     });
 
@@ -872,8 +907,13 @@ const formatDifficultyCode = (difficulty) => {
   return difficulty || "";
 };
 
+const formatCognitiveProcess = (question) =>
+  question.bloomLevel || formatDifficultyCode(question.difficulty);
+
 const getTopicKey = (question) =>
-  `${question.subject || "General"}|||${question.topic || "General"}`;
+  `${question.subject || "General"}|||${question.topic || "General"}|||${
+    question.courseOutcome || "Unmapped CLO"
+  }`;
 
 const buildTosRows = (exam) => {
   const totalItems = Number(exam.totalItems || exam.questions.length || 0);
@@ -886,13 +926,18 @@ const buildTosRows = (exam) => {
       grouped.set(key, {
         subject: question.subject || exam.subject || "",
         topic: question.topic || "General",
+        courseOutcome: question.courseOutcome || "Unmapped CLO",
+        programOutcomes: new Set(),
         difficulties: new Set(),
         itemNumbers: [],
       });
     }
 
     const row = grouped.get(key);
-    row.difficulties.add(formatDifficultyCode(question.difficulty));
+    row.difficulties.add(formatCognitiveProcess(question));
+    if (question.programOutcome) {
+      row.programOutcomes.add(question.programOutcome);
+    }
     row.itemNumbers.push(index + 1);
   });
 
@@ -902,7 +947,7 @@ const buildTosRows = (exam) => {
       totalItems > 0 ? Math.round((itemCount / totalItems) * 100) : 0;
 
     return {
-      courseOutcome: `CO${index + 1}`,
+      courseOutcome: row.courseOutcome,
       topic:
         row.subject && row.subject !== exam.subject
           ? `${row.subject} - ${row.topic}`
@@ -1237,6 +1282,13 @@ const buildTosDocxBuffer = async (exam) => {
   const totalItems = Number(exam.totalItems || exam.questions.length || 0);
   const courseText = exam.subject || "";
   const examText = exam.title || "";
+  const studentOutcomeText = [
+    ...new Set(
+      (exam.questions || [])
+        .map((question) => question.programOutcome)
+        .filter(Boolean),
+    ),
+  ].join(", ");
   const dateCompletedText = formatDateForDocx();
   const children = [
     new Table({
@@ -1320,7 +1372,8 @@ const buildTosDocxBuffer = async (exam) => {
             createTosFormCell(
               [
                 createTextRun("Student Outcome (SO): ", { size: 18 }),
-                createTosBlankRun(
+                createTosFieldRun(
+                  studentOutcomeText,
                   "____________________________________________________________________________________________",
                   { size: 18 },
                 ),

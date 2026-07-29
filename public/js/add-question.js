@@ -20,6 +20,16 @@ document
       document.getElementById("correctAnswer").value,
     );
     form.append("difficulty", document.getElementById("difficulty").value);
+    form.append(
+      "courseOutcome",
+      document.getElementById("courseOutcome").value,
+    );
+    form.append(
+      "programOutcome",
+      document.getElementById("programOutcome").value,
+    );
+    form.append("bloomLevel", document.getElementById("bloomLevel").value);
+    form.append("outcomeWeight", document.getElementById("outcomeWeight").value);
     form.append("tableData", document.getElementById("tableData").value);
     form.append("explanation", document.getElementById("explanation").value);
 

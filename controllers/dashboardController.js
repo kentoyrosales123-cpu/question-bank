@@ -141,6 +141,128 @@ const buildActivityWorkbook = async (activities) => {
   return workbook.xlsx.writeBuffer();
 };
 
+const toOutcomeKey = (value, fallback) => String(value || fallback).trim();
+
+const createOutcomeBucket = (code) => ({
+  code,
+  questionCount: 0,
+  assessedItems: 0,
+  correctItems: 0,
+  possibleWeight: 0,
+  attainedWeight: 0,
+  attainmentRate: 0,
+});
+
+const calculateObeReport = async () => {
+  const [questions, submittedExams] = await Promise.all([
+    Question.find()
+      .select("courseOutcome programOutcome bloomLevel outcomeWeight")
+      .lean(),
+    Exam.find({ submitted: true })
+      .select("answers questions")
+      .populate({
+        path: "questions",
+        select: "courseOutcome programOutcome bloomLevel outcomeWeight",
+      })
+      .lean(),
+  ]);
+
+  const courseOutcomes = new Map();
+  const programOutcomes = new Map();
+  const bloomLevels = new Map();
+  let alignedQuestions = 0;
+
+  questions.forEach((question) => {
+    const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
+    const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped PLO");
+    const bloomLevel = toOutcomeKey(question.bloomLevel, "Unmapped Bloom");
+
+    if (question.courseOutcome && question.programOutcome) {
+      alignedQuestions++;
+    }
+
+    if (!courseOutcomes.has(courseOutcome)) {
+      courseOutcomes.set(courseOutcome, createOutcomeBucket(courseOutcome));
+    }
+    if (!programOutcomes.has(programOutcome)) {
+      programOutcomes.set(programOutcome, createOutcomeBucket(programOutcome));
+    }
+    if (!bloomLevels.has(bloomLevel)) {
+      bloomLevels.set(bloomLevel, { level: bloomLevel, questionCount: 0 });
+    }
+
+    courseOutcomes.get(courseOutcome).questionCount++;
+    programOutcomes.get(programOutcome).questionCount++;
+    bloomLevels.get(bloomLevel).questionCount++;
+  });
+
+  submittedExams.forEach((exam) => {
+    const questionsById = new Map(
+      (exam.questions || []).map((question) => [
+        question._id.toString(),
+        question,
+      ]),
+    );
+
+    (exam.answers || []).forEach((answer) => {
+      const question = questionsById.get(answer.question?.toString());
+
+      if (!question) {
+        return;
+      }
+
+      const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
+      const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped PLO");
+      const weight = Math.max(0, Number(question.outcomeWeight || 1));
+
+      if (!courseOutcomes.has(courseOutcome)) {
+        courseOutcomes.set(courseOutcome, createOutcomeBucket(courseOutcome));
+      }
+      if (!programOutcomes.has(programOutcome)) {
+        programOutcomes.set(programOutcome, createOutcomeBucket(programOutcome));
+      }
+
+      [courseOutcomes.get(courseOutcome), programOutcomes.get(programOutcome)].forEach(
+        (bucket) => {
+          bucket.assessedItems++;
+          bucket.possibleWeight += weight;
+
+          if (answer.isCorrect) {
+            bucket.correctItems++;
+            bucket.attainedWeight += weight;
+          }
+        },
+      );
+    });
+  });
+
+  const finalizeBuckets = (buckets) =>
+    Array.from(buckets.values())
+      .map((bucket) => ({
+        ...bucket,
+        attainmentRate:
+          bucket.possibleWeight > 0
+            ? Math.round((bucket.attainedWeight / bucket.possibleWeight) * 1000) /
+              10
+            : 0,
+      }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+  return {
+    alignedQuestions,
+    unmappedQuestions: questions.length - alignedQuestions,
+    alignmentRate:
+      questions.length > 0
+        ? Math.round((alignedQuestions / questions.length) * 1000) / 10
+        : 0,
+    courseOutcomes: finalizeBuckets(courseOutcomes),
+    programOutcomes: finalizeBuckets(programOutcomes),
+    bloomLevels: Array.from(bloomLevels.values()).sort((a, b) =>
+      a.level.localeCompare(b.level),
+    ),
+  };
+};
+
 exports.getDashboardStats = async (req, res) => {
   try {
     const [
@@ -260,6 +382,7 @@ exports.getReportsSummary = async (req, res) => {
       easyQuestions,
       averageQuestions,
       difficultQuestions,
+      obeReport,
       recentActivity,
     ] = await Promise.all([
       User.countDocuments(),
@@ -269,6 +392,7 @@ exports.getReportsSummary = async (req, res) => {
       Question.countDocuments({ difficulty: "Easy" }),
       Question.countDocuments({ difficulty: "Average" }),
       Question.countDocuments({ difficulty: "Difficult" }),
+      calculateObeReport(),
       ActivityLog.find()
         .populate("user", "name email role")
         .sort({ createdAt: -1 })
@@ -299,6 +423,7 @@ exports.getReportsSummary = async (req, res) => {
         easyQuestions,
         averageQuestions,
         difficultQuestions,
+        obeReport,
         loginCount:
           activityCounts.find((item) => item._id === "login")?.count || 0,
         generatedExamCount:

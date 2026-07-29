@@ -107,6 +107,84 @@
 
         <section class="card activity-monitor-card report-activity-card">
           <div class="section-heading">
+            <div>
+              <h2>OBE Alignment</h2>
+              <p class="muted-text">
+                Coverage and attainment are computed from mapped questions and submitted exams.
+              </p>
+            </div>
+          </div>
+
+          <div class="dashboard-stats reports-stats">
+            <div class="metric-card report-metric">
+              <div>
+                <h3>Aligned Questions</h3>
+                <strong id="obeAlignedQuestions">0</strong>
+                <small><span id="obeAlignmentRate">0%</span> of question bank</small>
+              </div>
+            </div>
+            <div class="metric-card report-metric">
+              <div>
+                <h3>Unmapped Questions</h3>
+                <strong id="obeUnmappedQuestions">0</strong>
+                <small>need CLO and PLO tags</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-insights">
+            <div class="difficulty-panel report-card">
+              <h2>CLO Attainment</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>CLO</th>
+                      <th>Bank Items</th>
+                      <th>Assessed</th>
+                      <th>Correct</th>
+                      <th>Attainment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="obeCloBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="difficulty-panel report-card">
+              <h2>PLO Attainment</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>PLO</th>
+                      <th>Bank Items</th>
+                      <th>Assessed</th>
+                      <th>Correct</th>
+                      <th>Attainment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="obePloBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bloom Level</th>
+                  <th>Question Bank Items</th>
+                </tr>
+              </thead>
+              <tbody id="obeBloomBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card activity-monitor-card report-activity-card">
+          <div class="section-heading">
             <h2>Recent Activity</h2>
             <div class="activity-download-controls">
               <label>

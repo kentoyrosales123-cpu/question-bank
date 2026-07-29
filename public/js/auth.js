@@ -21,6 +21,8 @@ function setAuth(token, user) {
 const ROLE_LABELS = {
   super_admin: "Super Admin",
   admin: "Admin",
+  "Super Admin": "Super Admin",
+  Admin: "Admin",
   exam_creator: "Exam Creator",
   exam_requestor: "Exam Requestor",
   professor: "Exam Creator",
@@ -36,11 +38,18 @@ let notificationPollTimer = null;
 let isSidebarNavigationPending = false;
 
 function normalizeRole(role) {
+  const displayRoleMap = {
+    "Super Admin": "super_admin",
+    Admin: "admin",
+    "Exam Creator": "exam_creator",
+    "Exam Requestor": "exam_requestor",
+  };
+
   return {
     professor: "exam_creator",
     user: "exam_requestor",
     student: "exam_requestor",
-  }[role] || role;
+  }[role] || displayRoleMap[role] || role;
 }
 
 function getRoleLabel(role) {

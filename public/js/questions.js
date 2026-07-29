@@ -1,4 +1,4 @@
-const canLoadQuestionsPage = protectPage();
+const canLoadQuestionsPage = protectPage() && isAdminRole(getUser());
 
 let currentQuestionsEndpoint = "/questions";
 let currentQuestions = [];
@@ -37,14 +37,24 @@ function renderQuestionsPage() {
   document.getElementById("questionsBody").innerHTML = pageQuestions.length
     ? pageQuestions
         .map(
-          (q) => `
+          (q) => {
+            const difficultyLabel = getQuestionDifficultyLabel(q.difficulty);
+            const difficultyClass = getQuestionDifficultyClass(q.difficulty);
+
+            return `
       <tr>
         <td>${escapeHTML(q.subject)}</td>
         <td>${escapeHTML(q.topic)}</td>
         <td>${escapeHTML(truncateText(q.questionText, 80))}</td>
         <td>
-  <span class="badge ${escapeHTML(q.difficulty.toLowerCase())}">
-    ${escapeHTML(q.difficulty)}
+  <span class="badge ${escapeHTML(difficultyClass)}">
+    ${escapeHTML(difficultyLabel)}
+  </span>
+</td>
+
+<td>
+  <span class="badge ${q.courseOutcome && q.programOutcome ? "easy" : "average"}">
+    ${escapeHTML(formatObeTag(q))}
   </span>
 </td>
 
@@ -75,10 +85,11 @@ Delete
           </div>
         </td>
       </tr>
-    `,
+    `;
+          },
         )
         .join("")
-    : `<tr><td colspan="6" class="muted-text">No questions found.</td></tr>`;
+    : `<tr><td colspan="7" class="muted-text">No questions found.</td></tr>`;
 
   renderQuestionsPagination(totalPages);
 }
@@ -123,12 +134,37 @@ function truncateText(value, maxLength) {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
+function getQuestionDifficultyLabel(difficulty) {
+  return difficulty || "Average";
+}
+
+function getQuestionDifficultyClass(difficulty) {
+  return String(getQuestionDifficultyLabel(difficulty)).toLowerCase();
+}
+
+function formatObeTag(question) {
+  const clo = question.courseOutcome || "No CLO";
+  const plo = question.programOutcome || "No PLO";
+
+  return `${clo} / ${plo}`;
+}
+
 async function filterQuestions() {
   const subject = document.getElementById("filterSubject").value;
   const topic = document.getElementById("filterTopic").value;
   const difficulty = document.getElementById("filterDifficulty").value;
+  const courseOutcome = document.getElementById("filterCourseOutcome").value;
+  const programOutcome = document.getElementById("filterProgramOutcome").value;
+  const bloomLevel = document.getElementById("filterBloomLevel").value;
 
-  const query = new URLSearchParams({ subject, topic, difficulty }).toString();
+  const query = new URLSearchParams({
+    subject,
+    topic,
+    difficulty,
+    courseOutcome,
+    programOutcome,
+    bloomLevel,
+  }).toString();
 
   loadQuestions(`/questions/filter?${query}`, 1);
 }
@@ -148,6 +184,9 @@ async function viewQuestion(id) {
 
     document.getElementById("questionModalTitle").textContent =
       "Question Details";
+    const difficultyLabel = getQuestionDifficultyLabel(question.difficulty);
+    const difficultyClass = getQuestionDifficultyClass(question.difficulty);
+
     document.getElementById("questionDetails").innerHTML = `
       <div class="detail-grid">
         <div>
@@ -160,11 +199,27 @@ async function viewQuestion(id) {
         </div>
         <div>
           <span class="field-label">Difficulty</span>
-          <span class="badge ${escapeHTML(question.difficulty.toLowerCase())}">${escapeHTML(question.difficulty)}</span>
+          <span class="badge ${escapeHTML(difficultyClass)}">${escapeHTML(difficultyLabel)}</span>
         </div>
         <div>
           <span class="field-label">Correct Answer</span>
           <strong>${escapeHTML(question.correctAnswer)}</strong>
+        </div>
+        <div>
+          <span class="field-label">Course Outcome</span>
+          <strong>${escapeHTML(question.courseOutcome || "Not mapped")}</strong>
+        </div>
+        <div>
+          <span class="field-label">Program Outcome</span>
+          <strong>${escapeHTML(question.programOutcome || "Not mapped")}</strong>
+        </div>
+        <div>
+          <span class="field-label">Bloom Level</span>
+          <strong>${escapeHTML(question.bloomLevel || "Not mapped")}</strong>
+        </div>
+        <div>
+          <span class="field-label">Outcome Weight</span>
+          <strong>${escapeHTML(question.outcomeWeight || 1)}</strong>
         </div>
       </div>
 
@@ -384,6 +439,36 @@ async function editQuestion(id) {
           </label>
         </div>
 
+        <div class="field-grid two">
+          <label>
+            <span class="field-label">Course Outcome</span>
+            <input id="editCourseOutcome" value="${escapeAttribute(question.courseOutcome || "")}" placeholder="CLO1" />
+          </label>
+          <label>
+            <span class="field-label">Program Outcome</span>
+            <input id="editProgramOutcome" value="${escapeAttribute(question.programOutcome || "")}" placeholder="PLO1" />
+          </label>
+        </div>
+
+        <div class="field-grid two">
+          <label>
+            <span class="field-label">Bloom Level</span>
+            <select id="editBloomLevel">
+              ${["", "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
+                .map(
+                  (level) => `
+                    <option value="${level}" ${question.bloomLevel === level ? "selected" : ""}>${level || "Not mapped"}</option>
+                  `,
+                )
+                .join("")}
+            </select>
+          </label>
+          <label>
+            <span class="field-label">Outcome Weight</span>
+            <input id="editOutcomeWeight" type="number" min="0" step="0.1" value="${escapeAttribute(question.outcomeWeight || 1)}" />
+          </label>
+        </div>
+
         <label>
           <span class="field-label">Optional Table Data</span>
           <textarea id="editTableData">${escapeHTML(question.tableData || "")}</textarea>
@@ -443,6 +528,19 @@ async function saveQuestionEdits(event, id) {
     document.getElementById("editCorrectAnswer").value,
   );
   form.append("difficulty", document.getElementById("editDifficulty").value);
+  form.append(
+    "courseOutcome",
+    document.getElementById("editCourseOutcome").value,
+  );
+  form.append(
+    "programOutcome",
+    document.getElementById("editProgramOutcome").value,
+  );
+  form.append("bloomLevel", document.getElementById("editBloomLevel").value);
+  form.append(
+    "outcomeWeight",
+    document.getElementById("editOutcomeWeight").value,
+  );
   form.append("tableData", document.getElementById("editTableData").value);
   form.append("explanation", document.getElementById("editExplanation").value);
 

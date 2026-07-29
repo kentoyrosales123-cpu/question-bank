@@ -38,6 +38,38 @@ const questionSchema = new mongoose.Schema(
       default: "Average",
     },
 
+    courseOutcome: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    programOutcome: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    bloomLevel: {
+      type: String,
+      enum: [
+        "",
+        "Remember",
+        "Understand",
+        "Apply",
+        "Analyze",
+        "Evaluate",
+        "Create",
+      ],
+      default: "",
+    },
+
+    outcomeWeight: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
+
     explanation: {
       type: String,
       default: "",

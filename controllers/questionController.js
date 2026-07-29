@@ -13,6 +13,10 @@ const getQuestionSnapshot = (question) => ({
   },
   correctAnswer: question.correctAnswer,
   difficulty: question.difficulty,
+  courseOutcome: question.courseOutcome || "",
+  programOutcome: question.programOutcome || "",
+  bloomLevel: question.bloomLevel || "",
+  outcomeWeight: Number(question.outcomeWeight || 1),
   explanation: question.explanation || "",
   tableData: question.tableData || "",
   tables: question.tables || [],
@@ -23,6 +27,8 @@ const getChangedFields = (before, after) =>
   Object.keys(after).filter(
     (field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]),
   );
+
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 exports.createQuestion = async (req, res) => {
   try {
@@ -36,6 +42,10 @@ exports.createQuestion = async (req, res) => {
       choiceD,
       correctAnswer,
       difficulty,
+      courseOutcome,
+      programOutcome,
+      bloomLevel,
+      outcomeWeight,
       explanation,
       tableData,
       tables,
@@ -77,6 +87,10 @@ exports.createQuestion = async (req, res) => {
       },
       correctAnswer,
       difficulty,
+      courseOutcome,
+      programOutcome,
+      bloomLevel,
+      outcomeWeight: Number(outcomeWeight || 1),
       explanation,
       tableData,
       tables: tables ? JSON.parse(tables) : [],
@@ -185,6 +199,12 @@ exports.updateQuestion = async (req, res) => {
       },
       correctAnswer: getBodyValue("correctAnswer", question.correctAnswer),
       difficulty: getBodyValue("difficulty", question.difficulty),
+      courseOutcome: getBodyValue("courseOutcome", question.courseOutcome),
+      programOutcome: getBodyValue("programOutcome", question.programOutcome),
+      bloomLevel: getBodyValue("bloomLevel", question.bloomLevel),
+      outcomeWeight: Number(
+        getBodyValue("outcomeWeight", question.outcomeWeight || 1) || 1,
+      ),
       explanation: getBodyValue("explanation", question.explanation),
       tableData: getBodyValue("tableData", question.tableData),
       tables: req.body.tables ? JSON.parse(req.body.tables) : question.tables,
@@ -264,7 +284,7 @@ exports.getQuestionHistory = async (req, res) => {
 exports.getQuestionAnalytics = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id).select(
-      "subject topic questionText difficulty",
+      "subject topic questionText difficulty courseOutcome programOutcome bloomLevel outcomeWeight",
     );
 
     if (!question) {
@@ -362,13 +382,21 @@ exports.deleteQuestion = async (req, res) => {
 
 exports.filterQuestions = async (req, res) => {
   try {
-    const { subject, topic, difficulty } = req.query;
+    const { subject, topic, difficulty, courseOutcome, programOutcome, bloomLevel } =
+      req.query;
 
     const filter = {};
 
-    if (subject) filter.subject = new RegExp(subject, "i");
-    if (topic) filter.topic = new RegExp(topic, "i");
+    if (subject) filter.subject = new RegExp(escapeRegex(subject), "i");
+    if (topic) filter.topic = new RegExp(escapeRegex(topic), "i");
     if (difficulty) filter.difficulty = difficulty;
+    if (courseOutcome) {
+      filter.courseOutcome = new RegExp(escapeRegex(courseOutcome), "i");
+    }
+    if (programOutcome) {
+      filter.programOutcome = new RegExp(escapeRegex(programOutcome), "i");
+    }
+    if (bloomLevel) filter.bloomLevel = bloomLevel;
 
     const questions = await Question.find(filter)
       .select("-image.data")

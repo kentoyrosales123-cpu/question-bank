@@ -58,6 +58,9 @@ const getParsedQuestionUpdates = (body = {}) => {
     "questionText",
     "correctAnswer",
     "difficulty",
+    "courseOutcome",
+    "programOutcome",
+    "bloomLevel",
     "explanation",
   ];
 
@@ -74,6 +77,10 @@ const getParsedQuestionUpdates = (body = {}) => {
       C: body.choices.C || "",
       D: body.choices.D || "",
     };
+  }
+
+  if (body.outcomeWeight !== undefined) {
+    updates.outcomeWeight = Number(body.outcomeWeight || 1);
   }
 
   return updates;
@@ -813,6 +820,10 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           choices: q.choices,
           correctAnswer: q.correctAnswer,
           difficulty: q.difficulty,
+          courseOutcome: q.courseOutcome || "",
+          programOutcome: q.programOutcome || "",
+          bloomLevel: q.bloomLevel || "",
+          outcomeWeight: Number(q.outcomeWeight || 1),
           explanation: q.explanation,
           tables: q.tables || [],
           image,
@@ -964,6 +975,10 @@ exports.approveParsedQuestion = async (req, res) => {
       choices: parsed.choices,
       correctAnswer: parsed.correctAnswer,
       difficulty: parsed.difficulty,
+      courseOutcome: parsed.courseOutcome,
+      programOutcome: parsed.programOutcome,
+      bloomLevel: parsed.bloomLevel,
+      outcomeWeight: Number(parsed.outcomeWeight || 1),
       explanation: parsed.explanation,
       tables: parsed.tables || [],
 

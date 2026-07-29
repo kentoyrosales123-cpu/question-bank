@@ -21,6 +21,7 @@ async function loadReports() {
       report.downloadedTosCount || 0;
 
     updateDifficultyReport(report);
+    updateObeReport(report.obeReport || {});
 
     document.getElementById("reportsActivityBody").innerHTML =
       report.recentActivity.length > 0
@@ -35,6 +36,66 @@ async function loadReports() {
   } catch (error) {
     alert(error.message);
   }
+}
+
+function updateObeReport(obeReport) {
+  document.getElementById("obeAlignedQuestions").textContent =
+    obeReport.alignedQuestions || 0;
+  document.getElementById("obeUnmappedQuestions").textContent =
+    obeReport.unmappedQuestions || 0;
+  document.getElementById("obeAlignmentRate").textContent =
+    `${obeReport.alignmentRate || 0}%`;
+
+  document.getElementById("obeCloBody").innerHTML = renderOutcomeRows(
+    obeReport.courseOutcomes,
+    "CLO",
+  );
+  document.getElementById("obePloBody").innerHTML = renderOutcomeRows(
+    obeReport.programOutcomes,
+    "PLO",
+  );
+  document.getElementById("obeBloomBody").innerHTML =
+    obeReport.bloomLevels?.length > 0
+      ? obeReport.bloomLevels
+          .map(
+            (item) => `
+              <tr>
+                <td>${escapeHTML(item.level)}</td>
+                <td>${item.questionCount}</td>
+              </tr>
+            `,
+          )
+          .join("")
+      : `<tr><td colspan="2" class="empty-table-cell">No Bloom mapping yet.</td></tr>`;
+}
+
+function renderOutcomeRows(outcomes = [], label) {
+  return outcomes.length > 0
+    ? outcomes
+        .map(
+          (item) => `
+            <tr>
+              <td><strong>${escapeHTML(item.code)}</strong></td>
+              <td>${item.questionCount}</td>
+              <td>${item.assessedItems}</td>
+              <td>${item.correctItems}</td>
+              <td>
+                <span class="badge ${getAttainmentClass(item.attainmentRate)}">
+                  ${item.attainmentRate}%
+                </span>
+              </td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="5" class="empty-table-cell">No ${label} mapping yet.</td></tr>`;
+}
+
+function getAttainmentClass(rate) {
+  if (Number(rate) >= 75) return "easy";
+  if (Number(rate) >= 50) return "average";
+
+  return "difficult";
 }
 
 function percent(part, total) {

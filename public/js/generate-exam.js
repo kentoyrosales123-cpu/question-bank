@@ -8,6 +8,9 @@ const summaryFields = [
   "title",
   "subject",
   "topic",
+  "courseOutcome",
+  "programOutcome",
+  "bloomLevel",
   "totalItems",
   "easyCount",
   "averageCount",
@@ -244,6 +247,21 @@ async function loadExamOptions() {
       examOptionData.map((item) => item.subject),
       "No subjects available",
     );
+    renderOptions(
+      "courseOutcome",
+      data.courseOutcomes || [],
+      "No CLO mappings available",
+    );
+    renderOptions(
+      "programOutcome",
+      data.programOutcomes || [],
+      "No PLO mappings available",
+    );
+    renderOptions(
+      "bloomLevel",
+      data.bloomLevels || [],
+      "No Bloom mappings available",
+    );
     updateTopicOptions();
   } catch (error) {
     document.getElementById("examMessage").textContent =
@@ -254,6 +272,9 @@ async function loadExamOptions() {
 
 document.getElementById("subject").addEventListener("change", updateTopicOptions);
 document.getElementById("topic").addEventListener("change", updateExamSummary);
+document.getElementById("courseOutcome").addEventListener("change", updateExamSummary);
+document.getElementById("programOutcome").addEventListener("change", updateExamSummary);
+document.getElementById("bloomLevel").addEventListener("change", updateExamSummary);
 document.getElementById("useBlueprint").addEventListener("change", updateExamSummary);
 document
   .getElementById("addBlueprintRowsButton")
@@ -266,11 +287,17 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const subjects = getSelectedValues("subject");
   const topics = getSelectedValues("topic");
+  const courseOutcomes = getSelectedValues("courseOutcome");
+  const programOutcomes = getSelectedValues("programOutcome");
+  const bloomLevels = getSelectedValues("bloomLevel");
 
   const body = {
     title: document.getElementById("title").value,
     subjects,
     topics,
+    courseOutcomes,
+    programOutcomes,
+    bloomLevels,
     totalItems: Number(document.getElementById("totalItems").value),
     easyCount: Number(document.getElementById("easyCount").value),
     averageCount: Number(document.getElementById("averageCount").value),

@@ -61,6 +61,31 @@
             <option value="Difficult">Difficult</option>
           </select>
 
+          <div class="field-grid two">
+            <input id="courseOutcome" placeholder="CLO / Course Outcome" />
+            <input id="programOutcome" placeholder="PLO / Program Outcome" />
+          </div>
+
+          <div class="field-grid two">
+            <select id="bloomLevel">
+              <option value="">Bloom Level</option>
+              <option value="Remember">Remember</option>
+              <option value="Understand">Understand</option>
+              <option value="Apply">Apply</option>
+              <option value="Analyze">Analyze</option>
+              <option value="Evaluate">Evaluate</option>
+              <option value="Create">Create</option>
+            </select>
+            <input
+              id="outcomeWeight"
+              type="number"
+              min="0"
+              step="0.1"
+              value="1"
+              placeholder="Outcome Weight"
+            />
+          </div>
+
           <textarea id="tableData" placeholder="Optional table data"></textarea>
           <textarea
             id="explanation"

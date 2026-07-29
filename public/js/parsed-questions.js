@@ -190,6 +190,30 @@ function renderParsedCard(q, index) {
             </div>
           </div>
 
+          <div class="field-grid two">
+            ${renderField("Course Outcome", `courseOutcome_${q._id}`, q.courseOutcome || "")}
+            ${renderField("Program Outcome", `programOutcome_${q._id}`, q.programOutcome || "")}
+          </div>
+
+          <div class="field-grid two">
+            <div>
+              <label class="field-label" for="bloomLevel_${q._id}">Bloom Level</label>
+              <select id="bloomLevel_${q._id}">
+                ${["", "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
+                  .map(
+                    (level) => `
+                      <option value="${level}" ${q.bloomLevel === level ? "selected" : ""}>${level || "Not mapped"}</option>
+                    `,
+                  )
+                  .join("")}
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="outcomeWeight_${q._id}">Outcome Weight</label>
+              <input id="outcomeWeight_${q._id}" type="number" min="0" step="0.1" value="${escapeHTML(q.outcomeWeight || 1)}">
+            </div>
+          </div>
+
           <label class="field-label" for="explanation_${q._id}">Explanation</label>
           <textarea id="explanation_${q._id}" class="explanation-textarea">${escapeHTML(q.explanation || "")}</textarea>
 
@@ -655,6 +679,10 @@ function getParsedFormBody(id) {
     },
     correctAnswer: document.getElementById(`correctAnswer_${id}`).value,
     difficulty: document.getElementById(`difficulty_${id}`).value,
+    courseOutcome: document.getElementById(`courseOutcome_${id}`).value.trim(),
+    programOutcome: document.getElementById(`programOutcome_${id}`).value.trim(),
+    bloomLevel: document.getElementById(`bloomLevel_${id}`).value,
+    outcomeWeight: document.getElementById(`outcomeWeight_${id}`).value,
     explanation: document.getElementById(`explanation_${id}`).value.trim(),
   };
 }
@@ -677,7 +705,16 @@ function getFilteredQuestions() {
   }
 
   return pendingQuestions.filter((q) =>
-    [q.subject, q.topic, q.questionText, q.correctAnswer, q.difficulty]
+    [
+      q.subject,
+      q.topic,
+      q.questionText,
+      q.correctAnswer,
+      q.difficulty,
+      q.courseOutcome,
+      q.programOutcome,
+      q.bloomLevel,
+    ]
       .join(" ")
       .toLowerCase()
       .includes(query),
