@@ -3746,6 +3746,56 @@ body.dark .activity-monitor-card .section-heading h2 {
   --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3v18h18'/%3E%3Cpath d='M7 15v3'/%3E%3Cpath d='M12 11v7'/%3E%3Cpath d='M17 7v11'/%3E%3Cpath d='m7 11 5-5 5 3'/%3E%3C/svg%3E");
 }
 
+.sidebar a[href*="obe-management"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 19.5V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-1.5z'/%3E%3Cpath d='M8 7h6'/%3E%3Cpath d='M8 11h8'/%3E%3Cpath d='M8 15h5'/%3E%3C/svg%3E");
+}
+
+.obe-suggestion {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  background: var(--primary-soft);
+}
+
+.obe-suggestion strong,
+.obe-suggestion span {
+  display: block;
+}
+
+.obe-suggestion small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-soft);
+  font-weight: 800;
+}
+
+.checkbox-group input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+}
+
 .sidebar {
   z-index: 30;
   overflow-y: auto;

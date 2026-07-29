@@ -41,7 +41,14 @@ async function loadUserDashboard() {
 }
 
 function renderExamItem(exam) {
-  const subtitle = `${escapeHTML(exam.subject)}${exam.topic ? ` - ${escapeHTML(exam.topic)}` : ""}`;
+  const subtitle = [
+    exam.engineeringProgram,
+    exam.subject,
+    exam.topic,
+  ]
+    .filter(Boolean)
+    .map(escapeHTML)
+    .join(" - ");
   const status = exam.approvalStatus || "Approved";
   const isPending = status === "Pending";
   const isRejected = status === "Rejected";

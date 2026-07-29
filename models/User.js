@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema(
       enum: [
         "super_admin",
         "admin",
+        "cee_cac_coordinator",
         "exam_creator",
         "exam_requestor",
         "user",

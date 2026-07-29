@@ -1,9 +1,37 @@
 protectPage();
 
 const uploadUser = getUser();
-if (uploadUser && !isAdminRole(uploadUser) && !isCreatorRole(uploadUser)) {
+if (uploadUser && !canCreateContentRole(uploadUser)) {
   alert("Questionnaire upload is for Admins and Exam Creators only.");
   location.href = getDashboardUrl(uploadUser);
+}
+
+const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
+
+function canUseSubject(subject) {
+  const user = getUser();
+
+  if (isAdminRole(user)) return true;
+  if (isCeeCacCoordinatorRole(user)) {
+    return CEE_CAC_SUBJECTS.includes(subject);
+  }
+
+  return !CEE_CAC_SUBJECTS.includes(subject);
+}
+
+function renderSubjectControl(uploadId) {
+  if (isCeeCacCoordinatorRole(getUser())) {
+    return `
+      <select id="subject_${uploadId}" required>
+        <option value="">Select subject</option>
+        ${CEE_CAC_SUBJECTS.map(
+          (subject) => `<option value="${subject}">${subject}</option>`,
+        ).join("")}
+      </select>
+    `;
+  }
+
+  return `<input id="subject_${uploadId}" placeholder="Subject e.g. Electronics Engineering">`;
 }
 
 document.getElementById("uploadForm").addEventListener("submit", async (e) => {
@@ -48,7 +76,17 @@ async function loadUploads() {
 ${isAdmin ? `<button class="btn danger" onclick="deleteUpload('${file._id}')">Delete File</button>` : ""}
           <br><br>
 
-          <input id="subject_${file._id}" placeholder="Subject e.g. Electronics Engineering">
+          <select id="engineeringProgram_${file._id}" required>
+            <option value="">Select engineering program</option>
+            <option value="General Engineering">General Engineering</option>
+            <option value="ECE">ECE</option>
+            <option value="CE">CE</option>
+            <option value="EE">EE</option>
+            <option value="ME">ME</option>
+            <option value="CpE">CpE</option>
+            <option value="CHE">CHE</option>
+          </select>
+          ${renderSubjectControl(file._id)}
           <input id="topic_${file._id}" placeholder="Topic e.g. Circuits">
 
           <button class="btn" onclick="parseUpload('${file._id}')">
@@ -66,11 +104,19 @@ ${isAdmin ? `<button class="btn danger" onclick="deleteUpload('${file._id}')">De
 }
 
 async function parseUpload(uploadId) {
+  const engineeringProgram = document.getElementById(
+    `engineeringProgram_${uploadId}`,
+  ).value;
   const subject = document.getElementById(`subject_${uploadId}`).value;
   const topic = document.getElementById(`topic_${uploadId}`).value;
 
-  if (!subject || !topic) {
-    alert("Please enter subject and topic before parsing.");
+  if (!engineeringProgram || !subject || !topic) {
+    alert("Please select program, subject, and topic before parsing.");
+    return;
+  }
+
+  if (!canUseSubject(subject)) {
+    alert("Only CEE-CAC Coordinator can use CEE 601, CEE 602, CEE 603, and CEE 604.");
     return;
   }
 
@@ -80,6 +126,7 @@ async function parseUpload(uploadId) {
 
     const data = await apiRequest("/parser/parse", "POST", {
       uploadId,
+      engineeringProgram,
       subject,
       topic,
     });

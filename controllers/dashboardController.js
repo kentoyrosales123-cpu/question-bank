@@ -290,7 +290,7 @@ exports.getDashboardStats = async (req, res) => {
         .limit(30)
         .lean(),
       Exam.find()
-        .select("title totalItems approvalStatus user createdAt")
+        .select("title engineeringProgram totalItems approvalStatus user createdAt")
         .populate("user", "name email role")
         .sort({ approvalStatus: -1, createdAt: -1 })
         .limit(50)

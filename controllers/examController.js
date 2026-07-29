@@ -5,7 +5,9 @@ const path = require("path");
 const { logActivity } = require("../services/activityLogger");
 const { notifyRoles, notifyUsers } = require("../services/notificationService");
 const {
+  canAccessSubject,
   canGenerateExam,
+  getSubjectAccessFilter,
   isAdmin,
   isExamRequestor,
   ROLES,
@@ -36,6 +38,8 @@ const TOS_LOGO_DOCX_PATH = path.join(
   "public",
   "logo-docx.png",
 );
+
+const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -70,6 +74,7 @@ const formatSelectionLabel = (values, fallback = "") =>
   values.length > 0 ? values.join(", ") : fallback;
 
 const getRandomQuestions = async (
+  engineeringProgram,
   subjects,
   topics,
   difficulty,
@@ -80,7 +85,7 @@ const getRandomQuestions = async (
     return [];
   }
 
-  const match = { difficulty };
+  const match = { difficulty, engineeringProgram };
 
   if (subjects.length > 0) {
     match.subject = { $in: subjects };
@@ -124,24 +129,27 @@ const normalizeBlueprint = (blueprint = []) =>
         row.easyCount + row.averageCount + row.difficultCount > 0,
     );
 
-const getBlueprintQuestions = async (blueprint) => {
+const getBlueprintQuestions = async (engineeringProgram, blueprint) => {
   const selected = [];
 
   for (const row of blueprint) {
     const rowQuestions = [
       ...(await getRandomQuestions(
+        engineeringProgram,
         [row.subject],
         [row.topic],
         "Easy",
         row.easyCount,
       )),
       ...(await getRandomQuestions(
+        engineeringProgram,
         [row.subject],
         [row.topic],
         "Average",
         row.averageCount,
       )),
       ...(await getRandomQuestions(
+        engineeringProgram,
         [row.subject],
         [row.topic],
         "Difficult",
@@ -296,7 +304,11 @@ const enqueueGenerationJob = (req) => {
 
 exports.getExamOptions = async (req, res) => {
   try {
+    const subjectAccessFilter = getSubjectAccessFilter(req.user);
     const options = await Question.aggregate([
+      ...(Object.keys(subjectAccessFilter).length > 0
+        ? [{ $match: subjectAccessFilter }]
+        : []),
       {
         $group: {
           _id: "$subject",
@@ -306,9 +318,18 @@ exports.getExamOptions = async (req, res) => {
       { $sort: { _id: 1 } },
     ]);
     const [courseOutcomes, programOutcomes, bloomLevels] = await Promise.all([
-      Question.distinct("courseOutcome", { courseOutcome: { $ne: "" } }),
-      Question.distinct("programOutcome", { programOutcome: { $ne: "" } }),
-      Question.distinct("bloomLevel", { bloomLevel: { $ne: "" } }),
+      Question.distinct("courseOutcome", {
+        ...subjectAccessFilter,
+        courseOutcome: { $ne: "" },
+      }),
+      Question.distinct("programOutcome", {
+        ...subjectAccessFilter,
+        programOutcome: { $ne: "" },
+      }),
+      Question.distinct("bloomLevel", {
+        ...subjectAccessFilter,
+        bloomLevel: { $ne: "" },
+      }),
     ]);
 
     res.json({
@@ -343,6 +364,7 @@ const generateExamForQueue = async (req, res) => {
 
     const {
       title,
+      engineeringProgram,
       subject,
       topic,
       totalItems,
@@ -351,6 +373,9 @@ const generateExamForQueue = async (req, res) => {
       difficultCount,
     } = req.body;
     const subjects = normalizeSelection(req.body.subjects || subject);
+    const selectedEngineeringProgram = String(
+      engineeringProgram || "",
+    ).trim();
     const topics = normalizeSelection(req.body.topics || topic);
     const obeFilters = {
       courseOutcomes: normalizeSelection(req.body.courseOutcomes),
@@ -359,6 +384,19 @@ const generateExamForQueue = async (req, res) => {
     };
     const blueprint = normalizeBlueprint(req.body.blueprint);
     const useBlueprint = blueprint.length > 0;
+    const selectedSubjects = useBlueprint
+      ? blueprint.map((row) => row.subject)
+      : subjects;
+    const blockedSubject = selectedSubjects.find(
+      (item) => !canAccessSubject(req.user, item),
+    );
+
+    if (blockedSubject) {
+      return res.status(403).json({
+        success: false,
+        message: `You do not have access to generate exams for ${blockedSubject}.`,
+      });
+    }
 
     const total =
       Number(easyCount || 0) +
@@ -370,6 +408,20 @@ const generateExamForQueue = async (req, res) => {
       Number(averageCount || 0),
       Number(difficultCount || 0),
     ];
+
+    if (!selectedEngineeringProgram) {
+      return res.status(400).json({
+        success: false,
+        message: "Select an engineering program.",
+      });
+    }
+
+    if (!ENGINEERING_PROGRAMS.includes(selectedEngineeringProgram)) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected engineering program is invalid.",
+      });
+    }
 
     if (!useBlueprint && (subjects.length === 0 || !totalItems)) {
       return res.status(400).json({
@@ -423,7 +475,9 @@ const generateExamForQueue = async (req, res) => {
 
     if (useBlueprint) {
       try {
-        allQuestions = (await getBlueprintQuestions(blueprint)).sort(
+        allQuestions = (
+          await getBlueprintQuestions(selectedEngineeringProgram, blueprint)
+        ).sort(
           () => Math.random() - 0.5,
         );
       } catch (blueprintError) {
@@ -434,6 +488,7 @@ const generateExamForQueue = async (req, res) => {
       }
     } else {
       const easyQuestions = await getRandomQuestions(
+        selectedEngineeringProgram,
         subjects,
         topics,
         "Easy",
@@ -442,6 +497,7 @@ const generateExamForQueue = async (req, res) => {
       );
 
       const averageQuestions = await getRandomQuestions(
+        selectedEngineeringProgram,
         subjects,
         topics,
         "Average",
@@ -450,6 +506,7 @@ const generateExamForQueue = async (req, res) => {
       );
 
       const difficultQuestions = await getRandomQuestions(
+        selectedEngineeringProgram,
         subjects,
         topics,
         "Difficult",
@@ -478,6 +535,7 @@ const generateExamForQueue = async (req, res) => {
 
     const exam = await Exam.create({
       title: title || "Generated Exam",
+      engineeringProgram: selectedEngineeringProgram,
       subject: useBlueprint
         ? formatSelectionLabel([
             ...new Set(blueprint.map((row) => row.subject)),
@@ -509,6 +567,7 @@ const generateExamForQueue = async (req, res) => {
       metadata: {
         exam: exam._id,
         title: exam.title,
+        engineeringProgram: selectedEngineeringProgram,
         subjects,
         topics,
         totalItems,
@@ -719,7 +778,7 @@ exports.getMyExamSummary = async (req, res) => {
       }),
       Exam.find({ user: req.user._id })
         .select(
-          "title subject topic totalItems approvalStatus createdAt updatedAt",
+          "title engineeringProgram subject topic totalItems approvalStatus createdAt updatedAt",
         )
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(10),
@@ -1281,6 +1340,7 @@ const buildTosDocxBuffer = async (exam) => {
   ];
   const totalItems = Number(exam.totalItems || exam.questions.length || 0);
   const courseText = exam.subject || "";
+  const programText = exam.engineeringProgram || "";
   const examText = exam.title || "";
   const studentOutcomeText = [
     ...new Set(
@@ -1332,8 +1392,8 @@ const buildTosDocxBuffer = async (exam) => {
           children: [
             createTosFormCell(
               [
-                createTextRun("College/Program:", { size: 18 }),
-                createTosBlankRun("______________________________", {
+                createTextRun("College/Program: ", { size: 18 }),
+                createTosFieldRun(programText, "______________________________", {
                   size: 18,
                 }),
               ],
@@ -1696,6 +1756,9 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
   }
 
   children.push(new Paragraph(`Subject: ${exam.subject}`));
+  if (exam.engineeringProgram) {
+    children.push(new Paragraph(`Engineering Program: ${exam.engineeringProgram}`));
+  }
   children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
   children.push(new Paragraph(`Total Items: ${exam.totalItems}`));
   children.push(new Paragraph(""));

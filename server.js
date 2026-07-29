@@ -15,6 +15,7 @@ const parserRoutes = require("./routes/parserRoutes");
 const itemAnalysisRoutes = require("./routes/itemAnalysisRoutes");
 const supportTicketRoutes = require("./routes/supportTicketRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const obeRoutes = require("./routes/obeRoutes");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/item-analysis", itemAnalysisRoutes);
 app.use("/api/support-tickets", supportTicketRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/obe", obeRoutes);
 
 app.use("/api/users", require("./routes/userRoutes"));
 

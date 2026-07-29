@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+  <head>
+    <title>OBE Management</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a href="/item-analysis-upload.html">Item Analysis</a>
+        <a class="active" href="/obe-management.html">OBE Management</a>
+        <div class="nav-divider"></div>
+        <a href="/profile.html">Profile</a>
+        <a href="/users.html">Users</a>
+        <a href="/reports.html">Reports</a>
+        <a class="support-link" href="#support">Chat Support</a>
+        <div class="nav-divider"></div>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>OBE Management</h1>
+            <p class="muted-text">
+              Store syllabus CO/CLO entries so parsed questions can receive mapping suggestions.
+            </p>
+          </div>
+          <button class="btn secondary" onclick="toggleTheme()">Toggle Theme</button>
+        </div>
+
+        <section class="dashboard-insights">
+          <form class="card" id="studentOutcomeForm">
+            <h2>Add Student Outcome</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Engineering Department</span>
+                <input
+                  id="soDepartment"
+                  required
+                  placeholder="Electronics Engineering"
+                />
+              </label>
+              <label>
+                <span class="field-label">SO Code</span>
+                <input id="soCode" required placeholder="SO a" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">SO Description</span>
+              <textarea
+                id="soDescription"
+                required
+                placeholder="Apply knowledge of mathematics, natural science, engineering fundamentals..."
+              ></textarea>
+            </label>
+            <div class="field-grid two">
+              <div>
+                <span class="field-label">Graduate Attributes</span>
+                <div class="checkbox-group" id="soGraduateAttributes">
+                  <label><input type="checkbox" value="Galing" /> Galing</label>
+                  <label><input type="checkbox" value="Gawa" /> Gawa</label>
+                  <label><input type="checkbox" value="Gawi" /> Gawi</label>
+                  <label><input type="checkbox" value="Gana" /> Gana</label>
+                </div>
+              </div>
+              <div>
+                <span class="field-label">PEO Links</span>
+                <div class="checkbox-group" id="soPeoLinks">
+                  <label><input type="checkbox" value="1" /> 1</label>
+                  <label><input type="checkbox" value="2" /> 2</label>
+                  <label><input type="checkbox" value="3" /> 3</label>
+                </div>
+              </div>
+            </div>
+            <button class="btn" type="submit">Save SO</button>
+            <p class="message" id="studentOutcomeMessage"></p>
+          </form>
+
+          <form class="card" id="bulkStudentOutcomeForm">
+            <h2>Bulk Import Student Outcomes</h2>
+            <label>
+              <span class="field-label">Engineering Department</span>
+              <input
+                id="bulkSoDepartment"
+                required
+                placeholder="Electronics Engineering"
+              />
+            </label>
+            <label>
+              <span class="field-label">Rows</span>
+              <textarea
+                id="bulkSoText"
+                required
+                placeholder="SO a | Apply knowledge of mathematics, natural science, engineering fundamentals... | Galing | 1&#10;SO b | Conduct investigations of complex engineering problems... | Gawa | 2"
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Import SO Rows</button>
+            <p class="message" id="bulkStudentOutcomeMessage"></p>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Saved Student Outcomes</h2>
+            <label class="search-box">
+              <span>Filter</span>
+              <input id="studentOutcomeFilter" placeholder="Department or SO" />
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>SO</th>
+                  <th>Description</th>
+                  <th>GA Links</th>
+                  <th>PEO Links</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="studentOutcomeBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination-bar" id="studentOutcomePagination"></div>
+        </section>
+
+        <section class="dashboard-insights">
+          <form class="card" id="outcomeForm">
+            <h2>Add CO/CLO</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Engineering Department</span>
+                <input
+                  id="department"
+                  placeholder="Electronics Engineering"
+                  list="departmentOptions"
+                />
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="subject" required placeholder="Circuits 1" />
+              </label>
+              <label>
+                <span class="field-label">CO/CLO Code</span>
+                <input id="code" required placeholder="CO1" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">Description</span>
+              <textarea id="description" required placeholder="Solve DC circuit problems."></textarea>
+            </label>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">SO Link</span>
+                <input
+                  id="programOutcome"
+                  placeholder="a"
+                  list="studentOutcomeOptions"
+                />
+              </label>
+              <label>
+                <span class="field-label">Bloom Level</span>
+                <select id="bloomLevel">
+                  <option value="">Not set</option>
+                  <option value="Remember">Remember</option>
+                  <option value="Understand">Understand</option>
+                  <option value="Apply">Apply</option>
+                  <option value="Analyze">Analyze</option>
+                  <option value="Evaluate">Evaluate</option>
+                  <option value="Create">Create</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span class="field-label">Keywords</span>
+              <input id="keywords" placeholder="ohm, resistance, voltage, current" />
+            </label>
+            <button class="btn" type="submit">Save CO/CLO</button>
+            <p class="message" id="outcomeMessage"></p>
+          </form>
+
+          <form class="card" id="bulkOutcomeForm">
+            <h2>Bulk Import From Syllabus</h2>
+            <label>
+              <span class="field-label">Subject</span>
+              <input id="bulkSubject" required placeholder="Circuits 1" />
+            </label>
+            <label>
+              <span class="field-label">Engineering Department</span>
+              <input
+                id="bulkDepartment"
+                placeholder="Electronics Engineering"
+                list="departmentOptions"
+              />
+            </label>
+            <label>
+              <span class="field-label">Rows</span>
+              <textarea
+                id="bulkText"
+                required
+                placeholder="CO1 | Explain basic circuit laws | a | Understand | ohm, kirchhoff&#10;CO2 | Solve DC circuit problems | b | Apply | resistance, voltage, current"
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Import Rows</button>
+            <p class="message" id="bulkOutcomeMessage"></p>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Saved CO/CLO Library</h2>
+            <label class="search-box">
+              <span>Filter</span>
+              <input id="outcomeFilter" placeholder="Subject or CO" />
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subject</th>
+                  <th>Department</th>
+                  <th>CO/CLO</th>
+                  <th>Description</th>
+                  <th>SO Link</th>
+                  <th>Bloom</th>
+                  <th>Keywords</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="outcomeBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <datalist id="departmentOptions"></datalist>
+    <datalist id="studentOutcomeOptions"></datalist>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/obe-management.js"></script>
+  </body>
+</html>

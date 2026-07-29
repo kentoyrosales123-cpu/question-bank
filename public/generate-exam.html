@@ -49,6 +49,22 @@
                 </label>
 
                 <label>
+                  <span class="field-label">Engineering Program *</span>
+                  <select id="engineeringProgram" required>
+                    <option value="">Select program</option>
+                    <option value="General Engineering">General Engineering</option>
+                    <option value="ECE">ECE</option>
+                    <option value="CE">CE</option>
+                    <option value="EE">EE</option>
+                    <option value="ME">ME</option>
+                    <option value="CpE">CpE</option>
+                    <option value="CHE">CHE</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="field-grid two">
+                <label>
                   <span class="field-label">Subject *</span>
                   <select id="subject" multiple required></select>
                   <small>Hold Ctrl or Cmd to select more than one subject.</small>
@@ -197,6 +213,7 @@
             <h2><span class="section-icon">D</span> Exam Summary</h2>
             <div class="summary-list">
               <p><span>Total Questions</span><strong id="summaryTotal">20</strong></p>
+              <p><span>Program</span><strong id="summaryProgram">Not selected</strong></p>
               <p><span>Subject</span><strong id="summarySubject">Not selected</strong></p>
               <p><span>Topic</span><strong id="summaryTopic">All topics</strong></p>
             </div>

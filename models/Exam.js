@@ -12,6 +12,12 @@ const examSchema = new mongoose.Schema(
       required: true,
     },
 
+    engineeringProgram: {
+      type: String,
+      enum: ["", "General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      default: "",
+    },
+
     topic: {
       type: String,
       default: "",

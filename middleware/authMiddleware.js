@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const { isAdmin } = require("../utils/roles");
+const { isAdmin, isSuperAdmin } = require("../utils/roles");
 
 const protect = async (req, res, next) => {
   try {
@@ -53,4 +53,15 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { protect, adminOnly };
+const superAdminOnly = (req, res, next) => {
+  if (!isSuperAdmin(req.user)) {
+    return res.status(403).json({
+      success: false,
+      message: "Super Admin access only.",
+    });
+  }
+
+  next();
+};
+
+module.exports = { protect, adminOnly, superAdminOnly };

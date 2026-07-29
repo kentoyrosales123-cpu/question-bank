@@ -6,6 +6,7 @@ let generationPollTimer = null;
 
 const summaryFields = [
   "title",
+  "engineeringProgram",
   "subject",
   "topic",
   "courseOutcome",
@@ -75,8 +76,11 @@ function updateExamSummary() {
   const difficult = getNumber("difficultCount");
   const subjects = getSelectedValues("subject");
   const topics = getSelectedValues("topic");
+  const engineeringProgram = document.getElementById("engineeringProgram").value;
 
   document.getElementById("summaryTotal").textContent = totalItems || 0;
+  document.getElementById("summaryProgram").textContent =
+    engineeringProgram || "Not selected";
   document.getElementById("summarySubject").textContent =
     formatSelection(subjects, "Not selected");
   document.getElementById("summaryTopic").textContent =
@@ -271,6 +275,9 @@ async function loadExamOptions() {
 }
 
 document.getElementById("subject").addEventListener("change", updateTopicOptions);
+document
+  .getElementById("engineeringProgram")
+  .addEventListener("change", updateExamSummary);
 document.getElementById("topic").addEventListener("change", updateExamSummary);
 document.getElementById("courseOutcome").addEventListener("change", updateExamSummary);
 document.getElementById("programOutcome").addEventListener("change", updateExamSummary);
@@ -290,9 +297,11 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   const courseOutcomes = getSelectedValues("courseOutcome");
   const programOutcomes = getSelectedValues("programOutcome");
   const bloomLevels = getSelectedValues("bloomLevel");
+  const engineeringProgram = document.getElementById("engineeringProgram").value;
 
   const body = {
     title: document.getElementById("title").value,
+    engineeringProgram,
     subjects,
     topics,
     courseOutcomes,
@@ -318,6 +327,13 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   if (!useBlueprint && subjects.length === 0) {
     document.getElementById("examMessage").textContent =
       "Select at least one subject.";
+    document.getElementById("examMessage").classList.add("wrong");
+    return;
+  }
+
+  if (!engineeringProgram) {
+    document.getElementById("examMessage").textContent =
+      "Select an engineering program.";
     document.getElementById("examMessage").classList.add("wrong");
     return;
   }

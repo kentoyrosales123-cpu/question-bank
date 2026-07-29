@@ -8,6 +8,12 @@ const questionSchema = new mongoose.Schema(
       trim: true,
     },
 
+    engineeringProgram: {
+      type: String,
+      enum: ["", "General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      default: "",
+    },
+
     topic: {
       type: String,
       required: true,

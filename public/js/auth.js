@@ -21,8 +21,10 @@ function setAuth(token, user) {
 const ROLE_LABELS = {
   super_admin: "Super Admin",
   admin: "Admin",
+  cee_cac_coordinator: "CEE-CAC Coordinator",
   "Super Admin": "Super Admin",
   Admin: "Admin",
+  "CEE-CAC Coordinator": "CEE-CAC Coordinator",
   exam_creator: "Exam Creator",
   exam_requestor: "Exam Requestor",
   professor: "Exam Creator",
@@ -41,6 +43,7 @@ function normalizeRole(role) {
   const displayRoleMap = {
     "Super Admin": "super_admin",
     Admin: "admin",
+    "CEE-CAC Coordinator": "cee_cac_coordinator",
     "Exam Creator": "exam_creator",
     "Exam Requestor": "exam_requestor",
   };
@@ -64,14 +67,38 @@ function isAdminRole(user) {
   return hasAnyRole(user, ["admin", "super_admin"]);
 }
 
+function isSuperAdminRole(user) {
+  return hasAnyRole(user, ["super_admin"]);
+}
+
 function isCreatorRole(user) {
   return hasAnyRole(user, ["exam_creator"]);
+}
+
+function isCeeCacCoordinatorRole(user) {
+  return hasAnyRole(user, ["cee_cac_coordinator"]);
+}
+
+function canCreateContentRole(user) {
+  return isAdminRole(user) || isCreatorRole(user) || isCeeCacCoordinatorRole(user);
 }
 
 function getDashboardUrl(user = getUser()) {
   return isAdminRole(user)
     ? "/dashboard.html"
     : "/user-dashboard.html";
+}
+
+function contentManagerPage() {
+  const user = getUser();
+
+  if (!canCreateContentRole(user)) {
+    alert("Content management access only.");
+    location.replace(getDashboardUrl(user));
+    return false;
+  }
+
+  return true;
 }
 
 function logout() {
@@ -102,6 +129,18 @@ function adminOnlyPage() {
 
   if (!isAdminRole(user)) {
     alert("Admin access only.");
+    location.replace(getDashboardUrl(user));
+    return false;
+  }
+
+  return true;
+}
+
+function superAdminOnlyPage() {
+  const user = getUser();
+
+  if (!isSuperAdminRole(user)) {
+    alert("Super Admin access only.");
     location.replace(getDashboardUrl(user));
     return false;
   }
@@ -747,8 +786,16 @@ function ensureSidebarLink(sidebar, { href, label, afterHref }) {
 }
 
 function normalizeSidebarLinks(sidebar) {
+  const user = getUser();
+
   if (location.pathname !== "/parsed-questions.html") {
     sidebar.querySelectorAll('a[href="/parsed-questions.html"]').forEach((link) => {
+      link.remove();
+    });
+  }
+
+  if (!isSuperAdminRole(user)) {
+    sidebar.querySelectorAll('a[href="/obe-management.html"]').forEach((link) => {
       link.remove();
     });
   }
@@ -778,10 +825,19 @@ function normalizeSidebarLinks(sidebar) {
     label: "Item Analysis",
     afterHref: "/generate-exam.html",
   });
+  if (isSuperAdminRole(user)) {
+    ensureSidebarLink(sidebar, {
+      href: "/obe-management.html",
+      label: "OBE Management",
+      afterHref: "/item-analysis-upload.html",
+    });
+  }
   ensureSidebarLink(sidebar, {
     href: "/profile.html",
     label: "Profile",
-    afterHref: "/item-analysis-upload.html",
+    afterHref: isSuperAdminRole(user)
+      ? "/obe-management.html"
+      : "/item-analysis-upload.html",
   });
   ensureSidebarLink(sidebar, {
     href: "/users.html",

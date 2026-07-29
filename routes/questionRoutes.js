@@ -15,14 +15,12 @@ const {
 
 const { protect } = require("../middleware/authMiddleware");
 const imageUpload = require("../middleware/imageUploadMiddleware");
+const { canCreateContent } = require("../utils/roles");
 
-// Allow Admin + Super Admin
-const adminOrSuperAdminOnly = (req, res, next) => {
-  const allowedRoles = ["admin", "super_admin", "Admin", "Super Admin"];
-
-  if (!req.user || !allowedRoles.includes(req.user.role)) {
+const contentManagerOnly = (req, res, next) => {
+  if (!canCreateContent(req.user)) {
     return res.status(403).json({
-      message: "Admin or Super Admin access only.",
+      message: "Question bank access denied.",
     });
   }
 
@@ -30,29 +28,29 @@ const adminOrSuperAdminOnly = (req, res, next) => {
 };
 
 // Question routes
-router.get("/", protect, adminOrSuperAdminOnly, getQuestions);
+router.get("/", protect, contentManagerOnly, getQuestions);
 
-router.get("/filter", protect, adminOrSuperAdminOnly, filterQuestions);
+router.get("/filter", protect, contentManagerOnly, filterQuestions);
 
 // Question details
-router.get("/:id/image", getQuestionImage);
+router.get("/:id/image", protect, getQuestionImage);
 
-router.get("/:id/history", protect, adminOrSuperAdminOnly, getQuestionHistory);
+router.get("/:id/history", protect, contentManagerOnly, getQuestionHistory);
 
 router.get(
   "/:id/analytics",
   protect,
-  adminOrSuperAdminOnly,
+  contentManagerOnly,
   getQuestionAnalytics,
 );
 
-router.get("/:id", protect, adminOrSuperAdminOnly, getQuestion);
+router.get("/:id", protect, contentManagerOnly, getQuestion);
 
 // Create question
 router.post(
   "/",
   protect,
-  adminOrSuperAdminOnly,
+  contentManagerOnly,
   imageUpload.single("image"),
   createQuestion,
 );
@@ -61,12 +59,12 @@ router.post(
 router.put(
   "/:id",
   protect,
-  adminOrSuperAdminOnly,
+  contentManagerOnly,
   imageUpload.single("image"),
   updateQuestion,
 );
 
 // Delete question
-router.delete("/:id", protect, adminOrSuperAdminOnly, deleteQuestion);
+router.delete("/:id", protect, contentManagerOnly, deleteQuestion);
 
 module.exports = router;

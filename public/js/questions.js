@@ -1,4 +1,5 @@
-const canLoadQuestionsPage = protectPage() && isAdminRole(getUser());
+const canLoadQuestionsPage = protectPage() && contentManagerPage();
+const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
 
 let currentQuestionsEndpoint = "/questions";
 let currentQuestions = [];
@@ -44,6 +45,7 @@ function renderQuestionsPage() {
             return `
       <tr>
         <td>${escapeHTML(q.subject)}</td>
+        <td>${escapeHTML(q.engineeringProgram || "Not set")}</td>
         <td>${escapeHTML(q.topic)}</td>
         <td>${escapeHTML(truncateText(q.questionText, 80))}</td>
         <td>
@@ -64,9 +66,7 @@ function renderQuestionsPage() {
           <div class="action-row">
             <button class="btn secondary" type="button" onclick="viewQuestion('${q._id}')">View</button>
             ${
-              ["admin", "super_admin", "Admin", "Super Admin"].includes(
-                getUser()?.role,
-              )
+              isAdminRole(getUser()) || isCeeCacCoordinatorRole(getUser())
                 ? `
                   <button class="btn"
 type="button"
@@ -89,7 +89,7 @@ Delete
           },
         )
         .join("")
-    : `<tr><td colspan="7" class="muted-text">No questions found.</td></tr>`;
+    : `<tr><td colspan="8" class="muted-text">No questions found.</td></tr>`;
 
   renderQuestionsPagination(totalPages);
 }
@@ -142,6 +142,22 @@ function getQuestionDifficultyClass(difficulty) {
   return String(getQuestionDifficultyLabel(difficulty)).toLowerCase();
 }
 
+function renderSubjectEditControl(question) {
+  if (isCeeCacCoordinatorRole(getUser())) {
+    return `
+      <select id="editSubject" required>
+        ${CEE_CAC_SUBJECTS.map(
+          (subject) => `
+            <option value="${subject}" ${question.subject === subject ? "selected" : ""}>${subject}</option>
+          `,
+        ).join("")}
+      </select>
+    `;
+  }
+
+  return `<input id="editSubject" value="${escapeAttribute(question.subject)}" required />`;
+}
+
 function formatObeTag(question) {
   const clo = question.courseOutcome || "No CLO";
   const plo = question.programOutcome || "No PLO";
@@ -192,6 +208,10 @@ async function viewQuestion(id) {
         <div>
           <span class="field-label">Subject</span>
           <strong>${escapeHTML(question.subject)}</strong>
+        </div>
+        <div>
+          <span class="field-label">Program</span>
+          <strong>${escapeHTML(question.engineeringProgram || "Not set")}</strong>
         </div>
         <div>
           <span class="field-label">Topic</span>
@@ -386,8 +406,23 @@ async function editQuestion(id) {
         <div class="field-grid two">
           <label>
             <span class="field-label">Subject</span>
-            <input id="editSubject" value="${escapeAttribute(question.subject)}" required />
+            ${renderSubjectEditControl(question)}
           </label>
+          <label>
+            <span class="field-label">Engineering Program</span>
+            <select id="editEngineeringProgram" required>
+              ${["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"]
+                .map(
+                  (program) => `
+                    <option value="${program}" ${question.engineeringProgram === program ? "selected" : ""}>${program}</option>
+                  `,
+                )
+                .join("")}
+            </select>
+          </label>
+        </div>
+
+        <div class="field-grid two">
           <label>
             <span class="field-label">Topic</span>
             <input id="editTopic" value="${escapeAttribute(question.topic)}" required />
@@ -514,6 +549,10 @@ async function saveQuestionEdits(event, id) {
   const form = new FormData();
 
   form.append("subject", document.getElementById("editSubject").value);
+  form.append(
+    "engineeringProgram",
+    document.getElementById("editEngineeringProgram").value,
+  );
   form.append("topic", document.getElementById("editTopic").value);
   form.append(
     "questionText",

@@ -1,14 +1,59 @@
 protectPage();
-adminOnlyPage();
+contentManagerPage();
+
+const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
+
+function canUseSubject(subject) {
+  const user = getUser();
+
+  if (isAdminRole(user)) return true;
+  if (isCeeCacCoordinatorRole(user)) {
+    return CEE_CAC_SUBJECTS.includes(subject);
+  }
+
+  return !CEE_CAC_SUBJECTS.includes(subject);
+}
+
+function restrictSubjectForCoordinator() {
+  if (!isCeeCacCoordinatorRole(getUser())) {
+    return;
+  }
+
+  const subjectInput = document.getElementById("subject");
+  const select = document.createElement("select");
+  select.id = "subject";
+  select.required = true;
+  select.innerHTML = `
+    <option value="">Select subject</option>
+    ${CEE_CAC_SUBJECTS.map(
+      (subject) => `<option value="${subject}">${subject}</option>`,
+    ).join("")}
+  `;
+  subjectInput.replaceWith(select);
+}
+
+restrictSubjectForCoordinator();
 
 document
   .getElementById("questionForm")
   .addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    const subject = document.getElementById("subject").value;
+
+    if (!canUseSubject(subject)) {
+      document.getElementById("message").textContent =
+        "Only CEE-CAC Coordinator can use CEE 601, CEE 602, CEE 603, and CEE 604.";
+      return;
+    }
+
     const form = new FormData();
 
-    form.append("subject", document.getElementById("subject").value);
+    form.append("subject", subject);
+    form.append(
+      "engineeringProgram",
+      document.getElementById("engineeringProgram").value,
+    );
     form.append("topic", document.getElementById("topic").value);
     form.append("questionText", document.getElementById("questionText").value);
     form.append("choiceA", document.getElementById("choiceA").value);

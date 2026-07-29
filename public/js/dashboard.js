@@ -160,7 +160,7 @@ function renderExamItem(exam) {
       <span class="item-file">D</span>
       <div>
         <strong>${escapeHTML(exam.title)}</strong>
-        <small>${escapeHTML(exam.totalItems)} items by ${escapeHTML(owner)}</small>
+        <small>${escapeHTML(exam.engineeringProgram || "No program")} | ${escapeHTML(exam.totalItems)} items by ${escapeHTML(owner)}</small>
       </div>
       <span class="badge ${isPending ? "average" : isRejected ? "difficult" : "easy"}">
         ${isPending ? "Pending Approval" : isRejected ? "Rejected" : "Released"}

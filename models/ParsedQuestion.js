@@ -8,6 +8,11 @@ const parsedQuestionSchema = new mongoose.Schema(
       required: true,
     },
     subject: { type: String, default: "" },
+    engineeringProgram: {
+      type: String,
+      enum: ["", "General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      default: "",
+    },
     topic: { type: String, default: "" },
     questionText: { type: String, required: true },
     choices: {

@@ -2,8 +2,8 @@ protectPage();
 
 const parsedReviewUser = getUser();
 
-if (parsedReviewUser && !isAdminRole(parsedReviewUser) && !isCreatorRole(parsedReviewUser)) {
-  alert("Parsed question review is for Admins and Exam Creators only.");
+if (parsedReviewUser && !canCreateContentRole(parsedReviewUser)) {
+  alert("Parsed question review is for Admins, Exam Creators, and CEE-CAC Coordinators only.");
   location.href = getDashboardUrl(parsedReviewUser);
 }
 
@@ -190,6 +190,8 @@ function renderParsedCard(q, index) {
             </div>
           </div>
 
+          ${renderOutcomeSuggestion(q)}
+
           <div class="field-grid two">
             ${renderField("Course Outcome", `courseOutcome_${q._id}`, q.courseOutcome || "")}
             ${renderField("Program Outcome", `programOutcome_${q._id}`, q.programOutcome || "")}
@@ -247,6 +249,48 @@ function renderDuplicateWarning(candidates) {
         .join("")}
     </div>
   `;
+}
+
+function renderOutcomeSuggestion(q) {
+  const suggestion = q.suggestedCourseOutcome;
+
+  if (!suggestion) {
+    return `
+      <div class="obe-suggestion">
+        <small>No CO/CLO suggestion available for this subject yet.</small>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="obe-suggestion">
+      <small>Suggested CO/CLO - ${suggestion.confidence}% confidence</small>
+      <strong>${escapeHTML(suggestion.code)} - ${escapeHTML(suggestion.description)}</strong>
+      <span>
+        ${escapeHTML(suggestion.programOutcome || "No SO mapped")}
+        ${suggestion.bloomLevel ? ` | ${escapeHTML(suggestion.bloomLevel)}` : ""}
+      </span>
+      <button class="btn secondary compact-btn" type="button" onclick="applyOutcomeSuggestion('${q._id}')">
+        Apply Suggestion
+      </button>
+    </div>
+  `;
+}
+
+function applyOutcomeSuggestion(id) {
+  const question = pendingQuestions.find((item) => item._id === id);
+  const suggestion = question?.suggestedCourseOutcome;
+
+  if (!suggestion) {
+    setMessage(id, "No suggestion available for this question.", "error");
+    return;
+  }
+
+  document.getElementById(`courseOutcome_${id}`).value = suggestion.code || "";
+  document.getElementById(`programOutcome_${id}`).value =
+    suggestion.programOutcome || "";
+  document.getElementById(`bloomLevel_${id}`).value = suggestion.bloomLevel || "";
+  setMessage(id, "CO/CLO suggestion applied. Review it before approving.", "success");
 }
 
 function getVisibleParsedIds() {
@@ -348,6 +392,7 @@ function getQuestionWarnings(q) {
   if (filledChoices.length < 4) warnings.push("Incomplete choices");
   if (!q.correctAnswer) warnings.push("No answer selected");
   if (!q.subject) warnings.push("Missing subject");
+  if (!q.engineeringProgram) warnings.push("Missing program");
   if (!q.topic) warnings.push("Missing topic");
   if (Array.isArray(q.duplicateCandidates) && q.duplicateCandidates.length > 0) {
     warnings.push("High duplicate risk");
@@ -373,7 +418,7 @@ async function approveParsed(id) {
   if (!isParsedQuestionReadyForApproval(body)) {
     setMessage(
       id,
-      "Set the correct answer and complete all choices before approving.",
+      getParsedQuestionApprovalError(body),
       "error",
     );
     return;
@@ -383,11 +428,23 @@ async function approveParsed(id) {
 }
 
 function isParsedQuestionReadyForApproval(body) {
+  return !getParsedQuestionApprovalError(body);
+}
+
+function getParsedQuestionApprovalError(body) {
   const missingChoices = ["A", "B", "C", "D"].filter(
     (letter) => !body.choices[letter],
   );
 
-  return Boolean(body.correctAnswer && missingChoices.length === 0);
+  if (!body.engineeringProgram) {
+    return "This question has no saved engineering program. Re-parse it after selecting a program.";
+  }
+
+  if (!body.correctAnswer || missingChoices.length > 0) {
+    return "Set the correct answer and complete all choices before approving.";
+  }
+
+  return "";
 }
 
 async function rejectParsed(id) {
@@ -428,9 +485,11 @@ async function approveSelectedParsed() {
 
   if (invalidIds.length > 0) {
     invalidIds.forEach((id) => {
+      const body = getParsedFormBody(id);
+
       setMessage(
         id,
-        "Set the correct answer and complete all choices before approving.",
+        getParsedQuestionApprovalError(body),
         "error",
       );
     });
@@ -667,8 +726,11 @@ function setBulkActionState(isWorking) {
 }
 
 function getParsedFormBody(id) {
+  const parsedQuestion = pendingQuestions.find((question) => question._id === id);
+
   return {
     subject: document.getElementById(`subject_${id}`).value.trim(),
+    engineeringProgram: parsedQuestion?.engineeringProgram || "",
     topic: document.getElementById(`topic_${id}`).value.trim(),
     questionText: document.getElementById(`questionText_${id}`).value.trim(),
     choices: {
@@ -707,6 +769,7 @@ function getFilteredQuestions() {
   return pendingQuestions.filter((q) =>
     [
       q.subject,
+      q.engineeringProgram,
       q.topic,
       q.questionText,
       q.correctAnswer,

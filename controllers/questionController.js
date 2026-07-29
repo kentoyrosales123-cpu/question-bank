@@ -1,8 +1,14 @@
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
+const {
+  canAccessSubject,
+  getSubjectAccessFilter,
+} = require("../utils/roles");
+const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const getQuestionSnapshot = (question) => ({
   subject: question.subject,
+  engineeringProgram: question.engineeringProgram || "",
   topic: question.topic,
   questionText: question.questionText,
   choices: {
@@ -30,10 +36,37 @@ const getChangedFields = (before, after) =>
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const getScopedQuestionFilter = (filter, user) => {
+  const subjectAccessFilter = getSubjectAccessFilter(user);
+
+  if (Object.keys(subjectAccessFilter).length === 0) {
+    return filter;
+  }
+
+  if (Object.keys(filter).length === 0) {
+    return subjectAccessFilter;
+  }
+
+  return { $and: [filter, subjectAccessFilter] };
+};
+
+const ensureQuestionAccess = (question, user, res) => {
+  if (canAccessSubject(user, question.subject)) {
+    return true;
+  }
+
+  res.status(403).json({
+    success: false,
+    message: "You do not have access to this subject.",
+  });
+  return false;
+};
+
 exports.createQuestion = async (req, res) => {
   try {
     const {
       subject,
+      engineeringProgram,
       topic,
       questionText,
       choiceA,
@@ -53,6 +86,7 @@ exports.createQuestion = async (req, res) => {
 
     if (
       !subject ||
+      !engineeringProgram ||
       !topic ||
       !questionText ||
       !choiceA ||
@@ -68,6 +102,20 @@ exports.createQuestion = async (req, res) => {
       });
     }
 
+    if (!ENGINEERING_PROGRAMS.includes(engineeringProgram)) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected engineering program is invalid.",
+      });
+    }
+
+    if (!canAccessSubject(req.user, subject)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to add questions for this subject.",
+      });
+    }
+
     const image = req.file
       ? {
           data: req.file.buffer,
@@ -77,6 +125,7 @@ exports.createQuestion = async (req, res) => {
 
     const question = await Question.create({
       subject,
+      engineeringProgram,
       topic,
       questionText,
       choices: {
@@ -113,7 +162,7 @@ exports.createQuestion = async (req, res) => {
 
 exports.getQuestions = async (req, res) => {
   try {
-    const questions = await Question.find()
+    const questions = await Question.find(getScopedQuestionFilter({}, req.user))
       .select("-image.data")
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
@@ -144,6 +193,10 @@ exports.getQuestion = async (req, res) => {
       });
     }
 
+    if (!ensureQuestionAccess(question, req.user, res)) {
+      return;
+    }
+
     res.json({
       success: true,
       question,
@@ -158,10 +211,14 @@ exports.getQuestion = async (req, res) => {
 
 exports.getQuestionImage = async (req, res) => {
   try {
-    const question = await Question.findById(req.params.id).select("image");
+    const question = await Question.findById(req.params.id).select("subject image");
 
     if (!question || !question.image || !question.image.data) {
       return res.status(404).send("Image not found");
+    }
+
+    if (!canAccessSubject(req.user, question.subject)) {
+      return res.status(403).send("Question image access denied");
     }
 
     res.set("Content-Type", question.image.contentType);
@@ -182,6 +239,10 @@ exports.updateQuestion = async (req, res) => {
       });
     }
 
+    if (!ensureQuestionAccess(question, req.user, res)) {
+      return;
+    }
+
     const getBodyValue = (field, fallback) =>
       Object.prototype.hasOwnProperty.call(req.body, field)
         ? req.body[field]
@@ -189,6 +250,10 @@ exports.updateQuestion = async (req, res) => {
 
     const updateData = {
       subject: getBodyValue("subject", question.subject),
+      engineeringProgram: getBodyValue(
+        "engineeringProgram",
+        question.engineeringProgram,
+      ),
       topic: getBodyValue("topic", question.topic),
       questionText: getBodyValue("questionText", question.questionText),
       choices: {
@@ -215,6 +280,14 @@ exports.updateQuestion = async (req, res) => {
           }
         : question.image,
     };
+
+    if (!canAccessSubject(req.user, updateData.subject)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to save questions for this subject.",
+      });
+    }
+
     const before = getQuestionSnapshot(question);
     const after = {
       ...updateData,
@@ -259,7 +332,7 @@ exports.updateQuestion = async (req, res) => {
 exports.getQuestionHistory = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id)
-      .select("versionHistory")
+      .select("subject versionHistory")
       .populate("versionHistory.editedBy", "name email");
 
     if (!question) {
@@ -267,6 +340,10 @@ exports.getQuestionHistory = async (req, res) => {
         success: false,
         message: "Question not found.",
       });
+    }
+
+    if (!ensureQuestionAccess(question, req.user, res)) {
+      return;
     }
 
     res.json({
@@ -284,7 +361,7 @@ exports.getQuestionHistory = async (req, res) => {
 exports.getQuestionAnalytics = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id).select(
-      "subject topic questionText difficulty courseOutcome programOutcome bloomLevel outcomeWeight",
+      "subject engineeringProgram topic questionText difficulty courseOutcome programOutcome bloomLevel outcomeWeight",
     );
 
     if (!question) {
@@ -292,6 +369,10 @@ exports.getQuestionAnalytics = async (req, res) => {
         success: false,
         message: "Question not found.",
       });
+    }
+
+    if (!ensureQuestionAccess(question, req.user, res)) {
+      return;
     }
 
     const exams = await Exam.find({ questions: question._id })
@@ -366,6 +447,10 @@ exports.deleteQuestion = async (req, res) => {
       });
     }
 
+    if (!ensureQuestionAccess(question, req.user, res)) {
+      return;
+    }
+
     await question.deleteOne();
 
     res.json({
@@ -382,12 +467,20 @@ exports.deleteQuestion = async (req, res) => {
 
 exports.filterQuestions = async (req, res) => {
   try {
-    const { subject, topic, difficulty, courseOutcome, programOutcome, bloomLevel } =
-      req.query;
+    const {
+      subject,
+      engineeringProgram,
+      topic,
+      difficulty,
+      courseOutcome,
+      programOutcome,
+      bloomLevel,
+    } = req.query;
 
     const filter = {};
 
     if (subject) filter.subject = new RegExp(escapeRegex(subject), "i");
+    if (engineeringProgram) filter.engineeringProgram = engineeringProgram;
     if (topic) filter.topic = new RegExp(escapeRegex(topic), "i");
     if (difficulty) filter.difficulty = difficulty;
     if (courseOutcome) {
@@ -398,7 +491,9 @@ exports.filterQuestions = async (req, res) => {
     }
     if (bloomLevel) filter.bloomLevel = bloomLevel;
 
-    const questions = await Question.find(filter)
+    const questions = await Question.find(
+      getScopedQuestionFilter(filter, req.user),
+    )
       .select("-image.data")
       .sort({ createdAt: -1 });
 

@@ -8,13 +8,16 @@ const { createWorker } = require("tesseract.js");
 const Upload = require("../models/Upload");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
+const { suggestCourseOutcomes } = require("../services/obeSuggestionService");
 const {
+  canAccessSubject,
   canApproveQuestionBank,
   canCreateContent,
   isAdmin,
 } = require("../utils/roles");
 
 const isAdminUser = (user) => isAdmin(user);
+const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const isUploadOwner = (upload, user) =>
   Boolean(
@@ -54,6 +57,7 @@ const getParsedQuestionUpdates = (body = {}) => {
   const updates = {};
   const fields = [
     "subject",
+    "engineeringProgram",
     "topic",
     "questionText",
     "correctAnswer",
@@ -721,7 +725,31 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
-    const { uploadId, subject, topic } = req.body;
+    const { uploadId, engineeringProgram, subject, topic } = req.body;
+    const selectedEngineeringProgram = String(
+      engineeringProgram || "",
+    ).trim();
+
+    if (!selectedEngineeringProgram) {
+      return res.status(400).json({
+        success: false,
+        message: "Select an engineering program before parsing.",
+      });
+    }
+
+    if (!ENGINEERING_PROGRAMS.includes(selectedEngineeringProgram)) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected engineering program is invalid.",
+      });
+    }
+
+    if (!canAccessSubject(req.user, subject)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to parse questions for this subject.",
+      });
+    }
 
     const upload = await Upload.findById(uploadId);
 
@@ -814,6 +842,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
         return {
           upload: upload._id,
+          engineeringProgram: selectedEngineeringProgram,
           subject,
           topic,
           questionText: q.questionText,
@@ -893,6 +922,11 @@ exports.getParsedQuestions = async (req, res) => {
         item.duplicateCandidates.length === 0 ? "None" : "High";
 
       return item;
+    }).filter((item) => canAccessSubject(req.user, item.subject));
+    const suggestions = await suggestCourseOutcomes(parsedQuestionsWithDuplicates);
+
+    parsedQuestionsWithDuplicates.forEach((item, index) => {
+      item.suggestedCourseOutcome = suggestions[index];
     });
 
     res.json({
@@ -948,6 +982,13 @@ exports.approveParsedQuestion = async (req, res) => {
       });
     }
 
+    if (!canAccessSubject(req.user, parsed.subject)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to approve questions for this subject.",
+      });
+    }
+
     const existingQuestions = await Question.find()
       .select("subject topic questionText difficulty")
       .lean();
@@ -970,6 +1011,7 @@ exports.approveParsedQuestion = async (req, res) => {
 
     const question = await Question.create({
       subject: parsed.subject,
+      engineeringProgram: parsed.engineeringProgram,
       topic: parsed.topic,
       questionText: parsed.questionText,
       choices: parsed.choices,
@@ -1025,6 +1067,13 @@ exports.updateParsedQuestion = async (req, res) => {
     }
 
     Object.assign(parsed, getParsedQuestionUpdates(req.body));
+
+    if (!canAccessSubject(req.user, parsed.subject)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to save questions for this subject.",
+      });
+    }
     const updated = await parsed.save();
 
     res.json({
