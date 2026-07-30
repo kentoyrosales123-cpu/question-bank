@@ -52,7 +52,7 @@ function updateObeReport(obeReport) {
   );
   document.getElementById("obePloBody").innerHTML = renderOutcomeRows(
     obeReport.programOutcomes,
-    "PLO",
+    "SO",
   );
   document.getElementById("obeBloomBody").innerHTML =
     obeReport.bloomLevels?.length > 0

@@ -174,7 +174,7 @@ const calculateObeReport = async () => {
 
   questions.forEach((question) => {
     const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
-    const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped PLO");
+    const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
     const bloomLevel = toOutcomeKey(question.bloomLevel, "Unmapped Bloom");
 
     if (question.courseOutcome && question.programOutcome) {
@@ -212,7 +212,7 @@ const calculateObeReport = async () => {
       }
 
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
-      const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped PLO");
+      const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
 
       if (!courseOutcomes.has(courseOutcome)) {

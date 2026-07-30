@@ -226,7 +226,6 @@ function formatStudentOutcomeLink(value = "") {
     .map((item) =>
       item
         .replace(/^SO[-\s]*/i, "")
-        .replace(/^PLO[-\s]*/i, "")
         .trim()
         .toLowerCase(),
     )

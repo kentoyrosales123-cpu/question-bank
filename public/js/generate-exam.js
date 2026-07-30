@@ -259,7 +259,7 @@ async function loadExamOptions() {
     renderOptions(
       "programOutcome",
       data.programOutcomes || [],
-      "No PLO mappings available",
+      "No SO mappings available",
     );
     renderOptions(
       "bloomLevel",

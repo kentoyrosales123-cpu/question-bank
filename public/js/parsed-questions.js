@@ -194,7 +194,7 @@ function renderParsedCard(q, index) {
 
           <div class="field-grid two">
             ${renderField("Course Outcome", `courseOutcome_${q._id}`, q.courseOutcome || "")}
-            ${renderField("Program Outcome", `programOutcome_${q._id}`, q.programOutcome || "")}
+            ${renderField("Student Outcome", `programOutcome_${q._id}`, q.programOutcome || "")}
           </div>
 
           <div class="field-grid two">

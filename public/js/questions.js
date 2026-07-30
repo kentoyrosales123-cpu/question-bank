@@ -160,9 +160,9 @@ function renderSubjectEditControl(question) {
 
 function formatObeTag(question) {
   const clo = question.courseOutcome || "No CLO";
-  const plo = question.programOutcome || "No PLO";
+  const so = question.programOutcome || "No SO";
 
-  return `${clo} / ${plo}`;
+  return `${clo} / ${so}`;
 }
 
 async function filterQuestions() {
@@ -230,7 +230,7 @@ async function viewQuestion(id) {
           <strong>${escapeHTML(question.courseOutcome || "Not mapped")}</strong>
         </div>
         <div>
-          <span class="field-label">Program Outcome</span>
+          <span class="field-label">Student Outcome</span>
           <strong>${escapeHTML(question.programOutcome || "Not mapped")}</strong>
         </div>
         <div>
@@ -480,8 +480,8 @@ async function editQuestion(id) {
             <input id="editCourseOutcome" value="${escapeAttribute(question.courseOutcome || "")}" placeholder="CLO1" />
           </label>
           <label>
-            <span class="field-label">Program Outcome</span>
-            <input id="editProgramOutcome" value="${escapeAttribute(question.programOutcome || "")}" placeholder="PLO1" />
+            <span class="field-label">Student Outcome</span>
+            <input id="editProgramOutcome" value="${escapeAttribute(question.programOutcome || "")}" placeholder="SO a" />
           </label>
         </div>
 
