@@ -21,39 +21,115 @@
         </div>
       </section>
 
-      <form class="auth-card" id="loginForm">
-        <div class="auth-form-heading">
-          <span>Welcome Back</span>
-          <h1>Sign in to your account</h1>
+      <section class="auth-card">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="showLoginTab" type="button">
+            Login
+          </button>
+          <button class="auth-tab" id="showRegisterTab" type="button">
+            Register
+          </button>
         </div>
 
-        <label>
-          <span class="field-label">Email Address</span>
-          <input
-            id="email"
-            type="email"
-            placeholder="user@example.com"
-            required
-          />
-        </label>
-        <label>
-          <span class="field-label">Password</span>
-          <input
-            id="password"
-            type="password"
-            placeholder="Enter your password"
-            required
-          />
-        </label>
+        <form id="loginForm">
+          <div class="auth-form-heading">
+            <span>Welcome Back</span>
+            <h1>Sign in to your account</h1>
+          </div>
 
-        <button class="btn" type="submit">Login</button>
+          <label>
+            <span class="field-label">Email Address</span>
+            <input
+              id="email"
+              type="email"
+              placeholder="user@example.com"
+              required
+            />
+          </label>
+          <label>
+            <span class="field-label">Password</span>
+            <input
+              id="password"
+              type="password"
+              placeholder="Enter your password"
+              required
+            />
+          </label>
 
-        <div class="auth-link-row">
-          <a href="/forgot-password.html">Forgot password?</a>
-          <span>Need an account? Contact your administrator.</span>
-        </div>
+          <button class="btn" type="submit">Login</button>
+
+          <div class="auth-link-row">
+            <a href="/forgot-password.html">Forgot password?</a>
+            <span>New accounts register as Exam Requestor.</span>
+            <span>After email verification, Super Admin approval is required.</span>
+          </div>
+        </form>
+
+        <form class="hidden" id="registerForm">
+          <div class="auth-form-heading">
+            <span>Create Account</span>
+            <h1>Register as Exam Requestor</h1>
+          </div>
+
+          <label>
+            <span class="field-label">Full Name</span>
+            <input id="registerName" placeholder="Your name" required />
+          </label>
+          <label>
+            <span class="field-label">Email Address</span>
+            <input
+              id="registerEmail"
+              type="email"
+              placeholder="user@example.com"
+              required
+            />
+          </label>
+          <label>
+            <span class="field-label">Password</span>
+            <input
+              id="registerPassword"
+              type="password"
+              placeholder="Create a password"
+              required
+            />
+          </label>
+
+          <button class="btn" type="submit">Create Account</button>
+        </form>
+
+        <form class="hidden" id="verifyEmailForm">
+          <div class="auth-form-heading">
+            <span>Email Verification</span>
+            <h1>Enter your verification code</h1>
+          </div>
+
+          <label>
+            <span class="field-label">Email Address</span>
+            <input id="verifyEmail" type="email" readonly />
+          </label>
+          <label>
+            <span class="field-label">Verification Code</span>
+            <input
+              id="verifyOtp"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="6-digit code"
+              required
+            />
+          </label>
+
+          <button class="btn" type="submit">Verify and Login</button>
+          <button
+            class="btn secondary"
+            id="resendVerificationButton"
+            type="button"
+          >
+            Resend Code
+          </button>
+        </form>
+
         <p class="message wrong" id="authMessage"></p>
-      </form>
+      </section>
     </main>
 
     <script src="/js/auth.js"></script>

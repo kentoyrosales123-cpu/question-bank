@@ -36,6 +36,17 @@ const getChangedFields = (before, after) =>
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const getPaginationParams = (query = {}) => {
+  const page = Math.max(1, Number(query.page || 1));
+  const limit = Math.min(50, Math.max(1, Number(query.limit || 20)));
+
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit,
+  };
+};
+
 const getScopedQuestionFilter = (filter, user) => {
   const subjectAccessFilter = getSubjectAccessFilter(user);
 
@@ -162,14 +173,24 @@ exports.createQuestion = async (req, res) => {
 
 exports.getQuestions = async (req, res) => {
   try {
-    const questions = await Question.find(getScopedQuestionFilter({}, req.user))
-      .select("-image.data")
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = getPaginationParams(req.query);
+    const filter = getScopedQuestionFilter({}, req.user);
+    const [questions, count] = await Promise.all([
+      Question.find(filter)
+        .select("-image.data")
+        .populate("createdBy", "name email")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Question.countDocuments(filter),
+    ]);
 
     res.json({
       success: true,
-      count: questions.length,
+      count,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(count / limit)),
       questions,
     });
   } catch (error) {
@@ -491,15 +512,23 @@ exports.filterQuestions = async (req, res) => {
     }
     if (bloomLevel) filter.bloomLevel = bloomLevel;
 
-    const questions = await Question.find(
-      getScopedQuestionFilter(filter, req.user),
-    )
-      .select("-image.data")
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = getPaginationParams(req.query);
+    const scopedFilter = getScopedQuestionFilter(filter, req.user);
+    const [questions, count] = await Promise.all([
+      Question.find(scopedFilter)
+        .select("-image.data")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Question.countDocuments(scopedFilter),
+    ]);
 
     res.json({
       success: true,
-      count: questions.length,
+      count,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(count / limit)),
       questions,
     });
   } catch (error) {

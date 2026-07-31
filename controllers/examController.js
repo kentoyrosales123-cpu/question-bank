@@ -61,6 +61,87 @@ const canOpenExamContent = (exam, user) => {
   return isAdmin(user) || isApprovedExam(exam);
 };
 
+const createAttainmentBucket = (code) => ({
+  code,
+  questionCount: 0,
+  assessedItems: 0,
+  correctItems: 0,
+  totalWeight: 0,
+  earnedWeight: 0,
+  attainmentRate: 0,
+  status: "Not assessed",
+});
+
+const finalizeAttainmentBucket = (bucket) => {
+  const totalWeight = Number(bucket.totalWeight || 0);
+
+  return {
+    ...bucket,
+    totalWeight: Math.round(totalWeight * 100) / 100,
+    earnedWeight: Math.round(Number(bucket.earnedWeight || 0) * 100) / 100,
+    attainmentRate:
+      totalWeight > 0
+        ? Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100)
+        : 0,
+    status:
+      totalWeight <= 0
+        ? "Not assessed"
+        : Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100) >= 75
+          ? "Attained"
+          : "Not attained",
+  };
+};
+
+const buildExamAttainmentReport = (exam) => {
+  const courseOutcomes = new Map();
+  const studentOutcomes = new Map();
+  const answerByQuestionId = new Map(
+    (exam.answers || [])
+      .filter((answer) => answer.question)
+      .map((answer) => [answer.question._id?.toString?.() || answer.question.toString(), answer]),
+  );
+
+  (exam.questions || []).forEach((question) => {
+    const questionId = question._id.toString();
+    const answer = answerByQuestionId.get(questionId);
+    const weight = Math.max(0, Number(question.outcomeWeight || 1));
+    const outcomePairs = [
+      {
+        map: courseOutcomes,
+        code: question.courseOutcome || "Unmapped CLO",
+      },
+      {
+        map: studentOutcomes,
+        code: question.programOutcome || "Unmapped SO",
+      },
+    ];
+
+    outcomePairs.forEach(({ map, code }) => {
+      if (!map.has(code)) {
+        map.set(code, createAttainmentBucket(code));
+      }
+
+      const bucket = map.get(code);
+      bucket.questionCount += 1;
+
+      if (answer) {
+        bucket.assessedItems += 1;
+        bucket.totalWeight += weight;
+
+        if (answer.isCorrect) {
+          bucket.correctItems += 1;
+          bucket.earnedWeight += weight;
+        }
+      }
+    });
+  });
+
+  return {
+    courseOutcomes: Array.from(courseOutcomes.values()).map(finalizeAttainmentBucket),
+    studentOutcomes: Array.from(studentOutcomes.values()).map(finalizeAttainmentBucket),
+  };
+};
+
 const normalizeSelection = (value) => {
   const values = Array.isArray(value) ? value : [value];
 
@@ -662,6 +743,7 @@ exports.submitExam = async (req, res) => {
     const result = await Exam.findById(exam._id)
       .populate("questions")
       .populate("answers.question");
+    const attainment = buildExamAttainmentReport(result);
 
     res.json({
       success: true,
@@ -669,6 +751,7 @@ exports.submitExam = async (req, res) => {
       score,
       totalItems: exam.totalItems,
       result,
+      attainment,
     });
   } catch (error) {
     res.status(500).json({
@@ -708,6 +791,7 @@ exports.getExam = async (req, res) => {
 
     res.json({
       success: true,
+      attainment: buildExamAttainmentReport(exam),
       exam,
     });
   } catch (error) {
@@ -972,6 +1056,7 @@ const formatCognitiveProcess = (question) =>
 const getTopicKey = (question) =>
   `${question.subject || "General"}|||${question.topic || "General"}|||${
     question.courseOutcome || "Unmapped CLO"
+  }|||${question.programOutcome || "Unmapped SO"
   }`;
 
 const buildTosRows = (exam) => {
@@ -986,6 +1071,7 @@ const buildTosRows = (exam) => {
         subject: question.subject || exam.subject || "",
         topic: question.topic || "General",
         courseOutcome: question.courseOutcome || "Unmapped CLO",
+        studentOutcomes: new Set(),
         programOutcomes: new Set(),
         difficulties: new Set(),
         itemNumbers: [],
@@ -995,6 +1081,7 @@ const buildTosRows = (exam) => {
     const row = grouped.get(key);
     row.difficulties.add(formatCognitiveProcess(question));
     if (question.programOutcome) {
+      row.studentOutcomes.add(question.programOutcome);
       row.programOutcomes.add(question.programOutcome);
     }
     row.itemNumbers.push(index + 1);
@@ -1007,6 +1094,9 @@ const buildTosRows = (exam) => {
 
     return {
       courseOutcome: row.courseOutcome,
+      studentOutcome:
+        Array.from(row.studentOutcomes).filter(Boolean).join(", ") ||
+        "Unmapped SO",
       topic:
         row.subject && row.subject !== exam.subject
           ? `${row.subject} - ${row.topic}`
@@ -1329,6 +1419,7 @@ const buildTosDocxBuffer = async (exam) => {
     ...tosRows,
     ...Array.from({ length: Math.max(0, 4 - tosRows.length) }, () => ({
       courseOutcome: "",
+      studentOutcome: "",
       topic: "",
       cogPr: "",
       assessmentTask: "",
@@ -1356,7 +1447,7 @@ const buildTosDocxBuffer = async (exam) => {
         size: 100,
         type: WidthType.PERCENTAGE,
       },
-      columnWidths: [3300, 4200, 900, 2350, 820, 700, 650, 950],
+      columnWidths: [2500, 900, 3600, 850, 2200, 760, 640, 600, 850],
       rows: [
         new TableRow({
           children: [
@@ -1384,7 +1475,7 @@ const buildTosDocxBuffer = async (exam) => {
                 createTosBlankRun("__________", { size: 18 }),
                 createTextRun(" of 1", { size: 18 }),
               ],
-              { columnSpan: 3, topBorder: true, rightBorder: true },
+              { columnSpan: 4, topBorder: true, rightBorder: true },
             ),
           ],
         }),
@@ -1397,7 +1488,7 @@ const buildTosDocxBuffer = async (exam) => {
                   size: 18,
                 }),
               ],
-              { columnSpan: 2, leftBorder: true },
+              { columnSpan: 3, leftBorder: true },
             ),
             createTosFormCell([
               createTextRun("Term:", { size: 18 }),
@@ -1438,7 +1529,7 @@ const buildTosDocxBuffer = async (exam) => {
                   { size: 18 },
                 ),
               ],
-              { columnSpan: 8, leftBorder: true, rightBorder: true },
+              { columnSpan: 9, leftBorder: true, rightBorder: true },
             ),
           ],
         }),
@@ -1463,7 +1554,7 @@ const buildTosDocxBuffer = async (exam) => {
                   italics: true,
                 }),
               ],
-              { columnSpan: 5, leftBorder: true, bottomBorder: true },
+              { columnSpan: 6, leftBorder: true, bottomBorder: true },
             ),
             createTosFormCell(
               [
@@ -1486,6 +1577,7 @@ const buildTosDocxBuffer = async (exam) => {
         new TableRow({
           children: [
             createTosHeaderCell("Course Outcome", { rowSpan: 2 }),
+            createTosHeaderCell("SO", { rowSpan: 2 }),
             createTosHeaderCell("Topics", { rowSpan: 2 }),
             createTosHeaderCell("CogPr", { rowSpan: 2 }),
             createTosHeaderCell("Assessment Tasks", { rowSpan: 2 }),
@@ -1505,6 +1597,7 @@ const buildTosDocxBuffer = async (exam) => {
             new TableRow({
               children: [
                 createTosCell(row.courseOutcome),
+                createTosCell(row.studentOutcome),
                 createTosCell(row.topic, { alignment: AlignmentType.LEFT }),
                 createTosCell(row.cogPr),
                 createTosCell(row.assessmentTask, {

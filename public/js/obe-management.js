@@ -4,7 +4,9 @@ superAdminOnlyPage();
 let outcomes = [];
 let studentOutcomes = [];
 let studentOutcomePage = 1;
+let courseOutcomePage = 1;
 const studentOutcomesPerPage = 15;
+const courseOutcomesPerPage = 15;
 
 async function loadOutcomes() {
   try {
@@ -153,9 +155,24 @@ function renderOutcomes() {
       .toLowerCase()
       .includes(filter),
   );
+  const totalPages = Math.max(
+    1,
+    Math.ceil(visible.length / courseOutcomesPerPage),
+  );
 
-  document.getElementById("outcomeBody").innerHTML = visible.length
-    ? visible
+  courseOutcomePage = Math.min(
+    totalPages,
+    Math.max(1, Number(courseOutcomePage) || 1),
+  );
+
+  const startIndex = (courseOutcomePage - 1) * courseOutcomesPerPage;
+  const pageRows = visible.slice(
+    startIndex,
+    startIndex + courseOutcomesPerPage,
+  );
+
+  document.getElementById("outcomeBody").innerHTML = pageRows.length
+    ? pageRows
         .map(
           (outcome) => `
             <tr>
@@ -176,6 +193,41 @@ function renderOutcomes() {
         )
         .join("")
     : `<tr><td colspan="8" class="empty-table-cell">No CO/CLO rows saved yet.</td></tr>`;
+  renderCourseOutcomePagination(visible.length, totalPages);
+}
+
+function renderCourseOutcomePagination(totalItems, totalPages) {
+  const pagination = document.getElementById("courseOutcomePagination");
+
+  if (!pagination) return;
+
+  const firstItem = totalItems
+    ? (courseOutcomePage - 1) * courseOutcomesPerPage + 1
+    : 0;
+  const lastItem = Math.min(
+    totalItems,
+    courseOutcomePage * courseOutcomesPerPage,
+  );
+
+  pagination.innerHTML = `
+    <span class="pagination-summary">
+      Showing ${firstItem}-${lastItem} of ${totalItems} CO/CLO rows
+    </span>
+    <div class="pagination-actions">
+      <button class="btn secondary" type="button" onclick="goToCourseOutcomePage(${courseOutcomePage - 1})" ${courseOutcomePage <= 1 ? "disabled" : ""}>
+        Previous
+      </button>
+      <span class="pagination-page">Page ${courseOutcomePage} of ${totalPages}</span>
+      <button class="btn secondary" type="button" onclick="goToCourseOutcomePage(${courseOutcomePage + 1})" ${courseOutcomePage >= totalPages ? "disabled" : ""}>
+        Next
+      </button>
+    </div>
+  `;
+}
+
+function goToCourseOutcomePage(page) {
+  courseOutcomePage = page;
+  renderOutcomes();
 }
 
 document
@@ -314,7 +366,10 @@ document
     }
   });
 
-document.getElementById("outcomeFilter").addEventListener("input", renderOutcomes);
+document.getElementById("outcomeFilter").addEventListener("input", () => {
+  courseOutcomePage = 1;
+  renderOutcomes();
+});
 document
   .getElementById("studentOutcomeFilter")
   .addEventListener("input", () => {

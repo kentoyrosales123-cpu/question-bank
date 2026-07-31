@@ -42,6 +42,19 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    accountStatus: {
+      type: String,
+      enum: ["pending", "approved"],
+      default: "approved",
+    },
+
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    approvedAt: Date,
+
     emailVerificationOtpHash: {
       type: String,
       select: false,

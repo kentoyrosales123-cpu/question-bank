@@ -33,6 +33,13 @@ const protect = async (req, res, next) => {
       });
     }
 
+    if (req.user.toObject({ defaults: false }).accountStatus === "pending") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is waiting for Super Admin approval.",
+      });
+    }
+
     next();
   } catch (error) {
     res.status(401).json({

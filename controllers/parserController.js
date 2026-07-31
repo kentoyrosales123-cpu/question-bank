@@ -26,6 +26,13 @@ const isUploadOwner = (upload, user) =>
     upload.uploadedBy.toString() === user._id.toString(),
   );
 
+const isGeneratedOwner = (parsed, user) =>
+  Boolean(
+    parsed?.generatedBy &&
+      user?._id &&
+      parsed.generatedBy.toString() === user._id.toString(),
+  );
+
 const getAccessibleUploadIds = async (user) => {
   if (isAdminUser(user)) {
     return null;
@@ -49,7 +56,11 @@ const getParsedQuestionForUser = async (parsedQuestionId, user) => {
 
   return {
     parsed,
-    hasAccess: isAdminUser(user) || isUploadOwner(parsed.upload, user),
+    hasAccess:
+      isAdminUser(user) ||
+      isUploadOwner(parsed.upload, user) ||
+      isGeneratedOwner(parsed, user) ||
+      (canApproveQuestionBank(user) && canAccessSubject(user, parsed.subject)),
   };
 };
 
@@ -901,13 +912,19 @@ exports.getParsedQuestions = async (req, res) => {
 
       query.upload = upload._id;
       scopedUpload = upload;
+    } else if (canApproveQuestionBank(req.user)) {
+      Object.assign(query, {});
     } else if (accessibleUploadIds) {
-      query.upload = { $in: accessibleUploadIds };
+      query.$or = [
+        { upload: { $in: accessibleUploadIds } },
+        { generatedBy: req.user._id },
+      ];
     }
 
     const [parsedQuestions, existingQuestions] = await Promise.all([
       ParsedQuestion.find(query)
         .populate("upload", "originalName uploadedBy")
+        .populate("generatedBy", "name email")
         .sort({ createdAt: -1 }),
       Question.find().select("subject topic questionText difficulty").lean(),
     ]);
@@ -952,7 +969,7 @@ exports.approveParsedQuestion = async (req, res) => {
     if (!canApproveQuestionBank(req.user)) {
       return res.status(403).json({
         success: false,
-        message: "Only Admins can approve parsed questions.",
+        message: "Only Admins and CEE-CAC Coordinators can approve parsed questions.",
       });
     }
 
@@ -1094,7 +1111,7 @@ exports.rejectParsedQuestion = async (req, res) => {
     if (!canApproveQuestionBank(req.user)) {
       return res.status(403).json({
         success: false,
-        message: "Only Admins can reject parsed questions.",
+        message: "Only Admins and CEE-CAC Coordinators can reject parsed questions.",
       });
     }
 

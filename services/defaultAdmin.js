@@ -22,6 +22,8 @@ const seedDefaultAdmin = async () => {
       password: hashedPassword,
       role: "super_admin",
       isEmailVerified: true,
+      accountStatus: "approved",
+      approvedAt: new Date(),
     });
 
     console.log(`Default super admin created: ${email}`);
@@ -33,6 +35,8 @@ const seedDefaultAdmin = async () => {
   user.name = user.name || name;
   user.role = "super_admin";
   user.isEmailVerified = true;
+  user.accountStatus = "approved";
+  user.approvedAt = user.approvedAt || new Date();
 
   if (!passwordMatches) {
     user.password = hashedPassword;

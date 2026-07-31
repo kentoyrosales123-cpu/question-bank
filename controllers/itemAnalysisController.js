@@ -907,6 +907,134 @@ const computeAnalysis = (exam, results) => {
   };
 };
 
+const createObeBucket = (code) => ({
+  code,
+  itemCount: 0,
+  responseCount: 0,
+  correctCount: 0,
+  totalWeight: 0,
+  earnedWeight: 0,
+  attainmentRate: 0,
+  status: "Not assessed",
+});
+
+const finalizeObeBucket = (bucket) => {
+  const totalWeight = Number(bucket.totalWeight || 0);
+  const earnedWeight = Number(bucket.earnedWeight || 0);
+  const attainmentRate =
+    totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 0;
+
+  return {
+    ...bucket,
+    totalWeight: Math.round(totalWeight * 100) / 100,
+    earnedWeight: Math.round(earnedWeight * 100) / 100,
+    attainmentRate,
+    status:
+      totalWeight <= 0
+        ? "Not assessed"
+        : attainmentRate >= 75
+          ? "Attained"
+          : "Not attained",
+  };
+};
+
+const ensureObeBucket = (map, code) => {
+  if (!map.has(code)) {
+    map.set(code, createObeBucket(code));
+  }
+
+  return map.get(code);
+};
+
+const addOutcomeResponse = (map, code, itemResult, weight) => {
+  const bucket = ensureObeBucket(map, code);
+
+  bucket.responseCount += 1;
+  bucket.totalWeight += weight;
+
+  if (itemResult?.isCorrect) {
+    bucket.correctCount += 1;
+    bucket.earnedWeight += weight;
+  }
+};
+
+const buildObeAttainment = async (exam, results) => {
+  if (!exam?.generatedExamId) {
+    return {
+      available: false,
+      message:
+        "CO/SO attainment is available only when item analysis is linked to a generated exam.",
+      courseOutcomes: [],
+      studentOutcomes: [],
+      bloomLevels: [],
+    };
+  }
+
+  const generatedExam = await Exam.findById(exam.generatedExamId).populate({
+    path: "questions",
+    select:
+      "courseOutcome programOutcome bloomLevel outcomeWeight questionText",
+  });
+
+  if (!generatedExam || !Array.isArray(generatedExam.questions)) {
+    return {
+      available: false,
+      message: "Linked generated exam was not found.",
+      courseOutcomes: [],
+      studentOutcomes: [],
+      bloomLevels: [],
+    };
+  }
+
+  const courseOutcomes = new Map();
+  const studentOutcomes = new Map();
+  const bloomLevels = new Map();
+  (generatedExam.questions || []).forEach((question, index) => {
+    const itemNo = index + 1;
+    const weight = Math.max(0, Number(question.outcomeWeight || 1));
+    const courseOutcome = question.courseOutcome || "Unmapped CLO";
+    const studentOutcome = question.programOutcome || "Unmapped SO";
+    const bloomLevel = question.bloomLevel || "Unmapped Bloom";
+
+    ensureObeBucket(courseOutcomes, courseOutcome).itemCount += 1;
+    ensureObeBucket(studentOutcomes, studentOutcome).itemCount += 1;
+    ensureObeBucket(bloomLevels, bloomLevel).itemCount += 1;
+
+    results.forEach((result) => {
+      const itemResult =
+        (result.itemResults || []).find((item) => Number(item.itemNo) === itemNo) ||
+        result.itemResults?.[index];
+
+      addOutcomeResponse(
+        courseOutcomes,
+        courseOutcome,
+        itemResult,
+        weight,
+      );
+      addOutcomeResponse(
+        studentOutcomes,
+        studentOutcome,
+        itemResult,
+        weight,
+      );
+      addOutcomeResponse(
+        bloomLevels,
+        bloomLevel,
+        itemResult,
+        weight,
+      );
+    });
+  });
+
+  return {
+    available: true,
+    message: "",
+    courseOutcomes: Array.from(courseOutcomes.values()).map(finalizeObeBucket),
+    studentOutcomes: Array.from(studentOutcomes.values()).map(finalizeObeBucket),
+    bloomLevels: Array.from(bloomLevels.values()).map(finalizeObeBucket),
+  };
+};
+
 const getExamWithResults = async (analysisExamId, user) => {
   const query = { _id: analysisExamId };
 
@@ -1523,6 +1651,7 @@ exports.getItemAnalysis = async (req, res) => {
     }
 
     const analysis = computeAnalysis(data.exam, data.results);
+    analysis.obeAttainment = await buildObeAttainment(data.exam, data.results);
     const difficultySync = await updateGeneratedExamQuestionDifficulties(
       data.exam,
       analysis,
@@ -1588,12 +1717,16 @@ exports.exportItemAnalysis = async (req, res) => {
     }
 
     const analysis = computeAnalysis(data.exam, data.results);
+    analysis.obeAttainment = await buildObeAttainment(data.exam, data.results);
     await updateGeneratedExamQuestionDifficulties(data.exam, analysis);
     const workbook = new ExcelJS.Workbook();
     const summarySheet = workbook.addWorksheet("Summary");
     const itemSheet = workbook.addWorksheet("Item Analysis");
     const scoreSheet = workbook.addWorksheet("Student Scores");
     const perStudentSheet = workbook.addWorksheet("Per Student Analysis");
+    const coSheet = workbook.addWorksheet("CO Attainment");
+    const soSheet = workbook.addWorksheet("SO Attainment");
+    const bloomSheet = workbook.addWorksheet("Bloom Attainment");
 
     summarySheet.addRows([
       ["Exam title", analysis.exam.title],
@@ -1699,7 +1832,37 @@ exports.exportItemAnalysis = async (req, res) => {
       }),
     );
 
-    [summarySheet, itemSheet, scoreSheet, perStudentSheet].forEach((sheet) => {
+    const attainmentColumns = [
+      { header: "Outcome", key: "code", width: 18 },
+      { header: "Items", key: "itemCount", width: 12 },
+      { header: "Responses", key: "responseCount", width: 14 },
+      { header: "Correct", key: "correctCount", width: 12 },
+      { header: "Earned Weight", key: "earnedWeight", width: 16 },
+      { header: "Total Weight", key: "totalWeight", width: 16 },
+      { header: "Attainment %", key: "attainmentRate", width: 16 },
+      { header: "Status", key: "status", width: 16 },
+    ];
+    [
+      [coSheet, analysis.obeAttainment.courseOutcomes],
+      [soSheet, analysis.obeAttainment.studentOutcomes],
+      [bloomSheet, analysis.obeAttainment.bloomLevels],
+    ].forEach(([sheet, rows]) => {
+      sheet.columns = attainmentColumns;
+      sheet.addRows(rows || []);
+      if (!analysis.obeAttainment.available) {
+        sheet.addRow({ code: analysis.obeAttainment.message });
+      }
+    });
+
+    [
+      summarySheet,
+      itemSheet,
+      scoreSheet,
+      perStudentSheet,
+      coSheet,
+      soSheet,
+      bloomSheet,
+    ].forEach((sheet) => {
       sheet.getRow(1).font = { bold: true };
     });
 

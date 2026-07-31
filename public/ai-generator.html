@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+  <head>
+    <title>AI Question Generator</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="sidebar">
+        <h2>Question Bank</h2>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/questions.html">Questions</a>
+        <a href="/add-question.html">Add Question</a>
+        <a class="active" href="/ai-generator.html">AI Generator</a>
+        <a href="/upload.html">Upload Questionnaire</a>
+        <a href="/generate-exam.html">Generate Exam</a>
+        <a href="/item-analysis-upload.html">Item Analysis</a>
+        <div class="nav-divider"></div>
+        <a href="/profile.html">Profile</a>
+        <a href="/users.html">Users</a>
+        <a href="/reports.html">Reports</a>
+        <a class="support-link" href="#support">Chat Support</a>
+        <div class="nav-divider"></div>
+        <a onclick="logout()">Logout</a>
+      </aside>
+
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>AI Question Generator</h1>
+            <p class="muted-text">
+              Generate draft questions, then review and approve them before they enter the question bank.
+            </p>
+          </div>
+          <button class="btn secondary" onclick="toggleTheme()">Toggle Theme</button>
+        </div>
+
+        <form class="card ai-generator-card" id="aiQuestionForm">
+          <div class="field-grid">
+            <label>
+              <span class="field-label">Engineering Program *</span>
+              <select id="engineeringProgram" required>
+                <option value="">Select program</option>
+                <option value="General Engineering">General Engineering</option>
+                <option value="ECE">ECE</option>
+                <option value="CE">CE</option>
+                <option value="EE">EE</option>
+                <option value="ME">ME</option>
+                <option value="CpE">CpE</option>
+                <option value="CHE">CHE</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="field-grid two">
+            <label>
+              <span class="field-label">Subject *</span>
+              <input id="subject" required placeholder="Circuits 1" />
+            </label>
+            <label>
+              <span class="field-label">Topic *</span>
+              <input id="topic" required placeholder="Ohm's law and Kirchhoff laws" />
+            </label>
+          </div>
+
+          <div class="field-grid three">
+            <label>
+              <span class="field-label">Difficulty *</span>
+              <select id="difficulty" required>
+                <option value="Easy">Easy</option>
+                <option value="Average" selected>Average</option>
+                <option value="Difficult">Difficult</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">Bloom Target</span>
+              <select id="bloomLevel">
+                <option value="">Let AI choose</option>
+                <option value="Remember">Remember</option>
+                <option value="Understand">Understand</option>
+                <option value="Apply">Apply</option>
+                <option value="Analyze">Analyze</option>
+                <option value="Evaluate">Evaluate</option>
+                <option value="Create">Create</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">Number of Items *</span>
+              <input id="count" type="number" min="1" max="20" value="5" required />
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn" id="generateAiButton" type="submit">Generate Draft Questions</button>
+            <a class="btn secondary" href="/parsed-questions.html">Open Review Queue</a>
+          </div>
+          <p class="message" id="aiQuestionMessage"></p>
+        </form>
+
+        <section class="card ai-queue-card">
+          <div class="section-heading">
+            <div>
+              <h2>AI Generated Queue</h2>
+              <p class="muted-text">
+                Pending AI drafts waiting for review and approval.
+              </p>
+            </div>
+            <button class="btn secondary" type="button" onclick="loadAiQueue()">
+              Refresh
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Created</th>
+                  <th>Subject</th>
+                  <th>Topic</th>
+                  <th>Question</th>
+                  <th>CO</th>
+                  <th>SO</th>
+                  <th>Bloom</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="aiQueueBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal hidden" id="aiQueueModal" aria-live="polite">
+      <div class="modal-panel ai-queue-modal-panel">
+        <div class="modal-header">
+          <div>
+            <h2>AI Generation Queue</h2>
+            <p class="muted-text" id="aiQueueModalSubtitle">
+              Your request is being prepared.
+            </p>
+          </div>
+        </div>
+
+        <div class="ai-queue-status">
+          <div class="ai-queue-spinner"></div>
+          <div>
+            <strong id="aiQueueModalTitle">Queued</strong>
+            <p id="aiQueueModalDetail">
+              Waiting for the local Qwen model to start generating.
+            </p>
+          </div>
+        </div>
+
+        <ol class="ai-queue-steps">
+          <li class="active" id="aiQueueStepQueued">Queued</li>
+          <li id="aiQueueStepGenerating">Generating</li>
+          <li id="aiQueueStepSaving">Saving to Review Queue</li>
+        </ol>
+
+        <div class="ai-queue-counts">
+          <span>Total: <strong id="aiQueueTotal">0</strong></span>
+          <span>Generated: <strong id="aiQueueGenerated">0</strong></span>
+          <span>Remaining: <strong id="aiQueueRemaining">0</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/auth.js"></script>
+    <script src="/js/ai-generator.js"></script>
+  </body>
+</html>

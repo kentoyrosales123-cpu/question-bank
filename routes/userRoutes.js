@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const Exam = require("../models/Exam");
 const { normalizeEmail } = require("../config/loginAccess");
-const { protect, adminOnly } = require("../middleware/authMiddleware");
+const { protect, adminOnly, superAdminOnly } = require("../middleware/authMiddleware");
 const imageUpload = require("../middleware/imageUploadMiddleware");
 const {
   ACTIVE_ROLES,
@@ -85,6 +85,9 @@ router.post("/", protect, adminOnly, async (req, res) => {
       password: hashedPassword,
       role,
       isEmailVerified: true,
+      accountStatus: "approved",
+      approvedBy: req.user._id,
+      approvedAt: new Date(),
     });
 
     const createdUser = await User.findById(user._id).select(
@@ -309,6 +312,40 @@ router.patch("/:id/role", protect, adminOnly, async (req, res) => {
       success: true,
       message: "User role updated.",
       user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+router.patch("/:id/approval", protect, superAdminOnly, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    user.accountStatus = "approved";
+    user.approvedBy = req.user._id;
+    user.approvedAt = new Date();
+
+    await user.save();
+
+    const approvedUser = await User.findById(user._id).select(
+      "-password -profileImage.data",
+    );
+
+    res.json({
+      success: true,
+      message: "User account approved.",
+      user: approvedUser,
     });
   } catch (error) {
     res.status(500).json({

@@ -4,8 +4,8 @@ const analysisUser = getUser();
 let analysisId = location.pathname.split("/").filter(Boolean).pop();
 let chartInstances = [];
 
-if (analysisUser && !isAdminRole(analysisUser) && !isCreatorRole(analysisUser)) {
-  alert("Item analysis is for Admins and Exam Creators only.");
+if (analysisUser && !canCreateContentRole(analysisUser)) {
+  alert("Item analysis is for content managers only.");
   location.href = getDashboardUrl(analysisUser);
 }
 
@@ -30,10 +30,72 @@ async function loadAnalysis() {
       .join("");
 
     renderRecommendationPanel(summary);
+    renderObeAttainment(analysis.obeAttainment);
     renderCharts(analysis.items);
   } catch (error) {
     setMessage("analysisMessage", error.message);
   }
+}
+
+function renderObeAttainment(obeAttainment = {}) {
+  const message = document.getElementById("obeAttainmentMessage");
+
+  if (!obeAttainment.available) {
+    message.textContent =
+      obeAttainment.message ||
+      "Link this item analysis to a generated exam to compute CO/SO attainment.";
+  } else {
+    message.textContent =
+      "CO/SO/Bloom attainment computed from actual uploaded student responses.";
+  }
+
+  renderAttainmentTable(
+    "coAttainmentBody",
+    obeAttainment.courseOutcomes || [],
+    "CO/CLO",
+  );
+  renderAttainmentTable(
+    "soAttainmentBody",
+    obeAttainment.studentOutcomes || [],
+    "SO",
+  );
+  renderAttainmentTable(
+    "bloomAttainmentBody",
+    obeAttainment.bloomLevels || [],
+    "Bloom",
+  );
+}
+
+function renderAttainmentTable(bodyId, rows, label) {
+  const body = document.getElementById(bodyId);
+
+  if (!body) return;
+
+  body.innerHTML = rows.length
+    ? rows.map(renderAttainmentRow).join("")
+    : `<tr><td colspan="7" class="empty-table-cell">No ${escapeHTML(label)} attainment data.</td></tr>`;
+}
+
+function getAttainmentClass(rate) {
+  if (Number(rate) >= 75) return "easy";
+  if (Number(rate) >= 50) return "average";
+  return "difficult";
+}
+
+function renderAttainmentRow(row) {
+  const statusClass = row.status === "Attained" ? "easy" : "difficult";
+
+  return `
+    <tr>
+      <td><strong>${escapeHTML(row.code)}</strong></td>
+      <td>${row.itemCount || 0}</td>
+      <td>${row.responseCount || 0}</td>
+      <td>${row.correctCount || 0}</td>
+      <td>${row.earnedWeight || 0} / ${row.totalWeight || 0}</td>
+      <td><span class="badge ${getAttainmentClass(row.attainmentRate)}">${row.attainmentRate || 0}%</span></td>
+      <td><span class="badge ${statusClass}">${escapeHTML(row.status || "Not assessed")}</span></td>
+    </tr>
+  `;
 }
 
 function renderAnalysisRow(item) {

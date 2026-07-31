@@ -171,10 +171,13 @@ function syncDashboardLinks() {
     return;
   }
 
-  if (!isCreatorRole(user)) {
+  if (!canCreateContentRole(user)) {
     [
       "/item-analysis-upload.html",
       "/upload.html",
+      "/ai-generator.html",
+      "/add-question.html",
+      "/questions.html",
       "/parsed-questions.html",
     ].forEach((href) => {
       document.querySelectorAll(`a[href="${href}"]`).forEach((link) => {
@@ -184,8 +187,6 @@ function syncDashboardLinks() {
   }
 
   [
-    "/questions.html",
-    "/add-question.html",
     "/users.html",
     "/reports.html",
   ].forEach((href) => {
@@ -798,6 +799,9 @@ function normalizeSidebarLinks(sidebar) {
     sidebar.querySelectorAll('a[href="/obe-management.html"]').forEach((link) => {
       link.remove();
     });
+    sidebar.querySelectorAll('a[href="/ai-generator.html"]').forEach((link) => {
+      link.remove();
+    });
   }
 
   ensureSidebarLink(sidebar, {
@@ -810,10 +814,17 @@ function normalizeSidebarLinks(sidebar) {
     label: "Add Question",
     afterHref: "/questions.html",
   });
+  if (isSuperAdminRole(user)) {
+    ensureSidebarLink(sidebar, {
+      href: "/ai-generator.html",
+      label: "AI Generator",
+      afterHref: "/add-question.html",
+    });
+  }
   ensureSidebarLink(sidebar, {
     href: "/upload.html",
     label: "Upload Questionnaire",
-    afterHref: "/add-question.html",
+    afterHref: isSuperAdminRole(user) ? "/ai-generator.html" : "/add-question.html",
   });
   ensureSidebarLink(sidebar, {
     href: "/generate-exam.html",
@@ -1010,6 +1021,27 @@ window.addEventListener("beforeunload", stopNotificationConnections);
 const loginForm = document.getElementById("loginForm");
 
 if (loginForm) {
+  const registerForm = document.getElementById("registerForm");
+  const verifyEmailForm = document.getElementById("verifyEmailForm");
+  const showLoginTab = document.getElementById("showLoginTab");
+  const showRegisterTab = document.getElementById("showRegisterTab");
+  const resendVerificationButton = document.getElementById(
+    "resendVerificationButton",
+  );
+  let pendingVerificationEmail = "";
+
+  const showAuthPanel = (panel) => {
+    loginForm.classList.toggle("hidden", panel !== "login");
+    registerForm?.classList.toggle("hidden", panel !== "register");
+    verifyEmailForm?.classList.toggle("hidden", panel !== "verify");
+    showLoginTab?.classList.toggle("active", panel === "login");
+    showRegisterTab?.classList.toggle("active", panel === "register");
+    setMessage("authMessage", "", false);
+  };
+
+  showLoginTab?.addEventListener("click", () => showAuthPanel("login"));
+  showRegisterTab?.addEventListener("click", () => showAuthPanel("register"));
+
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -1022,6 +1054,66 @@ if (loginForm) {
       const data = await apiRequest("/auth/login", "POST", body);
       setAuth(data.token, data.user);
       location.href = getDashboardUrl(data.user);
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+
+  registerForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const body = {
+      name: document.getElementById("registerName").value.trim(),
+      email: document.getElementById("registerEmail").value.trim(),
+      password: document.getElementById("registerPassword").value,
+    };
+
+    try {
+      const data = await apiRequest("/auth/register", "POST", body);
+
+      pendingVerificationEmail = data.email || body.email;
+      document.getElementById("verifyEmail").value = pendingVerificationEmail;
+      showAuthPanel("verify");
+      setMessage("authMessage", data.message, false);
+      document.getElementById("verifyOtp").focus();
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+
+  verifyEmailForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    try {
+      const data = await apiRequest("/auth/verify-email", "POST", {
+        email:
+          pendingVerificationEmail ||
+          document.getElementById("verifyEmail").value,
+        otp: document.getElementById("verifyOtp").value.trim(),
+      });
+
+      if (data.pendingApproval || !data.token) {
+        showAuthPanel("login");
+        setMessage("authMessage", data.message, false);
+        return;
+      }
+
+      setAuth(data.token, data.user);
+      location.href = getDashboardUrl(data.user);
+    } catch (error) {
+      setMessage("authMessage", error.message);
+    }
+  });
+
+  resendVerificationButton?.addEventListener("click", async () => {
+    try {
+      const data = await apiRequest("/auth/resend-verification", "POST", {
+        email:
+          pendingVerificationEmail ||
+          document.getElementById("verifyEmail").value,
+      });
+
+      setMessage("authMessage", data.message, false);
     } catch (error) {
       setMessage("authMessage", error.message);
     }

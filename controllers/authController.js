@@ -22,11 +22,17 @@ const generateToken = (id) => {
 
 const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
+const getStoredAccountStatus = (user) =>
+  user.toObject({ defaults: false }).accountStatus;
+
+const isPendingApproval = (user) => getStoredAccountStatus(user) === "pending";
+
 const buildAuthUser = (user) => ({
   id: user._id,
   name: user.name,
   email: user.email,
   role: user.role,
+  accountStatus: user.accountStatus || "approved",
 });
 
 const setAndSendVerificationOtp = async (user) => {
@@ -90,6 +96,9 @@ exports.register = async (req, res) => {
     user.name = String(name).trim();
     user.password = hashedPassword;
     user.isEmailVerified = false;
+    user.accountStatus = "pending";
+    user.approvedBy = undefined;
+    user.approvedAt = undefined;
 
     await setAndSendVerificationOtp(user);
 
@@ -131,6 +140,14 @@ exports.verifyEmail = async (req, res) => {
     }
 
     if (user.isEmailVerified) {
+      if (isPendingApproval(user)) {
+        return res.status(403).json({
+          success: false,
+          pendingApproval: true,
+          message: "Email verified. Please wait for Super Admin approval before logging in.",
+        });
+      }
+
       await logActivity(req, {
         user,
         action: "login",
@@ -166,11 +183,24 @@ exports.verifyEmail = async (req, res) => {
     }
 
     user.isEmailVerified = true;
+    if (getStoredAccountStatus(user) !== "approved") {
+      user.accountStatus = "pending";
+      user.approvedBy = undefined;
+      user.approvedAt = undefined;
+    }
     user.emailVerificationOtpHash = undefined;
     user.emailVerificationOtpExpires = undefined;
     user.emailVerificationLastSentAt = undefined;
 
     await user.save();
+
+    if (isPendingApproval(user)) {
+      return res.json({
+        success: true,
+        pendingApproval: true,
+        message: "Email verified. Please wait for Super Admin approval before logging in.",
+      });
+    }
 
     await logActivity(req, {
       user,
@@ -391,6 +421,14 @@ exports.login = async (req, res) => {
         success: false,
         requiresVerification: true,
         message: "Please verify your email before logging in.",
+      });
+    }
+
+    if (isPendingApproval(user)) {
+      return res.status(403).json({
+        success: false,
+        pendingApproval: true,
+        message: "Your account is waiting for Super Admin approval.",
       });
     }
 

@@ -85,14 +85,19 @@ const scoreOutcome = (question, outcome) => {
 
 const suggestCourseOutcome = async (question) => {
   const subject = String(question.subject || "").trim();
-  const query = subject
-    ? {
-        $or: [
-          { subject: new RegExp(`^${subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
-          { subject: "" },
-        ],
-      }
-    : {};
+  const department = String(question.department || "").trim();
+  const query = {};
+
+  if (subject) {
+    query.$or = [
+      { subject: new RegExp(`^${subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      { subject: "" },
+    ];
+  }
+
+  if (department) {
+    query.department = new RegExp(`^${department.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+  }
   const outcomes = await CourseOutcome.find(query).lean();
 
   if (outcomes.length === 0) {

@@ -75,6 +75,8 @@ function renderUserRow(user) {
   const currentRole = normalizeRole(user.role);
   const initial = escapeHTML((user.name || user.email || "?").charAt(0));
   const canChangeRole = assignableRoles.some((role) => role.value === currentRole);
+  const isSuperAdmin = isSuperAdminRole(currentUser);
+  const isPendingApproval = (user.accountStatus || "approved") === "pending";
   const roleOptions = (canChangeRole
     ? assignableRoles
     : [{ value: currentRole, label: getRoleLabel(user.role) }]
@@ -108,11 +110,23 @@ function renderUserRow(user) {
       </td>
       <td>
         <span class="badge ${user.isEmailVerified === false ? "average" : "easy"}">
-          ${user.isEmailVerified === false ? "Pending" : "Verified"}
+          ${user.isEmailVerified === false ? "Email Pending" : "Email Verified"}
+        </span>
+        <span class="badge ${isPendingApproval ? "average" : "easy"}">
+          ${isPendingApproval ? "Approval Pending" : "Approved"}
         </span>
       </td>
       <td>${registeredDate}</td>
       <td>
+        ${isSuperAdmin && isPendingApproval ? `
+          <button
+            class="btn success"
+            type="button"
+            onclick="approveUser('${user._id}')"
+          >
+            Approve
+          </button>
+        ` : ""}
         <button
           class="btn danger"
           type="button"
@@ -124,6 +138,16 @@ function renderUserRow(user) {
       </td>
     </tr>
   `;
+}
+
+async function approveUser(id) {
+  try {
+    await apiRequest(`/users/${id}/approval`, "PATCH");
+    setMessage("usersMessage", "User account approved.", false);
+    await loadUsers();
+  } catch (error) {
+    setMessage("usersMessage", error.message);
+  }
 }
 
 async function createUser(event) {

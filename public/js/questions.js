@@ -4,14 +4,20 @@ const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
 let currentQuestionsEndpoint = "/questions";
 let currentQuestions = [];
 let currentQuestionsPage = 1;
+let currentQuestionsTotal = 0;
+let currentQuestionsTotalPages = 1;
 const questionsPerPage = 20;
 
 async function loadQuestions(endpoint = "/questions", page = 1) {
   try {
     currentQuestionsEndpoint = endpoint;
-    const data = await apiRequest(endpoint);
-    currentQuestions = data.questions || [];
     currentQuestionsPage = page;
+    const url = withQuestionPagination(endpoint, page);
+    const data = await apiRequest(url);
+
+    currentQuestions = data.questions || [];
+    currentQuestionsTotal = Number(data.count ?? currentQuestions.length);
+    currentQuestionsTotalPages = Number(data.totalPages || 1);
 
     renderQuestionsPage();
   } catch (error) {
@@ -19,24 +25,24 @@ async function loadQuestions(endpoint = "/questions", page = 1) {
   }
 }
 
+function withQuestionPagination(endpoint, page) {
+  const [path, query = ""] = endpoint.split("?");
+  const params = new URLSearchParams(query);
+
+  params.set("page", page);
+  params.set("limit", questionsPerPage);
+
+  return `${path}?${params.toString()}`;
+}
+
 function renderQuestionsPage() {
-  const totalPages = Math.max(
-    1,
-    Math.ceil(currentQuestions.length / questionsPerPage),
-  );
   currentQuestionsPage = Math.min(
-    totalPages,
+    currentQuestionsTotalPages,
     Math.max(1, Number(currentQuestionsPage) || 1),
   );
 
-  const startIndex = (currentQuestionsPage - 1) * questionsPerPage;
-  const pageQuestions = currentQuestions.slice(
-    startIndex,
-    startIndex + questionsPerPage,
-  );
-
-  document.getElementById("questionsBody").innerHTML = pageQuestions.length
-    ? pageQuestions
+  document.getElementById("questionsBody").innerHTML = currentQuestions.length
+    ? currentQuestions
         .map(
           (q) => {
             const difficultyLabel = getQuestionDifficultyLabel(q.difficulty);
@@ -91,32 +97,32 @@ Delete
         .join("")
     : `<tr><td colspan="8" class="muted-text">No questions found.</td></tr>`;
 
-  renderQuestionsPagination(totalPages);
+  renderQuestionsPagination();
 }
 
-function renderQuestionsPagination(totalPages) {
+function renderQuestionsPagination() {
   const pagination = document.getElementById("questionsPagination");
 
   if (!pagination) return;
 
-  const firstItem = currentQuestions.length
+  const firstItem = currentQuestionsTotal
     ? (currentQuestionsPage - 1) * questionsPerPage + 1
     : 0;
   const lastItem = Math.min(
-    currentQuestions.length,
+    currentQuestionsTotal,
     currentQuestionsPage * questionsPerPage,
   );
 
   pagination.innerHTML = `
     <span class="pagination-summary">
-      Showing ${firstItem}-${lastItem} of ${currentQuestions.length} questions
+      Showing ${firstItem}-${lastItem} of ${currentQuestionsTotal} questions
     </span>
     <div class="pagination-actions">
       <button class="btn secondary" type="button" onclick="goToQuestionsPage(${currentQuestionsPage - 1})" ${currentQuestionsPage <= 1 ? "disabled" : ""}>
         Previous
       </button>
-      <span class="pagination-page">Page ${currentQuestionsPage} of ${totalPages}</span>
-      <button class="btn secondary" type="button" onclick="goToQuestionsPage(${currentQuestionsPage + 1})" ${currentQuestionsPage >= totalPages ? "disabled" : ""}>
+      <span class="pagination-page">Page ${currentQuestionsPage} of ${currentQuestionsTotalPages}</span>
+      <button class="btn secondary" type="button" onclick="goToQuestionsPage(${currentQuestionsPage + 1})" ${currentQuestionsPage >= currentQuestionsTotalPages ? "disabled" : ""}>
         Next
       </button>
     </div>
@@ -124,8 +130,7 @@ function renderQuestionsPagination(totalPages) {
 }
 
 function goToQuestionsPage(page) {
-  currentQuestionsPage = page;
-  renderQuestionsPage();
+  loadQuestions(currentQuestionsEndpoint, page);
 }
 
 function truncateText(value, maxLength) {

@@ -5,7 +5,15 @@ const parsedQuestionSchema = new mongoose.Schema(
     upload: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Upload",
-      required: true,
+    },
+    source: {
+      type: String,
+      enum: ["Upload", "AI"],
+      default: "Upload",
+    },
+    generatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     subject: { type: String, default: "" },
     engineeringProgram: {

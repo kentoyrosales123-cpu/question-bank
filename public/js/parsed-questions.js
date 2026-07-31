@@ -93,6 +93,7 @@ function renderParsedCard(q, index) {
   const hasImage = q.image && q.image.contentType;
   const hasTables = Array.isArray(q.tables) && q.tables.length > 0;
   const duplicateCandidates = q.duplicateCandidates || [];
+  const appliedOutcome = getAutoAppliedOutcomeValues(q);
   const queueState = approvalQueueStates.get(q._id);
   const isQueueLocked =
     queueState?.state === "queued" || queueState?.state === "processing";
@@ -193,8 +194,8 @@ function renderParsedCard(q, index) {
           ${renderOutcomeSuggestion(q)}
 
           <div class="field-grid two">
-            ${renderField("Course Outcome", `courseOutcome_${q._id}`, q.courseOutcome || "")}
-            ${renderField("Student Outcome", `programOutcome_${q._id}`, q.programOutcome || "")}
+            ${renderField("Course Outcome", `courseOutcome_${q._id}`, appliedOutcome.courseOutcome)}
+            ${renderField("Student Outcome", `programOutcome_${q._id}`, appliedOutcome.programOutcome)}
           </div>
 
           <div class="field-grid two">
@@ -204,7 +205,7 @@ function renderParsedCard(q, index) {
                 ${["", "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
                   .map(
                     (level) => `
-                      <option value="${level}" ${q.bloomLevel === level ? "selected" : ""}>${level || "Not mapped"}</option>
+                      <option value="${level}" ${appliedOutcome.bloomLevel === level ? "selected" : ""}>${level || "Not mapped"}</option>
                     `,
                   )
                   .join("")}
@@ -231,6 +232,16 @@ function renderParsedCard(q, index) {
       </div>
     </article>
   `;
+}
+
+function getAutoAppliedOutcomeValues(q) {
+  const suggestion = q.suggestedCourseOutcome || {};
+
+  return {
+    courseOutcome: q.courseOutcome || suggestion.code || "",
+    programOutcome: q.programOutcome || suggestion.programOutcome || "",
+    bloomLevel: q.bloomLevel || suggestion.bloomLevel || "",
+  };
 }
 
 function renderDuplicateWarning(candidates) {
@@ -264,14 +275,14 @@ function renderOutcomeSuggestion(q) {
 
   return `
     <div class="obe-suggestion">
-      <small>Suggested CO/CLO - ${suggestion.confidence}% confidence</small>
+      <small>Suggested CO/CLO auto-applied - ${suggestion.confidence}% confidence</small>
       <strong>${escapeHTML(suggestion.code)} - ${escapeHTML(suggestion.description)}</strong>
       <span>
         ${escapeHTML(suggestion.programOutcome || "No SO mapped")}
         ${suggestion.bloomLevel ? ` | ${escapeHTML(suggestion.bloomLevel)}` : ""}
       </span>
       <button class="btn secondary compact-btn" type="button" onclick="applyOutcomeSuggestion('${q._id}')">
-        Apply Suggestion
+        Reset to Suggestion
       </button>
     </div>
   `;

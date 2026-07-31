@@ -15,6 +15,16 @@ async function loadResult() {
 
     document.getElementById("scoreText").textContent =
       `Score: ${exam.score} / ${exam.totalItems}`;
+    renderAttainmentTable(
+      "coAttainmentBody",
+      data.attainment?.courseOutcomes || [],
+      "CO/CLO",
+    );
+    renderAttainmentTable(
+      "soAttainmentBody",
+      data.attainment?.studentOutcomes || [],
+      "SO",
+    );
 
     document.getElementById("resultList").innerHTML = exam.questions
       .map((q, index) => {
@@ -39,6 +49,14 @@ async function loadResult() {
 
             <p>Correct Answer: <strong>${escapeHTML(q.correctAnswer)}</strong></p>
 
+            <p>
+              <strong>CO/CLO:</strong> ${escapeHTML(q.courseOutcome || "Unmapped")}
+              &nbsp; | &nbsp;
+              <strong>SO:</strong> ${escapeHTML(q.programOutcome || "Unmapped")}
+              &nbsp; | &nbsp;
+              <strong>Bloom:</strong> ${escapeHTML(q.bloomLevel || "Unmapped")}
+            </p>
+
             <p><strong>Explanation:</strong> ${escapeHTML(q.explanation || "No explanation provided.")}</p>
           </div>
         `;
@@ -50,6 +68,41 @@ async function loadResult() {
 }
 
 loadResult();
+
+function renderAttainmentTable(bodyId, rows, emptyLabel) {
+  const body = document.getElementById(bodyId);
+
+  if (!body) return;
+
+  body.innerHTML = rows.length
+    ? rows.map(renderAttainmentRow).join("")
+    : `<tr><td colspan="6" class="empty-table-cell">No ${escapeHTML(emptyLabel)} attainment data.</td></tr>`;
+}
+
+function getAttainmentClass(rate) {
+  if (Number(rate) >= 75) return "easy";
+  if (Number(rate) >= 50) return "average";
+  return "difficult";
+}
+
+function renderAttainmentRow(row) {
+  const statusClass = row.status === "Attained" ? "easy" : "difficult";
+
+  return `
+    <tr>
+      <td><strong>${escapeHTML(row.code)}</strong></td>
+      <td>${escapeHTML(row.assessedItems || 0)} / ${escapeHTML(row.questionCount || 0)}</td>
+      <td>${escapeHTML(row.correctItems || 0)}</td>
+      <td>${escapeHTML(row.earnedWeight || 0)} / ${escapeHTML(row.totalWeight || 0)}</td>
+      <td>
+        <span class="badge ${getAttainmentClass(row.attainmentRate)}">
+          ${escapeHTML(row.attainmentRate || 0)}%
+        </span>
+      </td>
+      <td><span class="badge ${statusClass}">${escapeHTML(row.status || "Not assessed")}</span></td>
+    </tr>
+  `;
+}
 
 function renderQuestionTables(tables) {
   if (!Array.isArray(tables) || tables.length === 0) {
