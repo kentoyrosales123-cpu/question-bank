@@ -1,12 +1,17 @@
 protectPage();
 
 let examOptionData = [];
+let examOutcomeOptionData = [];
 let blueprintRows = [];
 let generationPollTimer = null;
 
 const summaryFields = [
   "title",
   "engineeringProgram",
+  "assessmentMethod",
+  "section",
+  "semester",
+  "schoolYear",
   "subject",
   "topic",
   "courseOutcome",
@@ -77,10 +82,20 @@ function updateExamSummary() {
   const subjects = getSelectedValues("subject");
   const topics = getSelectedValues("topic");
   const engineeringProgram = document.getElementById("engineeringProgram").value;
+  const assessmentMethod = document.getElementById("assessmentMethod").value;
+  const section = document.getElementById("section").value;
+  const semester = document.getElementById("semester").value;
+  const schoolYear = document.getElementById("schoolYear").value;
 
   document.getElementById("summaryTotal").textContent = totalItems || 0;
   document.getElementById("summaryProgram").textContent =
     engineeringProgram || "Not selected";
+  document.getElementById("summaryAssessmentMethod").textContent =
+    assessmentMethod || "Major Exam";
+  document.getElementById("summarySection").textContent = section || "Not set";
+  document.getElementById("summaryTerm").textContent = semester || "Not set";
+  document.getElementById("summarySchoolYear").textContent =
+    schoolYear || "Not set";
   document.getElementById("summarySubject").textContent =
     formatSelection(subjects, "Not selected");
   document.getElementById("summaryTopic").textContent =
@@ -218,13 +233,100 @@ function syncBlueprintTotals() {
 
 function renderOptions(selectId, values, placeholder) {
   const select = document.getElementById(selectId);
+  const selectedValues = new Set(getSelectedValues(selectId));
 
   select.innerHTML =
     values.length > 0
       ? values
-          .map((value) => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`)
+          .map((value) => {
+            const selected = selectedValues.has(value) ? " selected" : "";
+
+            return `<option value="${escapeHTML(value)}"${selected}>${escapeHTML(value)}</option>`;
+          })
           .join("")
       : `<option disabled>${escapeHTML(placeholder)}</option>`;
+  applySelectSearchFilter(selectId);
+}
+
+function getSelectSearchInputId(selectId) {
+  return {
+    subject: "subjectSearch",
+    topic: "topicSearch",
+  }[selectId];
+}
+
+function applySelectSearchFilter(selectId) {
+  const searchInputId = getSelectSearchInputId(selectId);
+
+  if (!searchInputId) return;
+
+  const select = document.getElementById(selectId);
+  const searchInput = document.getElementById(searchInputId);
+  const query = String(searchInput?.value || "").trim().toLowerCase();
+
+  Array.from(select.options || []).forEach((option) => {
+    if (option.disabled) {
+      option.hidden = false;
+      return;
+    }
+
+    const matches = option.textContent.toLowerCase().includes(query);
+    option.hidden = Boolean(query) && !matches && !option.selected;
+  });
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+}
+
+function getProgramSubjectOutcomeOptions(type) {
+  const engineeringProgram = document.getElementById("engineeringProgram").value;
+  const selectedSubjects = getSelectedValues("subject");
+  const selectedSubjectSet = new Set(selectedSubjects);
+  const key =
+    type === "course"
+      ? "courseOutcomes"
+      : type === "student"
+        ? "programOutcomes"
+        : "bloomLevels";
+
+  if (!engineeringProgram && selectedSubjects.length === 0) {
+    return uniqueSorted(examOutcomeOptionData.flatMap((item) => item[key] || []));
+  }
+
+  return uniqueSorted(
+    examOutcomeOptionData
+      .filter((item) => {
+        const matchesProgram =
+          !engineeringProgram || item.engineeringProgram === engineeringProgram;
+        const matchesSubject =
+          selectedSubjects.length === 0 || selectedSubjectSet.has(item.subject);
+
+        return matchesProgram && matchesSubject;
+      })
+      .flatMap((item) => item[key] || []),
+  );
+}
+
+function updateOutcomeOptions() {
+  renderOptions(
+    "courseOutcome",
+    getProgramSubjectOutcomeOptions("course"),
+    "No CLO mappings for this program and subject",
+  );
+  renderOptions(
+    "programOutcome",
+    getProgramSubjectOutcomeOptions("student"),
+    "No SO mappings for this program and subject",
+  );
+  renderOptions(
+    "bloomLevel",
+    getProgramSubjectOutcomeOptions("bloom"),
+    "No Bloom mappings for this program and subject",
+  );
+  updateExamSummary();
 }
 
 function updateTopicOptions() {
@@ -238,6 +340,7 @@ function updateTopicOptions() {
     .flatMap((item) => item.topics || []);
 
   renderOptions("topic", [...new Set(topics)].sort(), "No topics available");
+  updateOutcomeOptions();
   updateExamSummary();
 }
 
@@ -245,26 +348,12 @@ async function loadExamOptions() {
   try {
     const data = await apiRequest("/exams/options");
     examOptionData = data.subjects || [];
+    examOutcomeOptionData = data.outcomeOptions || [];
 
     renderOptions(
       "subject",
       examOptionData.map((item) => item.subject),
       "No subjects available",
-    );
-    renderOptions(
-      "courseOutcome",
-      data.courseOutcomes || [],
-      "No CLO mappings available",
-    );
-    renderOptions(
-      "programOutcome",
-      data.programOutcomes || [],
-      "No SO mappings available",
-    );
-    renderOptions(
-      "bloomLevel",
-      data.bloomLevels || [],
-      "No Bloom mappings available",
     );
     updateTopicOptions();
   } catch (error) {
@@ -276,9 +365,15 @@ async function loadExamOptions() {
 
 document.getElementById("subject").addEventListener("change", updateTopicOptions);
 document
+  .getElementById("subjectSearch")
+  .addEventListener("input", () => applySelectSearchFilter("subject"));
+document
   .getElementById("engineeringProgram")
-  .addEventListener("change", updateExamSummary);
+  .addEventListener("change", updateOutcomeOptions);
 document.getElementById("topic").addEventListener("change", updateExamSummary);
+document
+  .getElementById("topicSearch")
+  .addEventListener("input", () => applySelectSearchFilter("topic"));
 document.getElementById("courseOutcome").addEventListener("change", updateExamSummary);
 document.getElementById("programOutcome").addEventListener("change", updateExamSummary);
 document.getElementById("bloomLevel").addEventListener("change", updateExamSummary);
@@ -302,6 +397,10 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   const body = {
     title: document.getElementById("title").value,
     engineeringProgram,
+    assessmentMethod: document.getElementById("assessmentMethod").value,
+    section: document.getElementById("section").value,
+    semester: document.getElementById("semester").value,
+    schoolYear: document.getElementById("schoolYear").value,
     subjects,
     topics,
     courseOutcomes,

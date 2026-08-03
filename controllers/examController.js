@@ -4,6 +4,10 @@ const fs = require("fs");
 const path = require("path");
 const { logActivity } = require("../services/activityLogger");
 const { notifyRoles, notifyUsers } = require("../services/notificationService");
+const { getObeSettings } = require("../services/obeSettingsService");
+const {
+  normalizeAssessmentMethod,
+} = require("../utils/assessmentMethods");
 const {
   canAccessSubject,
   canGenerateExam,
@@ -12,6 +16,7 @@ const {
   isExamRequestor,
   ROLES,
 } = require("../utils/roles");
+const { hasCompleteObeMapping } = require("../utils/obeValidation");
 
 const {
   Document,
@@ -39,7 +44,7 @@ const TOS_LOGO_DOCX_PATH = path.join(
   "logo-docx.png",
 );
 
-const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
+const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -61,8 +66,9 @@ const canOpenExamContent = (exam, user) => {
   return isAdmin(user) || isApprovedExam(exam);
 };
 
-const createAttainmentBucket = (code) => ({
+const createAttainmentBucket = (code, targetRate) => ({
   code,
+  targetRate,
   questionCount: 0,
   assessedItems: 0,
   correctItems: 0,
@@ -74,25 +80,27 @@ const createAttainmentBucket = (code) => ({
 
 const finalizeAttainmentBucket = (bucket) => {
   const totalWeight = Number(bucket.totalWeight || 0);
+  const attainmentRate =
+    totalWeight > 0
+      ? Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100)
+      : 0;
 
   return {
     ...bucket,
     totalWeight: Math.round(totalWeight * 100) / 100,
     earnedWeight: Math.round(Number(bucket.earnedWeight || 0) * 100) / 100,
-    attainmentRate:
-      totalWeight > 0
-        ? Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100)
-        : 0,
+    attainmentRate,
     status:
       totalWeight <= 0
         ? "Not assessed"
-        : Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100) >= 75
+        : attainmentRate >= Number(bucket.targetRate ?? 75)
           ? "Attained"
           : "Not attained",
   };
 };
 
-const buildExamAttainmentReport = (exam) => {
+const buildExamAttainmentReport = async (exam) => {
+  const settings = await getObeSettings();
   const courseOutcomes = new Map();
   const studentOutcomes = new Map();
   const answerByQuestionId = new Map(
@@ -109,16 +117,18 @@ const buildExamAttainmentReport = (exam) => {
       {
         map: courseOutcomes,
         code: question.courseOutcome || "Unmapped CLO",
+        targetRate: settings.courseOutcomeTarget,
       },
       {
         map: studentOutcomes,
         code: question.programOutcome || "Unmapped SO",
+        targetRate: settings.studentOutcomeTarget,
       },
     ];
 
-    outcomePairs.forEach(({ map, code }) => {
+    outcomePairs.forEach(({ map, code, targetRate }) => {
       if (!map.has(code)) {
-        map.set(code, createAttainmentBucket(code));
+        map.set(code, createAttainmentBucket(code, targetRate));
       }
 
       const bucket = map.get(code);
@@ -137,6 +147,7 @@ const buildExamAttainmentReport = (exam) => {
   });
 
   return {
+    settings,
     courseOutcomes: Array.from(courseOutcomes.values()).map(finalizeAttainmentBucket),
     studentOutcomes: Array.from(studentOutcomes.values()).map(finalizeAttainmentBucket),
   };
@@ -166,7 +177,14 @@ const getRandomQuestions = async (
     return [];
   }
 
-  const match = { difficulty, engineeringProgram };
+  const match = {
+    difficulty,
+    engineeringProgram,
+    courseOutcome: { $ne: "" },
+    programOutcome: { $ne: "" },
+    bloomLevel: { $ne: "" },
+    outcomeWeight: { $gt: 0 },
+  };
 
   if (subjects.length > 0) {
     match.subject = { $in: subjects };
@@ -398,7 +416,12 @@ exports.getExamOptions = async (req, res) => {
       },
       { $sort: { _id: 1 } },
     ]);
-    const [courseOutcomes, programOutcomes, bloomLevels] = await Promise.all([
+    const [
+      courseOutcomes,
+      programOutcomes,
+      bloomLevels,
+      outcomeOptions,
+    ] = await Promise.all([
       Question.distinct("courseOutcome", {
         ...subjectAccessFilter,
         courseOutcome: { $ne: "" },
@@ -411,6 +434,32 @@ exports.getExamOptions = async (req, res) => {
         ...subjectAccessFilter,
         bloomLevel: { $ne: "" },
       }),
+      Question.aggregate([
+        ...(Object.keys(subjectAccessFilter).length > 0
+          ? [{ $match: subjectAccessFilter }]
+          : []),
+        {
+          $match: {
+            $or: [
+              { courseOutcome: { $ne: "" } },
+              { programOutcome: { $ne: "" } },
+              { bloomLevel: { $ne: "" } },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: {
+              engineeringProgram: "$engineeringProgram",
+              subject: "$subject",
+            },
+            courseOutcomes: { $addToSet: "$courseOutcome" },
+            programOutcomes: { $addToSet: "$programOutcome" },
+            bloomLevels: { $addToSet: "$bloomLevel" },
+          },
+        },
+        { $sort: { "_id.engineeringProgram": 1, "_id.subject": 1 } },
+      ]),
     ]);
 
     res.json({
@@ -424,6 +473,13 @@ exports.getExamOptions = async (req, res) => {
       courseOutcomes: courseOutcomes.filter(Boolean).sort(),
       programOutcomes: programOutcomes.filter(Boolean).sort(),
       bloomLevels: bloomLevels.filter(Boolean).sort(),
+      outcomeOptions: outcomeOptions.map((item) => ({
+        engineeringProgram: item._id.engineeringProgram || "",
+        subject: item._id.subject || "",
+        courseOutcomes: item.courseOutcomes.filter(Boolean).sort(),
+        programOutcomes: item.programOutcomes.filter(Boolean).sort(),
+        bloomLevels: item.bloomLevels.filter(Boolean).sort(),
+      })),
     });
   } catch (error) {
     res.status(500).json({
@@ -448,6 +504,10 @@ const generateExamForQueue = async (req, res) => {
       engineeringProgram,
       subject,
       topic,
+      section,
+      semester,
+      schoolYear,
+      assessmentMethod,
       totalItems,
       easyCount,
       averageCount,
@@ -458,6 +518,11 @@ const generateExamForQueue = async (req, res) => {
       engineeringProgram || "",
     ).trim();
     const topics = normalizeSelection(req.body.topics || topic);
+    const selectedAssessmentMethod =
+      normalizeAssessmentMethod(assessmentMethod);
+    const selectedSection = String(section || "").trim();
+    const selectedSemester = String(semester || "").trim();
+    const selectedSchoolYear = String(schoolYear || "").trim();
     const obeFilters = {
       courseOutcomes: normalizeSelection(req.body.courseOutcomes),
       programOutcomes: normalizeSelection(req.body.programOutcomes),
@@ -614,6 +679,18 @@ const generateExamForQueue = async (req, res) => {
       ].sort(() => Math.random() - 0.5);
     }
 
+    const unmappedQuestion = allQuestions.find(
+      (question) => !hasCompleteObeMapping(question),
+    );
+
+    if (unmappedQuestion) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Exam generation requires complete OBE mapping. Review the selected program, subject, filters, and question bank mappings.",
+      });
+    }
+
     const exam = await Exam.create({
       title: title || "Generated Exam",
       engineeringProgram: selectedEngineeringProgram,
@@ -625,6 +702,10 @@ const generateExamForQueue = async (req, res) => {
       topic: useBlueprint
         ? formatSelectionLabel([...new Set(blueprint.map((row) => row.topic))])
         : formatSelectionLabel(topics),
+      section: selectedSection,
+      semester: selectedSemester,
+      schoolYear: selectedSchoolYear,
+      assessmentMethod: selectedAssessmentMethod,
       totalItems,
       easyCount,
       averageCount,
@@ -649,6 +730,10 @@ const generateExamForQueue = async (req, res) => {
         exam: exam._id,
         title: exam.title,
         engineeringProgram: selectedEngineeringProgram,
+        section: selectedSection,
+        semester: selectedSemester,
+        schoolYear: selectedSchoolYear,
+        assessmentMethod: selectedAssessmentMethod,
         subjects,
         topics,
         totalItems,
@@ -743,7 +828,7 @@ exports.submitExam = async (req, res) => {
     const result = await Exam.findById(exam._id)
       .populate("questions")
       .populate("answers.question");
-    const attainment = buildExamAttainmentReport(result);
+    const attainment = await buildExamAttainmentReport(result);
 
     res.json({
       success: true,
@@ -791,7 +876,7 @@ exports.getExam = async (req, res) => {
 
     res.json({
       success: true,
-      attainment: buildExamAttainmentReport(exam),
+      attainment: await buildExamAttainmentReport(exam),
       exam,
     });
   } catch (error) {
@@ -862,7 +947,7 @@ exports.getMyExamSummary = async (req, res) => {
       }),
       Exam.find({ user: req.user._id })
         .select(
-          "title engineeringProgram subject topic totalItems approvalStatus createdAt updatedAt",
+          "title engineeringProgram subject topic section semester schoolYear totalItems approvalStatus createdAt updatedAt",
         )
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(10),
@@ -1491,16 +1576,22 @@ const buildTosDocxBuffer = async (exam) => {
               { columnSpan: 3, leftBorder: true },
             ),
             createTosFormCell([
-              createTextRun("Term:", { size: 18 }),
-              createTosBlankRun("_______", { size: 18 }),
+              createTextRun("Section:", { size: 18 }),
+              createTosFieldRun(exam.section || "", "_______", {
+                size: 18,
+              }),
             ]),
             createTosFormCell([
-              createTextRun("Sem.:", { size: 18 }),
-              createTosBlankRun("________", { size: 18 }),
+              createTextRun("Term:", { size: 18 }),
+              createTosFieldRun(exam.semester || "", "________", {
+                size: 18,
+              }),
             ]),
             createTosFormCell([
               createTextRun("S.Y.", { size: 18 }),
-              createTosBlankRun("_______________", { size: 18 }),
+              createTosFieldRun(exam.schoolYear || "", "_______________", {
+                size: 18,
+              }),
             ]),
             createTosFormCell(
               [
@@ -1852,6 +1943,18 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
   if (exam.engineeringProgram) {
     children.push(new Paragraph(`Engineering Program: ${exam.engineeringProgram}`));
   }
+  if (exam.section) {
+    children.push(new Paragraph(`Section: ${exam.section}`));
+  }
+  if (exam.semester) {
+    children.push(new Paragraph(`Term: ${exam.semester}`));
+  }
+  if (exam.schoolYear) {
+    children.push(new Paragraph(`School Year: ${exam.schoolYear}`));
+  }
+  children.push(
+    new Paragraph(`Assessment Method: ${exam.assessmentMethod || "Major Exam"}`),
+  );
   children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
   children.push(new Paragraph(`Total Items: ${exam.totalItems}`));
   children.push(new Paragraph(""));

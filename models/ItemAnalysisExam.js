@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  ASSESSMENT_METHODS,
+  DEFAULT_ASSESSMENT_METHOD,
+} = require("../utils/assessmentMethods");
 
 const itemAnalysisExamSchema = new mongoose.Schema(
   {
@@ -27,6 +31,12 @@ const itemAnalysisExamSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    assessmentMethod: {
+      type: String,
+      enum: ASSESSMENT_METHODS,
+      default: DEFAULT_ASSESSMENT_METHOD,
+      trim: true,
+    },
     numberOfItems: {
       type: Number,
       required: true,
@@ -42,6 +52,10 @@ const itemAnalysisExamSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Exam",
       default: null,
+    },
+    includeInObe: {
+      type: Boolean,
+      default: false,
     },
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,

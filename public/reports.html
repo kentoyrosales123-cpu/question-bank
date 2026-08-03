@@ -36,7 +36,16 @@
           </div>
         </div>
 
-        <section class="dashboard-stats reports-stats">
+        <nav class="report-subpage-tabs" aria-label="Report sections">
+          <a href="#overview" data-report-tab="overview">Overview</a>
+          <a href="#obe-alignment" data-report-tab="obe-alignment">OBE Alignment</a>
+          <a href="#assessment-methods" data-report-tab="assessment-methods">Assessment Methods</a>
+          <a href="#cqi-monitoring" data-report-tab="cqi-monitoring">CQI Monitoring</a>
+          <a href="#activity-logs" data-report-tab="activity-logs">Activity Logs</a>
+        </nav>
+
+        <section class="report-subpage active" data-report-page="overview">
+          <section class="dashboard-stats reports-stats">
           <div class="card metric-card metric-users report-metric">
             <div class="metric-icon"></div>
             <div>
@@ -69,9 +78,9 @@
               <small>all monitored events <span>vs last 30 days</span></small>
             </div>
           </div>
-        </section>
+          </section>
 
-        <section class="dashboard-insights">
+          <section class="dashboard-insights">
           <div class="card difficulty-panel report-card">
             <h2>Questions by Difficulty</h2>
             <div class="difficulty-summary">
@@ -103,17 +112,80 @@
               <p><i class="status-icon download-strip-icon"></i><span>TOS Downloads</span><strong id="reportTosDownloads">0</strong></p>
             </div>
           </div>
+          </section>
         </section>
 
-        <section class="card activity-monitor-card report-activity-card">
+        <section class="card activity-monitor-card report-activity-card report-subpage" data-report-page="obe-alignment">
           <div class="section-heading">
             <div>
               <h2>OBE Alignment</h2>
               <p class="muted-text">
-                Coverage and attainment are computed from mapped questions and submitted exams.
+                Coverage and attainment are computed from mapped questions, submitted exams, and linked item analysis results.
               </p>
             </div>
+            <button class="btn report-download" type="button" onclick="downloadAccreditationObeReport()">
+              Export Accreditation Report
+            </button>
           </div>
+
+          <form class="obe-report-filters" id="obeReportFilterForm">
+            <label>
+              <span class="field-label">Program</span>
+              <select id="obeFilterProgram">
+                <option value="">All Programs</option>
+                <option value="ECE">ECE</option>
+                <option value="CE">CE</option>
+                <option value="EE">EE</option>
+                <option value="ME">ME</option>
+                <option value="CpE">CpE</option>
+                <option value="CHE">CHE</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">Subject</span>
+              <input id="obeFilterSubject" placeholder="All subjects" />
+            </label>
+            <label>
+              <span class="field-label">Section</span>
+              <input id="obeFilterSection" placeholder="All sections" />
+            </label>
+            <label>
+              <span class="field-label">Term</span>
+              <select id="obeFilterSemester">
+                <option value="">All Terms</option>
+                <option value="1st Sem 1st Term">1st Sem 1st Term</option>
+                <option value="1st Sem 2nd Term">1st Sem 2nd Term</option>
+                <option value="2nd Sem 1st Term">2nd Sem 1st Term</option>
+                <option value="2nd Sem 2nd Term">2nd Sem 2nd Term</option>
+                <option value="Summer">Summer</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">School Year</span>
+              <input id="obeFilterSchoolYear" placeholder="2025-2026" />
+            </label>
+            <label>
+              <span class="field-label">Assessment</span>
+              <select id="obeFilterAssessmentMethod">
+                <option value="">All Methods</option>
+                <option value="Major Exam">Major Exam</option>
+                <option value="Quiz">Quiz</option>
+                <option value="Assignment">Assignment</option>
+                <option value="Project">Project</option>
+                <option value="Laboratory">Laboratory</option>
+                <option value="Recitation">Recitation</option>
+                <option value="Practical Exam">Practical Exam</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <div class="obe-filter-actions">
+              <button class="btn" type="submit">Apply Filters</button>
+              <button class="btn secondary" type="button" onclick="resetObeReportFilters()">
+                Reset
+              </button>
+            </div>
+            <p class="muted-text" id="obeFilterSummary">Showing all OBE records.</p>
+          </form>
 
           <div class="dashboard-stats reports-stats">
             <div class="metric-card report-metric">
@@ -130,6 +202,112 @@
                 <small>need CLO and SO tags</small>
               </div>
             </div>
+            <div class="metric-card report-metric">
+              <div>
+                <h3>Coverage Alerts</h3>
+                <strong id="coverageAlertTotal">0</strong>
+                <small>items needing review</small>
+              </div>
+            </div>
+            <div class="metric-card report-metric">
+              <div>
+                <h3>Critical / High</h3>
+                <strong id="coverageAlertPriority">0</strong>
+                <small>urgent OBE gaps</small>
+              </div>
+            </div>
+            <div class="metric-card report-metric">
+              <div>
+                <h3>Attainment Method</h3>
+                <strong id="obeAttainmentMethod">Response</strong>
+                <small id="obeAttainmentFormula">correct responses / total responses</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="course-obe-summary-panel">
+            <div class="section-heading compact-heading">
+              <div>
+                <h2>Course-Level OBE Summary</h2>
+                <p class="muted-text">
+                  Final status for the selected subject, section, term, and school year.
+                </p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Program</th>
+                    <th>Subject</th>
+                    <th>Section</th>
+                    <th>Term</th>
+                    <th>School Year</th>
+                    <th>CLO</th>
+                    <th>SO</th>
+                    <th>Overall</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="courseObeSummaryBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="evidence-traceability-panel">
+            <div class="section-heading compact-heading">
+              <div>
+                <h2>OBE Evidence Traceability Matrix</h2>
+                <p class="muted-text">
+                  Outcome-to-evidence trail from questions, assessments, results, and CQI.
+                </p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Program</th>
+                    <th>Subject</th>
+                    <th>CLO</th>
+                    <th>SO</th>
+                    <th>Questions</th>
+                    <th>Assessment</th>
+                    <th>Evidence</th>
+                    <th>Students</th>
+                    <th>Attainment</th>
+                    <th>CQI</th>
+                  </tr>
+                </thead>
+                <tbody id="obeTraceabilityBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="outcome-alert-panel">
+            <div class="section-heading compact-heading">
+              <div>
+                <h2>Outcome Coverage Alerts</h2>
+                <p class="muted-text">
+                  Weak mapping, evidence, Bloom, and CQI areas that need attention.
+                </p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Area</th>
+                    <th>Item</th>
+                    <th>Issue</th>
+                    <th>Recommended Action</th>
+                    <th>Evidence</th>
+                  </tr>
+                </thead>
+                <tbody id="outcomeCoverageAlertBody"></tbody>
+              </table>
+            </div>
           </div>
 
           <div class="dashboard-insights">
@@ -140,9 +318,12 @@
                   <thead>
                     <tr>
                       <th>CLO</th>
+                      <th>Program</th>
                       <th>Bank Items</th>
                       <th>Assessed</th>
                       <th>Correct</th>
+                      <th>Students</th>
+                      <th>Target</th>
                       <th>Attainment</th>
                     </tr>
                   </thead>
@@ -161,6 +342,8 @@
                       <th>Bank Items</th>
                       <th>Assessed</th>
                       <th>Correct</th>
+                      <th>Students</th>
+                      <th>Target</th>
                       <th>Attainment</th>
                     </tr>
                   </thead>
@@ -183,7 +366,143 @@
           </div>
         </section>
 
-        <section class="card activity-monitor-card report-activity-card">
+        <section class="card activity-monitor-card report-activity-card report-subpage" data-report-page="assessment-methods">
+          <div class="section-heading">
+            <div>
+              <h2>Assessment Method Mapping</h2>
+              <p class="muted-text">
+                Track whether OBE evidence comes from exams, quizzes, assignments, projects, laboratories, and other methods.
+              </p>
+            </div>
+          </div>
+
+          <div class="dashboard-stats reports-stats">
+            <div class="metric-card report-metric">
+              <h3>Methods Used</h3>
+              <strong id="assessmentMethodsUsed">0</strong>
+              <small>assessment types with evidence</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Generated Assessments</h3>
+              <strong id="assessmentGeneratedTotal">0</strong>
+              <small>exam generator records</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Analyzed Evidence</h3>
+              <strong id="assessmentEvidenceTotal">0</strong>
+              <small>item analysis records</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Major Exam Share</h3>
+              <strong id="assessmentExamOnly">0%</strong>
+              <small>of analyzed evidence</small>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Assessment Method</th>
+                  <th>Generated Assessments</th>
+                  <th>Analyzed Evidence</th>
+                  <th>Total Evidence</th>
+                </tr>
+              </thead>
+              <tbody id="assessmentMethodBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card activity-monitor-card report-activity-card report-subpage" data-report-page="cqi-monitoring">
+          <div class="section-heading">
+            <div>
+              <h2>CQI Monitoring</h2>
+              <p class="muted-text">
+                Intervention plans, overdue actions, and not-attained outcomes needing CQI.
+              </p>
+            </div>
+          </div>
+
+          <div class="dashboard-stats reports-stats cqi-monitor-stats">
+            <div class="metric-card report-metric">
+              <h3>Plans Needed</h3>
+              <strong id="cqiNeededPlans">0</strong>
+              <small>not attained without CQI</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Open Plans</h3>
+              <strong id="cqiOpenPlans">0</strong>
+              <small>planned or in progress</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Overdue</h3>
+              <strong id="cqiOverduePlans">0</strong>
+              <small>past target date</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Verified</h3>
+              <strong id="cqiVerifiedPlans">0</strong>
+              <small>closed loop</small>
+            </div>
+          </div>
+
+          <div class="dashboard-insights cqi-monitor-grid">
+            <div class="difficulty-panel report-card">
+              <h2>Plans Needed</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Exam</th>
+                      <th>Outcome</th>
+                      <th>Attainment</th>
+                      <th>Gap</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cqiNeededBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="difficulty-panel report-card">
+              <h2>Overdue Plans</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Exam</th>
+                      <th>Outcome</th>
+                      <th>Owner</th>
+                      <th>Target</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cqiOverdueBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap cqi-recent-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Exam</th>
+                  <th>Outcome</th>
+                  <th>Status</th>
+                  <th>Owner</th>
+                  <th>Target Date</th>
+                  <th>Decision</th>
+                  <th>Verified</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="cqiRecentBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card activity-monitor-card report-activity-card report-subpage" data-report-page="activity-logs">
           <div class="section-heading">
             <h2>Recent Activity</h2>
             <div class="activity-download-controls">

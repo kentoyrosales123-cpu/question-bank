@@ -19,8 +19,13 @@ const {
 } = require("docx");
 const ItemAnalysisExam = require("../models/ItemAnalysisExam");
 const ItemAnalysisStudentResult = require("../models/ItemAnalysisStudentResult");
+const CqiInterventionPlan = require("../models/CqiInterventionPlan");
 const Exam = require("../models/Exam");
 const Question = require("../models/Question");
+const { getObeSettings } = require("../services/obeSettingsService");
+const {
+  normalizeAssessmentMethod,
+} = require("../utils/assessmentMethods");
 const { isAdmin } = require("../utils/roles");
 
 const normalizeHeader = (value) =>
@@ -256,6 +261,26 @@ const markerCell = () =>
             color: "000000",
           }),
         ],
+      }),
+    ],
+  });
+
+const markerBlockCell = () =>
+  new TableCell({
+    width: { size: 360, type: WidthType.DXA },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    },
+    shading: { fill: "000000" },
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 0 },
+        children: [new TextRun({ text: "", size: 4 })],
       }),
     ],
   });
@@ -599,7 +624,7 @@ const buildOmrTemplateBuffer = async ({
         rows: [
           new TableRow({
             children: [
-              markerCell(),
+              markerBlockCell(),
               textCell(
                 [
                   new Paragraph({
@@ -632,7 +657,7 @@ const buildOmrTemplateBuffer = async ({
                   width: { size: 80, type: WidthType.PERCENTAGE },
                 },
               ),
-              markerCell(),
+              markerBlockCell(),
             ],
           }),
         ],
@@ -907,8 +932,9 @@ const computeAnalysis = (exam, results) => {
   };
 };
 
-const createObeBucket = (code) => ({
+const createObeBucket = (code, targetRate) => ({
   code,
+  targetRate,
   itemCount: 0,
   responseCount: 0,
   correctCount: 0,
@@ -932,22 +958,22 @@ const finalizeObeBucket = (bucket) => {
     status:
       totalWeight <= 0
         ? "Not assessed"
-        : attainmentRate >= 75
+        : attainmentRate >= Number(bucket.targetRate ?? 75)
           ? "Attained"
           : "Not attained",
   };
 };
 
-const ensureObeBucket = (map, code) => {
+const ensureObeBucket = (map, code, targetRate) => {
   if (!map.has(code)) {
-    map.set(code, createObeBucket(code));
+    map.set(code, createObeBucket(code, targetRate));
   }
 
   return map.get(code);
 };
 
-const addOutcomeResponse = (map, code, itemResult, weight) => {
-  const bucket = ensureObeBucket(map, code);
+const addOutcomeResponse = (map, code, itemResult, weight, targetRate) => {
+  const bucket = ensureObeBucket(map, code, targetRate);
 
   bucket.responseCount += 1;
   bucket.totalWeight += weight;
@@ -958,10 +984,50 @@ const addOutcomeResponse = (map, code, itemResult, weight) => {
   }
 };
 
+const formatCqiPlan = (plan) =>
+  plan
+    ? {
+        _id: plan._id,
+        outcomeType: plan.outcomeType,
+        outcomeCode: plan.outcomeCode,
+        rootCause: plan.rootCause || "",
+        intervention: plan.intervention || "",
+        responsiblePerson: plan.responsiblePerson || "",
+        targetDate: plan.targetDate,
+        evidence: plan.evidence || "",
+        remarks: plan.remarks || "",
+        implementationDate: plan.implementationDate,
+        reassessmentResult: plan.reassessmentResult || "",
+        verificationRemarks: plan.verificationRemarks || "",
+        followUpDecision: plan.followUpDecision || "",
+        verifiedBy: plan.verifiedBy,
+        verifiedAt: plan.verifiedAt,
+        status: plan.status || "Planned",
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt,
+      }
+    : null;
+
+const attachCqiPlans = (rows, plans, outcomeType) => {
+  const plansByCode = new Map(
+    plans
+      .filter((plan) => plan.outcomeType === outcomeType)
+      .map((plan) => [plan.outcomeCode, formatCqiPlan(plan)]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    cqiPlan: plansByCode.get(row.code) || null,
+  }));
+};
+
 const buildObeAttainment = async (exam, results) => {
+  const settings = await getObeSettings();
+
   if (!exam?.generatedExamId) {
     return {
       available: false,
+      settings,
       message:
         "CO/SO attainment is available only when item analysis is linked to a generated exam.",
       courseOutcomes: [],
@@ -979,6 +1045,7 @@ const buildObeAttainment = async (exam, results) => {
   if (!generatedExam || !Array.isArray(generatedExam.questions)) {
     return {
       available: false,
+      settings,
       message: "Linked generated exam was not found.",
       courseOutcomes: [],
       studentOutcomes: [],
@@ -996,9 +1063,21 @@ const buildObeAttainment = async (exam, results) => {
     const studentOutcome = question.programOutcome || "Unmapped SO";
     const bloomLevel = question.bloomLevel || "Unmapped Bloom";
 
-    ensureObeBucket(courseOutcomes, courseOutcome).itemCount += 1;
-    ensureObeBucket(studentOutcomes, studentOutcome).itemCount += 1;
-    ensureObeBucket(bloomLevels, bloomLevel).itemCount += 1;
+    ensureObeBucket(
+      courseOutcomes,
+      courseOutcome,
+      settings.courseOutcomeTarget,
+    ).itemCount += 1;
+    ensureObeBucket(
+      studentOutcomes,
+      studentOutcome,
+      settings.studentOutcomeTarget,
+    ).itemCount += 1;
+    ensureObeBucket(
+      bloomLevels,
+      bloomLevel,
+      settings.courseOutcomeTarget,
+    ).itemCount += 1;
 
     results.forEach((result) => {
       const itemResult =
@@ -1010,27 +1089,43 @@ const buildObeAttainment = async (exam, results) => {
         courseOutcome,
         itemResult,
         weight,
+        settings.courseOutcomeTarget,
       );
       addOutcomeResponse(
         studentOutcomes,
         studentOutcome,
         itemResult,
         weight,
+        settings.studentOutcomeTarget,
       );
       addOutcomeResponse(
         bloomLevels,
         bloomLevel,
         itemResult,
         weight,
+        settings.courseOutcomeTarget,
       );
     });
   });
 
+  const cqiPlans = await CqiInterventionPlan.find({
+    analysisExamId: exam._id,
+  }).lean();
+
   return {
     available: true,
+    settings,
     message: "",
-    courseOutcomes: Array.from(courseOutcomes.values()).map(finalizeObeBucket),
-    studentOutcomes: Array.from(studentOutcomes.values()).map(finalizeObeBucket),
+    courseOutcomes: attachCqiPlans(
+      Array.from(courseOutcomes.values()).map(finalizeObeBucket),
+      cqiPlans,
+      "CO",
+    ),
+    studentOutcomes: attachCqiPlans(
+      Array.from(studentOutcomes.values()).map(finalizeObeBucket),
+      cqiPlans,
+      "SO",
+    ),
     bloomLevels: Array.from(bloomLevels.values()).map(finalizeObeBucket),
   };
 };
@@ -1132,7 +1227,7 @@ exports.listItemAnalysisExams = async (req, res) => {
 
     const exams = await ItemAnalysisExam.find(query)
       .select(
-        "title subject section semester schoolYear numberOfItems answerKey uploadedAt createdAt",
+        "title subject section semester schoolYear assessmentMethod numberOfItems answerKey uploadedAt createdAt",
       )
       .sort({ createdAt: -1 });
 
@@ -1156,9 +1251,11 @@ exports.createItemAnalysisExam = async (req, res) => {
       section,
       semester,
       schoolYear,
+      assessmentMethod,
       numberOfItems,
       answerKey,
       generatedExamId,
+      includeInObe,
     } = req.body;
     const itemCount = Number(numberOfItems);
 
@@ -1192,6 +1289,7 @@ exports.createItemAnalysisExam = async (req, res) => {
       section,
       semester,
       schoolYear,
+      assessmentMethod: normalizeAssessmentMethod(assessmentMethod),
       numberOfItems: itemCount,
       answerKey: parsedAnswerKey,
       uploadedBy: req.user._id,
@@ -1313,9 +1411,19 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
 
     const title = normalizeValue(req.body.title) || generatedExam.title;
     const subject = normalizeValue(req.body.subject) || generatedExam.subject;
-    const section = normalizeValue(req.body.section) || "No section";
-    const semester = normalizeValue(req.body.semester);
-    const schoolYear = normalizeValue(req.body.schoolYear);
+    const section =
+      normalizeValue(req.body.section) ||
+      normalizeValue(generatedExam.section) ||
+      "No section";
+    const semester =
+      normalizeValue(req.body.semester) ||
+      normalizeValue(generatedExam.semester);
+    const schoolYear =
+      normalizeValue(req.body.schoolYear) ||
+      normalizeValue(generatedExam.schoolYear);
+    const assessmentMethod = normalizeAssessmentMethod(
+      req.body.assessmentMethod || generatedExam.assessmentMethod,
+    );
 
     const exam = await ItemAnalysisExam.findOneAndUpdate(
       {
@@ -1328,11 +1436,13 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
         section,
         semester,
         schoolYear,
+        assessmentMethod,
         numberOfItems: itemCount,
-        answerKey,
-        generatedExamId: generatedExam._id,
-        uploadedBy: req.user._id,
-        uploadedAt: new Date(),
+      answerKey,
+      generatedExamId: generatedExam._id,
+      includeInObe: true,
+      uploadedBy: req.user._id,
+      uploadedAt: new Date(),
       },
       {
         new: true,
@@ -1409,7 +1519,7 @@ exports.downloadOmrTemplate = async (req, res) => {
 
 exports.saveScannedResult = async (req, res) => {
   try {
-    const { studentName, studentId, section, answers } = req.body;
+    const { studentName, studentId, section, answers, scanMetadata } = req.body;
     const data = await getExamWithResults(req.params.id, req.user);
 
     if (!data) {
@@ -1450,6 +1560,14 @@ exports.saveScannedResult = async (req, res) => {
       },
       answers,
     );
+    row.scanMetadata =
+      scanMetadata && typeof scanMetadata === "object"
+        ? {
+            processedWith: normalizeValue(scanMetadata.processedWith),
+            scannedPages: scanMetadata.scannedPages || {},
+            savedAt: new Date(),
+          }
+        : undefined;
 
     const result = await ItemAnalysisStudentResult.findOneAndUpdate(
       {
@@ -1496,6 +1614,7 @@ exports.uploadItemAnalysis = async (req, res) => {
       section,
       semester,
       schoolYear,
+      assessmentMethod,
       numberOfItems,
       answerKey,
       generatedExamId,
@@ -1524,8 +1643,19 @@ exports.uploadItemAnalysis = async (req, res) => {
       parseAnswerKey(answerKey, answerKeyFile),
     ]);
     const linkedGeneratedExamId = normalizeValue(generatedExamId);
+    const requiresObeLink =
+      includeInObe === true ||
+      String(includeInObe || "").trim().toLowerCase() === "true";
     let linkedGeneratedExam = null;
     let finalAnswerKey = parsedAnswerKey;
+
+    if (requiresObeLink && !linkedGeneratedExamId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "OBE item analysis must be linked to a generated exam so the system can map items to CO/SO outcomes.",
+      });
+    }
 
     if (linkedGeneratedExamId) {
       const generatedExamQuery = { _id: linkedGeneratedExamId };
@@ -1571,14 +1701,23 @@ exports.uploadItemAnalysis = async (req, res) => {
             uploadedBy: req.user._id,
           },
           {
-            title,
-            subject,
-            section,
-            semester,
-            schoolYear,
+            title: title || linkedGeneratedExam.title,
+            subject: subject || linkedGeneratedExam.subject,
+            section:
+              section ||
+              normalizeValue(linkedGeneratedExam.section) ||
+              "No section",
+            semester:
+              semester || normalizeValue(linkedGeneratedExam.semester),
+            schoolYear:
+              schoolYear || normalizeValue(linkedGeneratedExam.schoolYear),
+            assessmentMethod: normalizeAssessmentMethod(
+              assessmentMethod || linkedGeneratedExam.assessmentMethod,
+            ),
             numberOfItems: itemCount,
             answerKey: finalAnswerKey,
             generatedExamId: linkedGeneratedExam._id,
+            includeInObe: true,
             uploadedBy: req.user._id,
             uploadedAt: new Date(),
           },
@@ -1595,8 +1734,10 @@ exports.uploadItemAnalysis = async (req, res) => {
           section,
           semester,
           schoolYear,
+          assessmentMethod: normalizeAssessmentMethod(assessmentMethod),
           numberOfItems: itemCount,
           answerKey: finalAnswerKey,
+          includeInObe: false,
           uploadedBy: req.user._id,
           uploadedAt: new Date(),
         });
@@ -1705,6 +1846,208 @@ exports.listItemAnalysisResults = async (req, res) => {
   }
 };
 
+exports.upsertCqiInterventionPlan = async (req, res) => {
+  try {
+    const data = await getExamWithResults(req.params.id, req.user);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Item analysis exam not found.",
+      });
+    }
+
+    const outcomeType = String(req.body.outcomeType || "").trim().toUpperCase();
+    const outcomeCode = String(req.body.outcomeCode || "").trim();
+    const intervention = String(req.body.intervention || "").trim();
+    const responsiblePerson = String(req.body.responsiblePerson || "").trim();
+
+    if (!["CO", "SO"].includes(outcomeType)) {
+      return res.status(400).json({
+        success: false,
+        message: "CQI plan outcome type must be CO or SO.",
+      });
+    }
+
+    if (!outcomeCode || !intervention || !responsiblePerson) {
+      return res.status(400).json({
+        success: false,
+        message: "Outcome, intervention, and responsible person are required.",
+      });
+    }
+
+    const allowedStatuses = ["Planned", "In Progress", "Completed", "Verified"];
+    const status = allowedStatuses.includes(req.body.status)
+      ? req.body.status
+      : "Planned";
+    const targetDate = req.body.targetDate
+      ? new Date(req.body.targetDate)
+      : undefined;
+    const implementationDate = req.body.implementationDate
+      ? new Date(req.body.implementationDate)
+      : undefined;
+    const followUpDecision = [
+      "",
+      "Closed",
+      "Needs Further Action",
+      "Reassess Next Cycle",
+    ].includes(req.body.followUpDecision)
+      ? req.body.followUpDecision
+      : "";
+    const reassessmentResult = String(req.body.reassessmentResult || "").trim();
+    const verificationRemarks = String(
+      req.body.verificationRemarks || "",
+    ).trim();
+
+    if (targetDate && Number.isNaN(targetDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Target date is invalid.",
+      });
+    }
+
+    if (implementationDate && Number.isNaN(implementationDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Implementation date is invalid.",
+      });
+    }
+
+    if (
+      status === "Verified" &&
+      (!implementationDate ||
+        !reassessmentResult ||
+        !verificationRemarks ||
+        !followUpDecision)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Implementation date, reassessment result, verification remarks, and follow-up decision are required before closing the CQI loop.",
+      });
+    }
+
+    const verificationUpdate =
+      status === "Verified"
+        ? {
+            verifiedBy: req.user._id,
+            verifiedAt: new Date(),
+          }
+        : {
+            verifiedBy: null,
+            verifiedAt: null,
+          };
+
+    const plan = await CqiInterventionPlan.findOneAndUpdate(
+      {
+        analysisExamId: data.exam._id,
+        outcomeType,
+        outcomeCode,
+      },
+      {
+        $set: {
+          analysisExamId: data.exam._id,
+          outcomeType,
+          outcomeCode,
+          rootCause: String(req.body.rootCause || "").trim(),
+          intervention,
+          responsiblePerson,
+          targetDate: targetDate || null,
+          evidence: String(req.body.evidence || "").trim(),
+          remarks: String(req.body.remarks || "").trim(),
+          implementationDate: implementationDate || null,
+          reassessmentResult,
+          verificationRemarks,
+          followUpDecision,
+          status,
+          updatedBy: req.user._id,
+          ...verificationUpdate,
+        },
+        $setOnInsert: { createdBy: req.user._id },
+      },
+      { new: true, upsert: true, runValidators: true },
+    ).lean();
+
+    res.json({
+      success: true,
+      message: "CQI intervention plan saved.",
+      plan: formatCqiPlan(plan),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateCqiPlanStatus = async (req, res) => {
+  try {
+    const data = await getExamWithResults(req.params.id, req.user);
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "Item analysis exam not found.",
+      });
+    }
+
+    const outcomeType = String(req.body.outcomeType || "").trim().toUpperCase();
+    const outcomeCode = String(req.body.outcomeCode || "").trim();
+    const allowedStatuses = ["Planned", "In Progress", "Completed"];
+    const status = String(req.body.status || "").trim();
+
+    if (!["CO", "SO"].includes(outcomeType) || !outcomeCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Outcome type and outcome code are required.",
+      });
+    }
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Quick status can only set Planned, In Progress, or Completed.",
+      });
+    }
+
+    const plan = await CqiInterventionPlan.findOneAndUpdate(
+      {
+        analysisExamId: data.exam._id,
+        outcomeType,
+        outcomeCode,
+      },
+      {
+        $set: {
+          status,
+          updatedBy: req.user._id,
+          verifiedBy: null,
+          verifiedAt: null,
+        },
+      },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: "Create the CQI plan before using quick status.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `CQI status updated to ${status}.`,
+      plan: formatCqiPlan(plan),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 exports.exportItemAnalysis = async (req, res) => {
   try {
     const data = await getExamWithResults(req.params.id, req.user);
@@ -1731,6 +2074,7 @@ exports.exportItemAnalysis = async (req, res) => {
     summarySheet.addRows([
       ["Exam title", analysis.exam.title],
       ["Subject", analysis.exam.subject],
+      ["Assessment Method", analysis.exam.assessmentMethod || "Major Exam"],
       ["Section", analysis.exam.section],
       ["Total students", analysis.summary.totalStudents],
       ["Number of items", analysis.summary.numberOfItems],
@@ -1839,8 +2183,21 @@ exports.exportItemAnalysis = async (req, res) => {
       { header: "Correct", key: "correctCount", width: 12 },
       { header: "Earned Weight", key: "earnedWeight", width: 16 },
       { header: "Total Weight", key: "totalWeight", width: 16 },
+      { header: "Target %", key: "targetRate", width: 12 },
       { header: "Attainment %", key: "attainmentRate", width: 16 },
       { header: "Status", key: "status", width: 16 },
+      { header: "CQI Status", key: "cqiStatus", width: 16 },
+      { header: "Root Cause", key: "cqiRootCause", width: 28 },
+      { header: "Intervention", key: "cqiIntervention", width: 36 },
+      { header: "Responsible Person", key: "cqiResponsiblePerson", width: 22 },
+      { header: "Target Date", key: "cqiTargetDate", width: 16 },
+      { header: "Evidence", key: "cqiEvidence", width: 26 },
+      { header: "Remarks", key: "cqiRemarks", width: 30 },
+      { header: "Implementation Date", key: "cqiImplementationDate", width: 20 },
+      { header: "Reassessment Result", key: "cqiReassessmentResult", width: 36 },
+      { header: "Verification Remarks", key: "cqiVerificationRemarks", width: 36 },
+      { header: "Follow-up Decision", key: "cqiFollowUpDecision", width: 22 },
+      { header: "Verified Date", key: "cqiVerifiedAt", width: 18 },
     ];
     [
       [coSheet, analysis.obeAttainment.courseOutcomes],
@@ -1848,7 +2205,29 @@ exports.exportItemAnalysis = async (req, res) => {
       [bloomSheet, analysis.obeAttainment.bloomLevels],
     ].forEach(([sheet, rows]) => {
       sheet.columns = attainmentColumns;
-      sheet.addRows(rows || []);
+      sheet.addRows(
+        (rows || []).map((row) => ({
+          ...row,
+          cqiStatus: row.cqiPlan?.status || "",
+          cqiRootCause: row.cqiPlan?.rootCause || "",
+          cqiIntervention: row.cqiPlan?.intervention || "",
+          cqiResponsiblePerson: row.cqiPlan?.responsiblePerson || "",
+          cqiTargetDate: row.cqiPlan?.targetDate
+            ? new Date(row.cqiPlan.targetDate).toLocaleDateString()
+            : "",
+          cqiEvidence: row.cqiPlan?.evidence || "",
+          cqiRemarks: row.cqiPlan?.remarks || "",
+          cqiImplementationDate: row.cqiPlan?.implementationDate
+            ? new Date(row.cqiPlan.implementationDate).toLocaleDateString()
+            : "",
+          cqiReassessmentResult: row.cqiPlan?.reassessmentResult || "",
+          cqiVerificationRemarks: row.cqiPlan?.verificationRemarks || "",
+          cqiFollowUpDecision: row.cqiPlan?.followUpDecision || "",
+          cqiVerifiedAt: row.cqiPlan?.verifiedAt
+            ? new Date(row.cqiPlan.verifiedAt).toLocaleDateString()
+            : "",
+        })),
+      );
       if (!analysis.obeAttainment.available) {
         sheet.addRow({ code: analysis.obeAttainment.message });
       }

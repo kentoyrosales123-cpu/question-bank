@@ -253,6 +253,7 @@ function renderDuplicateWarning(candidates) {
           (candidate) => `
             <span>
               ${Math.round(candidate.score * 100)}% match:
+              ${escapeHTML(candidate.engineeringProgram || "No program")} -
               ${escapeHTML(candidate.questionText).slice(0, 120)}
             </span>
           `,
@@ -405,6 +406,12 @@ function getQuestionWarnings(q) {
   if (!q.subject) warnings.push("Missing subject");
   if (!q.engineeringProgram) warnings.push("Missing program");
   if (!q.topic) warnings.push("Missing topic");
+  if (!q.courseOutcome) warnings.push("Missing CO/CLO");
+  if (!q.programOutcome) warnings.push("Missing SO");
+  if (!q.bloomLevel) warnings.push("Missing Bloom level");
+  if (!Number.isFinite(Number(q.outcomeWeight)) || Number(q.outcomeWeight) <= 0) {
+    warnings.push("Missing outcome weight");
+  }
   if (Array.isArray(q.duplicateCandidates) && q.duplicateCandidates.length > 0) {
     warnings.push("High duplicate risk");
   }
@@ -453,6 +460,16 @@ function getParsedQuestionApprovalError(body) {
 
   if (!body.correctAnswer || missingChoices.length > 0) {
     return "Set the correct answer and complete all choices before approving.";
+  }
+
+  if (
+    !body.courseOutcome ||
+    !body.programOutcome ||
+    !body.bloomLevel ||
+    !Number.isFinite(Number(body.outcomeWeight)) ||
+    Number(body.outcomeWeight) <= 0
+  ) {
+    return "Complete CO/CLO, SO, Bloom level, and positive outcome weight before approving.";
   }
 
   return "";

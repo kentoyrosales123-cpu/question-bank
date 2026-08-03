@@ -10,7 +10,7 @@ const questionSchema = new mongoose.Schema(
 
     engineeringProgram: {
       type: String,
-      enum: ["", "General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      enum: ["", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
       default: "",
     },
 

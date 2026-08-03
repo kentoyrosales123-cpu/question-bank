@@ -15,9 +15,13 @@ const {
   canCreateContent,
   isAdmin,
 } = require("../utils/roles");
+const {
+  formatObeMappingError,
+  getMissingObeMappingFields,
+} = require("../utils/obeValidation");
 
 const isAdminUser = (user) => isAdmin(user);
-const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
+const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const isUploadOwner = (upload, user) =>
   Boolean(
@@ -152,20 +156,29 @@ const findDuplicateCandidates = (question, existingQuestions = []) => {
       const sameTopic =
         normalizeQuestionForDuplicateCheck(existing.topic) ===
         normalizeQuestionForDuplicateCheck(question.topic);
+      const sameEngineeringProgram =
+        normalizeQuestionForDuplicateCheck(existing.engineeringProgram) ===
+        normalizeQuestionForDuplicateCheck(question.engineeringProgram);
       const exactText = normalizedText && normalizedText === existingText;
-      const score = exactText ? 1 : 0;
+      const sameDuplicateContext = sameSubject && sameTopic && sameEngineeringProgram;
+      const score = exactText && sameDuplicateContext ? 1 : 0;
 
       return {
         questionId: existing._id,
         questionText: existing.questionText,
         subject: existing.subject,
+        engineeringProgram: existing.engineeringProgram,
         topic: existing.topic,
         difficulty: existing.difficulty,
         score: Math.min(1, Math.round(score * 1000) / 1000),
         exactText,
+        sameSubject,
+        sameTopic,
+        sameEngineeringProgram,
+        sameDuplicateContext,
       };
     })
-    .filter((candidate) => candidate.exactText)
+    .filter((candidate) => candidate.exactText && candidate.sameDuplicateContext)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 };
@@ -926,7 +939,9 @@ exports.getParsedQuestions = async (req, res) => {
         .populate("upload", "originalName uploadedBy")
         .populate("generatedBy", "name email")
         .sort({ createdAt: -1 }),
-      Question.find().select("subject topic questionText difficulty").lean(),
+      Question.find()
+        .select("subject engineeringProgram topic questionText difficulty")
+        .lean(),
     ]);
     const parsedQuestionsWithDuplicates = parsedQuestions.map((question) => {
       const item = question.toObject();
@@ -999,6 +1014,15 @@ exports.approveParsedQuestion = async (req, res) => {
       });
     }
 
+    const missingObeFields = getMissingObeMappingFields(parsed);
+
+    if (missingObeFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: formatObeMappingError(missingObeFields),
+      });
+    }
+
     if (!canAccessSubject(req.user, parsed.subject)) {
       return res.status(403).json({
         success: false,
@@ -1007,7 +1031,7 @@ exports.approveParsedQuestion = async (req, res) => {
     }
 
     const existingQuestions = await Question.find()
-      .select("subject topic questionText difficulty")
+      .select("subject engineeringProgram topic questionText difficulty")
       .lean();
     const duplicateCandidates = findDuplicateCandidates(
       parsed,

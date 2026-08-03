@@ -35,6 +35,322 @@
           <button class="btn secondary" onclick="toggleTheme()">Toggle Theme</button>
         </div>
 
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Assessment Attainment Settings</h2>
+              <p class="muted-text">
+                System-wide targets and formula used to mark CO/CLO and SO attainment.
+              </p>
+            </div>
+          </div>
+          <form id="obeSettingsForm">
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">CO/CLO Target (%)</span>
+                <input
+                  id="courseOutcomeTarget"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  required
+                />
+              </label>
+              <label>
+                <span class="field-label">SO Target (%)</span>
+                <input
+                  id="studentOutcomeTarget"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  required
+                />
+              </label>
+              <label>
+                <span class="field-label">Attainment Method</span>
+                <select id="attainmentMethod" required>
+                  <option value="response_based">Response-based</option>
+                  <option value="student_based">Student-based</option>
+                </select>
+              </label>
+            </div>
+            <button class="btn" type="submit">Save Settings</button>
+            <p class="message" id="obeSettingsMessage"></p>
+          </form>
+        </section>
+
+        <nav class="obe-subpage-tabs" aria-label="OBE Management sections">
+          <a href="#curriculum-map" data-obe-tab="curriculum-map">Curriculum Map</a>
+          <a href="#live-attainment" data-obe-tab="live-attainment">Live Attainment</a>
+          <a href="#peos" data-obe-tab="peos">PEO</a>
+          <a href="#student-outcomes" data-obe-tab="student-outcomes">Student Outcomes</a>
+          <a href="#course-outcomes" data-obe-tab="course-outcomes">CO/CLO</a>
+          <a href="#rubrics" data-obe-tab="rubrics">Rubrics</a>
+          <a href="#evidence" data-obe-tab="evidence">Evidence</a>
+          <a href="#attainment-history" data-obe-tab="attainment-history">History</a>
+        </nav>
+
+        <div class="obe-subpage" data-obe-page="curriculum-map">
+        <section class="card curriculum-map-card">
+          <div class="section-heading">
+            <div>
+              <h2>Curriculum Map</h2>
+              <p class="muted-text">
+                PEO links, SO coverage, CO/CLO mapping, and question-bank evidence.
+              </p>
+            </div>
+            <div class="curriculum-map-filters">
+              <label>
+                <span>Department</span>
+                <input
+                  id="curriculumDepartmentFilter"
+                  placeholder="All departments"
+                  list="departmentOptions"
+                />
+              </label>
+              <label>
+                <span>Subject</span>
+                <input id="curriculumSubjectFilter" placeholder="All subjects" />
+              </label>
+              <button class="btn secondary" type="button" onclick="loadCurriculumMap()">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="dashboard-stats reports-stats curriculum-map-summary">
+            <div class="metric-card report-metric">
+              <h3>PEO Rows</h3>
+              <strong id="curriculumPeoCount">0</strong>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Student Outcomes</h3>
+              <strong id="curriculumSoCount">0</strong>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>CO/CLO Rows</h3>
+              <strong id="curriculumCoCount">0</strong>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Mapped CO/CLO</h3>
+              <strong id="curriculumMappedCoCount">0</strong>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Question Evidence</h3>
+              <strong id="curriculumQuestionCount">0</strong>
+            </div>
+          </div>
+
+          <div class="table-wrap curriculum-map-wrap">
+            <table class="curriculum-map-table">
+              <thead>
+                <tr>
+                  <th>PEO</th>
+                  <th>SO</th>
+                  <th>CO/CLO</th>
+                  <th>Subject</th>
+                  <th>Bloom</th>
+                  <th>Questions</th>
+                  <th>Programs</th>
+                </tr>
+              </thead>
+              <tbody id="curriculumMapBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination-bar" id="curriculumMapPagination"></div>
+          <div id="unmappedStudentOutcomeList"></div>
+          <p class="message" id="curriculumMapMessage"></p>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="live-attainment">
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Live OBE Attainment</h2>
+              <p class="muted-text">
+                Teacher item-analysis uploads appear here when they are linked to generated exams with CO/SO mapped questions.
+              </p>
+            </div>
+            <button class="btn secondary" type="button" onclick="loadLiveObeAttainment()">
+              Refresh
+            </button>
+          </div>
+
+          <div class="dashboard-stats reports-stats">
+            <div class="metric-card report-metric">
+              <h3>Aligned Questions</h3>
+              <strong id="liveObeAlignedQuestions">0</strong>
+              <small id="liveObeAlignmentRate">0% of question bank</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>CLO Attained</h3>
+              <strong id="liveObeCloAttained">0 / 0</strong>
+              <small>assessed course outcomes</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>SO Attained</h3>
+              <strong id="liveObeSoAttained">0 / 0</strong>
+              <small>assessed student outcomes</small>
+            </div>
+            <div class="metric-card report-metric">
+              <h3>Overall</h3>
+              <strong id="liveObeOverallRate">0%</strong>
+              <small id="liveObeStatus">No Evidence</small>
+            </div>
+          </div>
+
+          <div class="dashboard-insights">
+            <div class="difficulty-panel report-card">
+              <h2>CO/CLO Attainment</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>CO/CLO</th>
+                      <th>Program</th>
+                      <th>Assessed</th>
+                      <th>Correct</th>
+                      <th>Students</th>
+                      <th>Target</th>
+                      <th>Attainment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="liveObeCloBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="difficulty-panel report-card">
+              <h2>SO Attainment</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>SO</th>
+                      <th>Assessed</th>
+                      <th>Correct</th>
+                      <th>Students</th>
+                      <th>Target</th>
+                      <th>Attainment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="liveObeSoBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>CO/CLO</th>
+                  <th>SO</th>
+                  <th>Assessment Evidence</th>
+                  <th>Students</th>
+                  <th>Attainment</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="liveObeEvidenceBody"></tbody>
+            </table>
+          </div>
+          <p class="message" id="liveObeMessage"></p>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="peos">
+        <section class="dashboard-insights">
+          <form class="card" id="peoForm">
+            <h2>Add Program Educational Objective</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Engineering Department</span>
+                <input
+                  id="peoDepartment"
+                  required
+                  placeholder="Electronics Engineering"
+                  list="departmentOptions"
+                />
+              </label>
+              <label>
+                <span class="field-label">PEO Code</span>
+                <input id="peoCode" required placeholder="PEO1" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">PEO Description</span>
+              <textarea
+                id="peoDescription"
+                required
+                placeholder="Graduates are expected to practice their profession with technical competence..."
+              ></textarea>
+            </label>
+            <label>
+              <span class="field-label">Performance Indicators</span>
+              <textarea
+                id="peoPerformanceIndicators"
+                placeholder="Licensure, employment, leadership roles, continuing professional development..."
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Save PEO</button>
+            <p class="message" id="peoMessage"></p>
+          </form>
+
+          <form class="card" id="bulkPeoForm">
+            <h2>Bulk Import PEO</h2>
+            <label>
+              <span class="field-label">Engineering Department</span>
+              <input
+                id="bulkPeoDepartment"
+                required
+                placeholder="Electronics Engineering"
+                list="departmentOptions"
+              />
+            </label>
+            <label>
+              <span class="field-label">Rows</span>
+              <textarea
+                id="bulkPeoText"
+                required
+                placeholder="PEO1 | Practice the profession with technical competence | licensure, employment, leadership&#10;PEO2 | Pursue lifelong learning and professional growth | graduate study, CPD, certifications"
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Import PEO Rows</button>
+            <p class="message" id="bulkPeoMessage"></p>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Saved Program Educational Objectives</h2>
+            <label class="search-box">
+              <span>Filter</span>
+              <input id="peoFilter" placeholder="Department or PEO" />
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>PEO</th>
+                  <th>Description</th>
+                  <th>Performance Indicators</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="peoBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination-bar" id="peoPagination"></div>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="student-outcomes">
         <section class="dashboard-insights">
           <form class="card" id="studentOutcomeForm">
             <h2>Add Student Outcome</h2>
@@ -72,11 +388,7 @@
               </div>
               <div>
                 <span class="field-label">PEO Links</span>
-                <div class="checkbox-group" id="soPeoLinks">
-                  <label><input type="checkbox" value="1" /> 1</label>
-                  <label><input type="checkbox" value="2" /> 2</label>
-                  <label><input type="checkbox" value="3" /> 3</label>
-                </div>
+                <div class="checkbox-group" id="soPeoLinks"></div>
               </div>
             </div>
             <button class="btn" type="submit">Save SO</button>
@@ -131,7 +443,9 @@
           </div>
           <div class="pagination-bar" id="studentOutcomePagination"></div>
         </section>
+        </div>
 
+        <div class="obe-subpage" data-obe-page="course-outcomes">
         <section class="dashboard-insights">
           <form class="card" id="outcomeForm">
             <h2>Add CO/CLO</h2>
@@ -241,6 +555,288 @@
           </div>
           <div class="pagination-bar" id="courseOutcomePagination"></div>
         </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="rubrics">
+        <section class="dashboard-insights">
+          <form class="card" id="rubricForm">
+            <h2>Rubric-Based Assessment</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Title</span>
+                <input id="rubricTitle" required placeholder="Design Project Rubric" />
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="rubricSubject" required placeholder="Circuits 1" />
+              </label>
+              <label>
+                <span class="field-label">Program</span>
+                <select id="rubricProgram">
+                  <option value="">Not set</option>
+                  <option value="ECE">ECE</option>
+                  <option value="CE">CE</option>
+                  <option value="EE">EE</option>
+                  <option value="ME">ME</option>
+                  <option value="CpE">CpE</option>
+                  <option value="CHE">CHE</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Assessment Method</span>
+                <select id="rubricAssessmentMethod">
+                  <option value="Project">Project</option>
+                  <option value="Laboratory">Laboratory</option>
+                  <option value="Practical Exam">Practical Exam</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Section</span>
+                <input id="rubricSection" placeholder="BSECE 3A" />
+              </label>
+              <label>
+                <span class="field-label">Term</span>
+                <input id="rubricSemester" placeholder="1st Sem 1st Term" />
+              </label>
+              <label>
+                <span class="field-label">School Year</span>
+                <input id="rubricSchoolYear" placeholder="2025-2026" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">Criteria</span>
+              <textarea
+                id="rubricCriteria"
+                required
+                placeholder="Analysis | CO1 | a | Apply | 20 | 15&#10;Prototype | CO2 | b | Create | 30 | 22.5"
+              ></textarea>
+            </label>
+            <label>
+              <span class="field-label">Student Scores</span>
+              <textarea
+                id="rubricStudentScores"
+                placeholder="Juan Dela Cruz | 2025-001 | 18, 25&#10;Maria Santos | 2025-002 | 15, 28"
+              ></textarea>
+            </label>
+            <button class="btn" type="submit">Save Rubric</button>
+            <p class="message" id="rubricMessage"></p>
+          </form>
+
+          <form class="card" id="rubricImportForm">
+            <h2>Excel Rubric Upload</h2>
+            <div class="form-actions">
+              <button
+                class="btn secondary"
+                type="button"
+                onclick="downloadRubricTemplate()"
+              >
+                Download Template
+              </button>
+            </div>
+            <label>
+              <span class="field-label">Filled Rubric File</span>
+              <input id="rubricFile" type="file" accept=".xlsx,.csv" required />
+            </label>
+            <button class="btn" type="submit">Import Rubric Scores</button>
+            <p class="message" id="rubricImportMessage"></p>
+          </form>
+
+          <section class="card">
+            <h2>Saved Rubric Assessments</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Assessment</th>
+                    <th>Subject</th>
+                    <th>Criteria</th>
+                    <th>Students</th>
+                    <th>CO/CLO Attainment</th>
+                    <th>SO Attainment</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="rubricBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="evidence">
+        <section class="dashboard-insights">
+          <form class="card" id="evidenceForm">
+            <h2>Evidence Repository</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Title</span>
+                <input id="evidenceTitle" required placeholder="Final Exam TOS" />
+              </label>
+              <label>
+                <span class="field-label">Type</span>
+                <select id="evidenceType">
+                  <option value="Syllabus">Syllabus</option>
+                  <option value="TOS">TOS</option>
+                  <option value="Exam">Exam</option>
+                  <option value="Answer Key">Answer Key</option>
+                  <option value="Item Analysis">Item Analysis</option>
+                  <option value="Rubric">Rubric</option>
+                  <option value="Student Output">Student Output</option>
+                  <option value="CQI">CQI</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="evidenceSubject" placeholder="Circuits 1" />
+              </label>
+              <label>
+                <span class="field-label">Program</span>
+                <select id="evidenceProgram">
+                  <option value="">Not set</option>
+                  <option value="ECE">ECE</option>
+                  <option value="CE">CE</option>
+                  <option value="EE">EE</option>
+                  <option value="ME">ME</option>
+                  <option value="CpE">CpE</option>
+                  <option value="CHE">CHE</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">CO/CLO</span>
+                <input id="evidenceCourseOutcome" placeholder="CO1" />
+              </label>
+              <label>
+                <span class="field-label">SO</span>
+                <input id="evidenceProgramOutcome" placeholder="a" />
+              </label>
+              <label>
+                <span class="field-label">Section</span>
+                <input id="evidenceSection" placeholder="BSECE 3A" />
+              </label>
+              <label>
+                <span class="field-label">Term</span>
+                <input id="evidenceSemester" placeholder="1st Sem 1st Term" />
+              </label>
+              <label>
+                <span class="field-label">School Year</span>
+                <input id="evidenceSchoolYear" placeholder="2025-2026" />
+              </label>
+              <label>
+                <span class="field-label">File</span>
+                <input id="evidenceFile" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.docx" />
+              </label>
+            </div>
+            <label>
+              <span class="field-label">Description</span>
+              <textarea id="evidenceDescription" placeholder="Short notes about this evidence."></textarea>
+            </label>
+            <button class="btn" type="submit">Save Evidence</button>
+            <p class="message" id="evidenceMessage"></p>
+          </form>
+
+          <section class="card">
+            <h2>Saved Evidence</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Evidence</th>
+                    <th>Type</th>
+                    <th>Subject</th>
+                    <th>Outcomes</th>
+                    <th>File</th>
+                    <th>Uploaded</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="evidenceBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="attainment-history">
+        <section class="dashboard-insights">
+          <form class="card" id="snapshotForm">
+            <h2>Historical Attainment Snapshot</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Snapshot Title</span>
+                <input id="snapshotTitle" required placeholder="Circuits 1 Final OBE 2025-2026" />
+              </label>
+              <label>
+                <span class="field-label">Program</span>
+                <select id="snapshotProgram">
+                  <option value="">All Programs</option>
+                  <option value="ECE">ECE</option>
+                  <option value="CE">CE</option>
+                  <option value="EE">EE</option>
+                  <option value="ME">ME</option>
+                  <option value="CpE">CpE</option>
+                  <option value="CHE">CHE</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="snapshotSubject" placeholder="All subjects" />
+              </label>
+              <label>
+                <span class="field-label">Section</span>
+                <input id="snapshotSection" placeholder="All sections" />
+              </label>
+              <label>
+                <span class="field-label">Term</span>
+                <input id="snapshotSemester" placeholder="All terms" />
+              </label>
+              <label>
+                <span class="field-label">School Year</span>
+                <input id="snapshotSchoolYear" placeholder="2025-2026" />
+              </label>
+              <label>
+                <span class="field-label">Assessment</span>
+                <select id="snapshotAssessmentMethod">
+                  <option value="">All Methods</option>
+                  <option value="Major Exam">Major Exam</option>
+                  <option value="Quiz">Quiz</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Project">Project</option>
+                  <option value="Laboratory">Laboratory</option>
+                  <option value="Recitation">Recitation</option>
+                  <option value="Practical Exam">Practical Exam</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+            </div>
+            <button class="btn" type="submit">Capture Snapshot</button>
+            <p class="message" id="snapshotMessage"></p>
+          </form>
+
+          <section class="card">
+            <h2>Attainment History</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Snapshot</th>
+                    <th>Filters</th>
+                    <th>CLO</th>
+                    <th>SO</th>
+                    <th>Overall</th>
+                    <th>Status</th>
+                    <th>Captured</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="snapshotBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+        </div>
       </main>
     </div>
 

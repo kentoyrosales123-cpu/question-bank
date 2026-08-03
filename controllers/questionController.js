@@ -4,7 +4,11 @@ const {
   canAccessSubject,
   getSubjectAccessFilter,
 } = require("../utils/roles");
-const ENGINEERING_PROGRAMS = ["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"];
+const {
+  formatObeMappingError,
+  getMissingObeMappingFields,
+} = require("../utils/obeValidation");
+const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const getQuestionSnapshot = (question) => ({
   subject: question.subject,
@@ -117,6 +121,21 @@ exports.createQuestion = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Selected engineering program is invalid.",
+      });
+    }
+
+    const missingObeFields = getMissingObeMappingFields({
+      engineeringProgram,
+      courseOutcome,
+      programOutcome,
+      bloomLevel,
+      outcomeWeight,
+    });
+
+    if (missingObeFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: formatObeMappingError(missingObeFields),
       });
     }
 
@@ -306,6 +325,15 @@ exports.updateQuestion = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "You do not have access to save questions for this subject.",
+      });
+    }
+
+    const missingObeFields = getMissingObeMappingFields(updateData);
+
+    if (missingObeFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: formatObeMappingError(missingObeFields),
       });
     }
 

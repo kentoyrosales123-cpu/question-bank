@@ -46,6 +46,10 @@ const itemAnalysisStudentResultSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    scanMetadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

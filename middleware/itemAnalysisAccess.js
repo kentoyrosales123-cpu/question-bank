@@ -1,12 +1,18 @@
-const { canCreateContent } = require("../utils/roles");
+const { canUseItemAnalysis } = require("../utils/roles");
 
-const allowedRoles = ["admin", "super_admin", "exam_creator", "cee_cac_coordinator"];
+const allowedRoles = [
+  "admin",
+  "super_admin",
+  "exam_creator",
+  "exam_requestor",
+  "cee_cac_coordinator",
+];
 
 const itemAnalysisAccess = (req, res, next) => {
-  if (!canCreateContent(req.user)) {
+  if (!canUseItemAnalysis(req.user)) {
     return res.status(403).json({
       success: false,
-      message: "Item analysis access is for content managers only.",
+      message: "Item analysis access is for exam users only.",
     });
   }
 

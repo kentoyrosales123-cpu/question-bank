@@ -14,6 +14,7 @@ const logActivity = async (req, { user, action, description, metadata = {} }) =>
       ipAddress: req.ip || req.socket?.remoteAddress || "",
       userAgent: req.get("user-agent") || "",
     });
+    req.activityLogged = true;
   } catch (error) {
     console.error("Activity log failed:", error.message);
   }

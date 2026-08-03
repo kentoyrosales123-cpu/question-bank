@@ -83,6 +83,23 @@ function canCreateContentRole(user) {
   return isAdminRole(user) || isCreatorRole(user) || isCeeCacCoordinatorRole(user);
 }
 
+function canUseItemAnalysisRole(user) {
+  return canGenerateExamRole(user);
+}
+
+function canUseTeacherObeRole(user) {
+  return canGenerateExamRole(user);
+}
+
+function canGenerateExamRole(user) {
+  return (
+    isAdminRole(user) ||
+    isCreatorRole(user) ||
+    isCeeCacCoordinatorRole(user) ||
+    hasAnyRole(user, ["exam_requestor"])
+  );
+}
+
 function getDashboardUrl(user = getUser()) {
   return isAdminRole(user)
     ? "/dashboard.html"
@@ -173,7 +190,6 @@ function syncDashboardLinks() {
 
   if (!canCreateContentRole(user)) {
     [
-      "/item-analysis-upload.html",
       "/upload.html",
       "/ai-generator.html",
       "/add-question.html",
@@ -183,6 +199,18 @@ function syncDashboardLinks() {
       document.querySelectorAll(`a[href="${href}"]`).forEach((link) => {
         link.classList.add("hidden");
       });
+    });
+  }
+
+  if (!canUseItemAnalysisRole(user)) {
+    document.querySelectorAll('a[href="/item-analysis-upload.html"]').forEach((link) => {
+      link.classList.add("hidden");
+    });
+  }
+
+  if (!canUseTeacherObeRole(user)) {
+    document.querySelectorAll('a[href="/obe-management.html"]').forEach((link) => {
+      link.classList.add("hidden");
     });
   }
 
@@ -795,7 +823,7 @@ function normalizeSidebarLinks(sidebar) {
     });
   }
 
-  if (!isSuperAdminRole(user)) {
+  if (!canUseTeacherObeRole(user)) {
     sidebar.querySelectorAll('a[href="/obe-management.html"]').forEach((link) => {
       link.remove();
     });
@@ -836,7 +864,7 @@ function normalizeSidebarLinks(sidebar) {
     label: "Item Analysis",
     afterHref: "/generate-exam.html",
   });
-  if (isSuperAdminRole(user)) {
+  if (canUseTeacherObeRole(user)) {
     ensureSidebarLink(sidebar, {
       href: "/obe-management.html",
       label: "OBE Management",

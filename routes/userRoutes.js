@@ -168,7 +168,7 @@ router.get("/me/profile-image", protect, async (req, res) => {
 router.get("/me/activity", protect, async (req, res) => {
   try {
     const exams = await Exam.find({ user: req.user._id })
-      .select("title subject topic totalItems submitted score approvalStatus createdAt")
+      .select("title subject topic section semester schoolYear assessmentMethod totalItems submitted score approvalStatus createdAt")
       .sort({ createdAt: -1 });
 
     res.json({

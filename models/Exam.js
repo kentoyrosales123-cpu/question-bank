@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  ASSESSMENT_METHODS,
+  DEFAULT_ASSESSMENT_METHOD,
+} = require("../utils/assessmentMethods");
 
 const examSchema = new mongoose.Schema(
   {
@@ -14,13 +18,38 @@ const examSchema = new mongoose.Schema(
 
     engineeringProgram: {
       type: String,
-      enum: ["", "General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      enum: ["", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
       default: "",
     },
 
     topic: {
       type: String,
       default: "",
+    },
+
+    section: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    semester: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    schoolYear: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    assessmentMethod: {
+      type: String,
+      enum: ASSESSMENT_METHODS,
+      default: DEFAULT_ASSESSMENT_METHOD,
+      trim: true,
     },
 
     totalItems: {

@@ -3,8 +3,8 @@ protectPage();
 const analysisUser = getUser();
 let generatedExams = [];
 
-if (analysisUser && !isAdminRole(analysisUser) && !isCreatorRole(analysisUser)) {
-  alert("Item analysis is for Admins and Exam Creators only.");
+if (analysisUser && !canUseItemAnalysisRole(analysisUser)) {
+  alert("Item analysis is for exam users only.");
   location.href = getDashboardUrl(analysisUser);
 }
 
@@ -16,8 +16,26 @@ document
     const form = new FormData(event.target);
     const message = document.getElementById("itemAnalysisMessage");
     const selectedGeneratedExam = getSelectedGeneratedExam();
+    const includeInObe = document.getElementById("includeInObe")?.checked;
 
-    if (selectedGeneratedExam && formMatchesGeneratedExam(selectedGeneratedExam)) {
+    if (includeInObe && !selectedGeneratedExam) {
+      message.textContent =
+        "Choose a generated exam first, then click Use Exam Details. OBE attainment needs the exam's CO/SO item mapping.";
+      message.classList.add("wrong");
+      message.classList.remove("correct");
+      return;
+    }
+
+    if (includeInObe && !formMatchesGeneratedExam(selectedGeneratedExam)) {
+      message.textContent =
+        "Click Use Exam Details before uploading so the item count and exam information match the generated exam.";
+      message.classList.add("wrong");
+      message.classList.remove("correct");
+      return;
+    }
+
+    if (includeInObe && selectedGeneratedExam) {
+      form.set("includeInObe", "true");
       form.append("generatedExamId", selectedGeneratedExam._id);
     }
 
@@ -63,9 +81,22 @@ function getItemAnalysisExamPayload(exam) {
     title: document.getElementById("analysisTitle").value || exam?.title || "",
     subject:
       document.getElementById("analysisSubject").value || exam?.subject || "",
-    section: document.getElementById("analysisSection").value || "No section",
-    semester: document.getElementById("analysisSemester").value || "",
-    schoolYear: document.getElementById("analysisSchoolYear").value || "",
+    section:
+      document.getElementById("analysisSection").value ||
+      exam?.section ||
+      "No section",
+    semester:
+      document.getElementById("analysisSemester").value ||
+      exam?.semester ||
+      "",
+    schoolYear:
+      document.getElementById("analysisSchoolYear").value ||
+      exam?.schoolYear ||
+      "",
+    assessmentMethod:
+      document.getElementById("analysisAssessmentMethod").value ||
+      exam?.assessmentMethod ||
+      "Major Exam",
   };
 }
 
@@ -128,6 +159,10 @@ function renderGeneratedExamMeta() {
   meta.innerHTML = `
     <span>${escapeHTML(exam.subject || "No subject")}</span>
     <span>${escapeHTML(exam.topic || "All topics")}</span>
+    <span>${escapeHTML(exam.section || "No section")}</span>
+    <span>${escapeHTML(exam.semester || "No term")}</span>
+    <span>${escapeHTML(exam.schoolYear || "No school year")}</span>
+    <span>${escapeHTML(exam.assessmentMethod || "Major Exam")}</span>
     <span>${escapeHTML(exam.totalItems)} items</span>
     <span>${formatExamDate(exam.createdAt)}</span>
   `;
@@ -189,6 +224,11 @@ async function useGeneratedExamDetails() {
 
   document.getElementById("analysisTitle").value = exam.title || "";
   document.getElementById("analysisSubject").value = exam.subject || "";
+  document.getElementById("analysisSection").value = exam.section || "";
+  document.getElementById("analysisSemester").value = exam.semester || "";
+  document.getElementById("analysisSchoolYear").value = exam.schoolYear || "";
+  document.getElementById("analysisAssessmentMethod").value =
+    exam.assessmentMethod || "Major Exam";
   document.getElementById("analysisItems").value = exam.totalItems || "";
 
   try {

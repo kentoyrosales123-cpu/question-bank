@@ -51,18 +51,46 @@
                 <input id="analysisSection" name="section" required />
               </label>
               <label>
-                <span class="field-label">Semester</span>
-                <input id="analysisSemester" name="semester" placeholder="1st Semester" />
+                <span class="field-label">Term</span>
+                <select id="analysisSemester" name="semester">
+                  <option value="">Select term</option>
+                  <option value="1st Sem 1st Term">1st Sem 1st Term</option>
+                  <option value="1st Sem 2nd Term">1st Sem 2nd Term</option>
+                  <option value="2nd Sem 1st Term">2nd Sem 1st Term</option>
+                  <option value="2nd Sem 2nd Term">2nd Sem 2nd Term</option>
+                  <option value="Summer">Summer</option>
+                </select>
               </label>
               <label>
                 <span class="field-label">School Year</span>
                 <input id="analysisSchoolYear" name="schoolYear" placeholder="2025-2026" />
               </label>
               <label>
+                <span class="field-label">Assessment Method *</span>
+                <select id="analysisAssessmentMethod" name="assessmentMethod" required>
+                  <option value="Quiz">Quiz</option>
+                  <option value="Major Exam" selected>Major Exam</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Laboratory">Laboratory</option>
+                  <option value="Project">Project</option>
+                  <option value="Recitation">Recitation</option>
+                  <option value="Practical Exam">Practical Exam</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+              <label>
                 <span class="field-label">Number of Items *</span>
                 <input id="analysisItems" name="numberOfItems" type="number" min="1" value="50" required />
               </label>
             </div>
+
+            <label class="checkbox-inline obe-link-required">
+              <input id="includeInObe" name="includeInObe" type="checkbox" value="true" checked />
+              <span>
+                Include this item analysis in OBE attainment
+                <small>Requires a linked generated exam with CO/SO mapped questions.</small>
+              </span>
+            </label>
 
             <label>
               <span class="field-label">Upload Excel/CSV Result File *</span>

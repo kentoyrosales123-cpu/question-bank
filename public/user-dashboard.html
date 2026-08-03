@@ -48,6 +48,24 @@
               <small>Ready to download</small>
             </div>
           </div>
+
+          <div class="user-metric-card">
+            <span class="user-metric-icon question-strip-icon"></span>
+            <div>
+              <h3>OBE Evidence</h3>
+              <strong id="teacherObeEvidence">0</strong>
+              <small>item analysis, rubrics, files</small>
+            </div>
+          </div>
+
+          <div class="user-metric-card">
+            <span class="user-metric-icon clock-strip-icon"></span>
+            <div>
+              <h3>Needs CQI</h3>
+              <strong id="teacherObeNeedsCqi">0</strong>
+              <small>outcomes below target</small>
+            </div>
+          </div>
         </section>
 
         <section class="user-dashboard-grid">
@@ -76,6 +94,124 @@
               <a class="btn secondary compact-btn" href="/profile.html">View All</a>
             </div>
             <div id="recentUserExams"></div>
+          </div>
+        </section>
+
+        <section class="user-dashboard-grid teacher-obe-grid">
+          <div class="user-panel">
+            <div class="user-panel-heading">
+              <h2 class="user-panel-title">My OBE Dashboard</h2>
+              <a class="btn secondary compact-btn" href="/item-analysis-upload.html">
+                Upload Item Analysis
+              </a>
+            </div>
+            <div class="teacher-obe-summary">
+              <div>
+                <small>Generated Exams</small>
+                <strong id="teacherGeneratedExams">0</strong>
+              </div>
+              <div>
+                <small>Linked Item Analysis</small>
+                <strong id="teacherLinkedAnalysis">0</strong>
+              </div>
+              <div>
+                <small>Rubrics</small>
+                <strong id="teacherRubrics">0</strong>
+              </div>
+              <div>
+                <small>Evidence Files</small>
+                <strong id="teacherEvidenceFiles">0</strong>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>CO/CLO</th>
+                    <th>Students</th>
+                    <th>Target</th>
+                    <th>Attainment</th>
+                  </tr>
+                </thead>
+                <tbody id="teacherCloBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="user-panel">
+            <div class="user-panel-heading">
+              <h2 class="user-panel-title">Submission Status</h2>
+              <a class="btn secondary compact-btn" href="/item-analysis-upload.html">
+                Add Evidence
+              </a>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Class</th>
+                    <th>Analysis</th>
+                    <th>Rubric</th>
+                    <th>Evidence</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="teacherSubmissionBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="user-dashboard-grid teacher-obe-grid">
+          <div class="user-panel">
+            <h2 class="user-panel-title">SO Attainment</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SO</th>
+                    <th>Students</th>
+                    <th>Target</th>
+                    <th>Attainment</th>
+                  </tr>
+                </thead>
+                <tbody id="teacherSoBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="user-panel">
+            <h2 class="user-panel-title">Recent OBE Evidence</h2>
+            <form class="teacher-evidence-form" id="teacherEvidenceForm">
+              <div class="field-grid two">
+                <label>
+                  <span class="field-label">Title</span>
+                  <input id="teacherEvidenceTitle" required placeholder="Remediation Evidence" />
+                </label>
+                <label>
+                  <span class="field-label">Type</span>
+                  <select id="teacherEvidenceType">
+                    <option value="TOS">TOS</option>
+                    <option value="Item Analysis">Item Analysis</option>
+                    <option value="Rubric">Rubric</option>
+                    <option value="Student Output">Student Output</option>
+                    <option value="CQI">CQI</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="field-label">Subject</span>
+                  <input id="teacherEvidenceSubject" placeholder="Circuits 1" />
+                </label>
+                <label>
+                  <span class="field-label">File</span>
+                  <input id="teacherEvidenceFile" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.docx" />
+                </label>
+              </div>
+              <button class="btn secondary compact-btn" type="submit">Submit Evidence</button>
+              <p class="message" id="teacherEvidenceMessage"></p>
+            </form>
+            <div id="teacherEvidenceList"></div>
           </div>
         </section>
 

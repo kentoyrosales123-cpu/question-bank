@@ -51,6 +51,10 @@ const canGenerateExam = (user) =>
   isExamRequestor(user) ||
   isCeeCacCoordinator(user);
 
+const canUseItemAnalysis = (user) => canGenerateExam(user);
+
+const canUseTeacherObe = (user) => canGenerateExam(user);
+
 const canApproveQuestionBank = (user) => isAdmin(user) || isCeeCacCoordinator(user);
 
 const getCreatableRoles = (user) => {
@@ -113,6 +117,8 @@ module.exports = {
   isExamRequestor,
   canCreateContent,
   canGenerateExam,
+  canUseItemAnalysis,
+  canUseTeacherObe,
   canApproveQuestionBank,
   canAccessSubject,
   getAllowedSubjects,

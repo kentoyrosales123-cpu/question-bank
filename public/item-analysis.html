@@ -85,11 +85,11 @@
               CO/SO attainment from actual student responses.
             </p>
           </div>
-          <div class="dashboard-insights result-attainment">
-            <div>
+          <div class="obe-attainment-grid result-attainment">
+            <div class="obe-attainment-panel">
               <h3>CO Attainment</h3>
-              <div class="table-wrap">
-                <table>
+              <div class="table-wrap obe-table-wrap">
+                <table class="obe-attainment-table">
                   <thead>
                     <tr>
                       <th>CO/CLO</th>
@@ -97,18 +97,20 @@
                       <th>Responses</th>
                       <th>Correct</th>
                       <th>Weight</th>
+                      <th>Target</th>
                       <th>Attainment</th>
                       <th>Status</th>
+                      <th>CQI</th>
                     </tr>
                   </thead>
                   <tbody id="coAttainmentBody"></tbody>
                 </table>
               </div>
             </div>
-            <div>
+            <div class="obe-attainment-panel">
               <h3>SO Attainment</h3>
-              <div class="table-wrap">
-                <table>
+              <div class="table-wrap obe-table-wrap">
+                <table class="obe-attainment-table">
                   <thead>
                     <tr>
                       <th>SO</th>
@@ -116,18 +118,20 @@
                       <th>Responses</th>
                       <th>Correct</th>
                       <th>Weight</th>
+                      <th>Target</th>
                       <th>Attainment</th>
                       <th>Status</th>
+                      <th>CQI</th>
                     </tr>
                   </thead>
                   <tbody id="soAttainmentBody"></tbody>
                 </table>
               </div>
             </div>
-            <div>
+            <div class="obe-attainment-panel">
               <h3>Bloom Attainment</h3>
-              <div class="table-wrap">
-                <table>
+              <div class="table-wrap obe-table-wrap">
+                <table class="obe-attainment-table bloom-attainment-table">
                   <thead>
                     <tr>
                       <th>Bloom</th>
@@ -135,6 +139,7 @@
                       <th>Responses</th>
                       <th>Correct</th>
                       <th>Weight</th>
+                      <th>Target</th>
                       <th>Attainment</th>
                       <th>Status</th>
                     </tr>
@@ -171,6 +176,115 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <div class="modal hidden" id="cqiPlanModal">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <h2 id="cqiPlanTitle">CQI Intervention Plan</h2>
+            <p class="muted-text" id="cqiPlanSubtitle"></p>
+          </div>
+          <button class="btn secondary" type="button" onclick="closeCqiPlanModal()">Close</button>
+        </div>
+        <form id="cqiPlanForm">
+          <input id="cqiOutcomeType" type="hidden" />
+          <input id="cqiOutcomeCode" type="hidden" />
+
+          <div class="form-actions">
+            <button class="btn secondary" type="button" onclick="suggestCqiPlan()">
+              Suggest Plan
+            </button>
+          </div>
+
+          <label>
+            <span class="field-label">Root Cause</span>
+            <textarea id="cqiRootCause" rows="3" placeholder="Identify why the outcome was not attained."></textarea>
+          </label>
+
+          <label>
+            <span class="field-label">Intervention / Action Plan *</span>
+            <textarea id="cqiIntervention" rows="4" required placeholder="Describe the remediation, reteaching, item revision, or instructional adjustment."></textarea>
+          </label>
+
+          <div class="field-grid two">
+            <label>
+              <span class="field-label">Responsible Person *</span>
+              <input id="cqiResponsiblePerson" required placeholder="Faculty or coordinator" />
+            </label>
+            <label>
+              <span class="field-label">Target Date</span>
+              <input id="cqiTargetDate" type="date" />
+            </label>
+          </div>
+
+          <div class="field-grid two">
+            <label>
+              <span class="field-label">Status</span>
+              <select id="cqiStatus">
+                <option value="Planned">Planned</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Verified">Verified</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">Evidence</span>
+              <input id="cqiEvidence" placeholder="File reference, minutes, activity, or assessment evidence" />
+            </label>
+          </div>
+
+          <label>
+            <span class="field-label">Remarks</span>
+            <textarea id="cqiRemarks" rows="3" placeholder="Follow-up notes or verification details."></textarea>
+          </label>
+
+          <div class="cqi-closeout-panel">
+            <div class="section-heading compact-heading">
+              <div>
+                <h3>Closing the Loop / Verification</h3>
+                <p class="muted-text">
+                  Complete these fields when the intervention has been implemented and checked.
+                </p>
+              </div>
+              <button class="btn secondary compact-btn" type="button" onclick="suggestCqiVerification()">
+                Suggest Verification
+              </button>
+            </div>
+
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Implementation Date</span>
+                <input id="cqiImplementationDate" type="date" />
+              </label>
+              <label>
+                <span class="field-label">Follow-up Decision</span>
+                <select id="cqiFollowUpDecision">
+                  <option value="">Select decision</option>
+                  <option value="Closed">Closed</option>
+                  <option value="Needs Further Action">Needs Further Action</option>
+                  <option value="Reassess Next Cycle">Reassess Next Cycle</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              <span class="field-label">Reassessment Result</span>
+              <textarea id="cqiReassessmentResult" rows="3" placeholder="Summarize reassessment score, student performance, or evidence after intervention."></textarea>
+            </label>
+
+            <label>
+              <span class="field-label">Verification Remarks</span>
+              <textarea id="cqiVerificationRemarks" rows="3" placeholder="State whether the intervention worked and what evidence was reviewed."></textarea>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn" type="submit">Save CQI Plan</button>
+          </div>
+          <p class="message" id="cqiPlanMessage"></p>
+        </form>
+      </div>
     </div>
 
     <script src="/js/chart.umd.js"></script>

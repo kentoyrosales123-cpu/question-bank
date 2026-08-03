@@ -52,7 +52,6 @@
                   <span class="field-label">Engineering Program *</span>
                   <select id="engineeringProgram" required>
                     <option value="">Select program</option>
-                    <option value="General Engineering">General Engineering</option>
                     <option value="ECE">ECE</option>
                     <option value="CE">CE</option>
                     <option value="EE">EE</option>
@@ -66,13 +65,63 @@
               <div class="field-grid two">
                 <label>
                   <span class="field-label">Subject *</span>
+                  <input
+                    class="select-search"
+                    id="subjectSearch"
+                    type="search"
+                    placeholder="Search subject..."
+                    autocomplete="off"
+                  />
                   <select id="subject" multiple required></select>
                   <small>Hold Ctrl or Cmd to select more than one subject.</small>
+                </label>
+                <label>
+                  <span class="field-label">Assessment Method *</span>
+                  <select id="assessmentMethod" required>
+                    <option value="Quiz">Quiz</option>
+                    <option value="Major Exam" selected>Major Exam</option>
+                    <option value="Assignment">Assignment</option>
+                    <option value="Laboratory">Laboratory</option>
+                    <option value="Project">Project</option>
+                    <option value="Recitation">Recitation</option>
+                    <option value="Practical Exam">Practical Exam</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <small>Used for OBE assessment method mapping.</small>
+                </label>
+              </div>
+
+              <div class="field-grid three">
+                <label>
+                  <span class="field-label">Section</span>
+                  <input id="section" placeholder="Example: CE-2A" />
+                </label>
+                <label>
+                  <span class="field-label">Term</span>
+                  <select id="semester">
+                    <option value="">Select term</option>
+                    <option value="1st Sem 1st Term">1st Sem 1st Term</option>
+                    <option value="1st Sem 2nd Term">1st Sem 2nd Term</option>
+                    <option value="2nd Sem 1st Term">2nd Sem 1st Term</option>
+                    <option value="2nd Sem 2nd Term">2nd Sem 2nd Term</option>
+                    <option value="Summer">Summer</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="field-label">School Year</span>
+                  <input id="schoolYear" placeholder="2025-2026" />
                 </label>
               </div>
 
               <label>
                 <span class="field-label">Topics (Optional)</span>
+                <input
+                  class="select-search"
+                  id="topicSearch"
+                  type="search"
+                  placeholder="Search topic..."
+                  autocomplete="off"
+                />
                 <select
                   id="topic"
                   multiple
@@ -214,6 +263,10 @@
             <div class="summary-list">
               <p><span>Total Questions</span><strong id="summaryTotal">20</strong></p>
               <p><span>Program</span><strong id="summaryProgram">Not selected</strong></p>
+              <p><span>Assessment Method</span><strong id="summaryAssessmentMethod">Major Exam</strong></p>
+              <p><span>Section</span><strong id="summarySection">Not set</strong></p>
+              <p><span>Term</span><strong id="summaryTerm">Not set</strong></p>
+              <p><span>School Year</span><strong id="summarySchoolYear">Not set</strong></p>
               <p><span>Subject</span><strong id="summarySubject">Not selected</strong></p>
               <p><span>Topic</span><strong id="summaryTopic">All topics</strong></p>
             </div>

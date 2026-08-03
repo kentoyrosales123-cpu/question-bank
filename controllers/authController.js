@@ -101,6 +101,11 @@ exports.register = async (req, res) => {
     user.approvedAt = undefined;
 
     await setAndSendVerificationOtp(user);
+    await logActivity(req, {
+      user,
+      action: "register_account",
+      description: "Registered account and requested email verification",
+    });
 
     res.status(201).json({
       success: true,
@@ -193,6 +198,11 @@ exports.verifyEmail = async (req, res) => {
     user.emailVerificationLastSentAt = undefined;
 
     await user.save();
+    await logActivity(req, {
+      user,
+      action: "verify_email",
+      description: "Verified email address",
+    });
 
     if (isPendingApproval(user)) {
       return res.json({
@@ -265,6 +275,11 @@ exports.resendVerification = async (req, res) => {
     }
 
     await setAndSendVerificationOtp(user);
+    await logActivity(req, {
+      user,
+      action: "resend_email_verification",
+      description: "Requested another email verification code",
+    });
 
     res.json({
       success: true,
@@ -314,6 +329,11 @@ exports.forgotPassword = async (req, res) => {
     }
 
     await setAndSendPasswordResetOtp(user);
+    await logActivity(req, {
+      user,
+      action: "request_password_reset",
+      description: "Requested password reset code",
+    });
 
     res.json({
       success: true,
@@ -380,6 +400,11 @@ exports.resetPassword = async (req, res) => {
     user.emailVerificationLastSentAt = undefined;
 
     await user.save();
+    await logActivity(req, {
+      user,
+      action: "reset_password",
+      description: "Reset password",
+    });
 
     res.json({
       success: true,

@@ -76,12 +76,14 @@ function renderAttainmentTable(bodyId, rows, emptyLabel) {
 
   body.innerHTML = rows.length
     ? rows.map(renderAttainmentRow).join("")
-    : `<tr><td colspan="6" class="empty-table-cell">No ${escapeHTML(emptyLabel)} attainment data.</td></tr>`;
+    : `<tr><td colspan="7" class="empty-table-cell">No ${escapeHTML(emptyLabel)} attainment data.</td></tr>`;
 }
 
-function getAttainmentClass(rate) {
-  if (Number(rate) >= 75) return "easy";
-  if (Number(rate) >= 50) return "average";
+function getAttainmentClass(rate, targetRate = 75) {
+  const target = Number(targetRate ?? 75);
+
+  if (Number(rate) >= target) return "easy";
+  if (Number(rate) >= target * (2 / 3)) return "average";
   return "difficult";
 }
 
@@ -94,8 +96,9 @@ function renderAttainmentRow(row) {
       <td>${escapeHTML(row.assessedItems || 0)} / ${escapeHTML(row.questionCount || 0)}</td>
       <td>${escapeHTML(row.correctItems || 0)}</td>
       <td>${escapeHTML(row.earnedWeight || 0)} / ${escapeHTML(row.totalWeight || 0)}</td>
+      <td>${escapeHTML(row.targetRate ?? 75)}%</td>
       <td>
-        <span class="badge ${getAttainmentClass(row.attainmentRate)}">
+        <span class="badge ${getAttainmentClass(row.attainmentRate, row.targetRate)}">
           ${escapeHTML(row.attainmentRate || 0)}%
         </span>
       </td>

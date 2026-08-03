@@ -416,7 +416,7 @@ async function editQuestion(id) {
           <label>
             <span class="field-label">Engineering Program</span>
             <select id="editEngineeringProgram" required>
-              ${["General Engineering", "ECE", "CE", "EE", "ME", "CpE", "CHE"]
+              ${["ECE", "CE", "EE", "ME", "CpE", "CHE"]
                 .map(
                   (program) => `
                     <option value="${program}" ${question.engineeringProgram === program ? "selected" : ""}>${program}</option>
@@ -482,18 +482,18 @@ async function editQuestion(id) {
         <div class="field-grid two">
           <label>
             <span class="field-label">Course Outcome</span>
-            <input id="editCourseOutcome" value="${escapeAttribute(question.courseOutcome || "")}" placeholder="CLO1" />
+            <input id="editCourseOutcome" value="${escapeAttribute(question.courseOutcome || "")}" placeholder="CLO1" required />
           </label>
           <label>
             <span class="field-label">Student Outcome</span>
-            <input id="editProgramOutcome" value="${escapeAttribute(question.programOutcome || "")}" placeholder="SO a" />
+            <input id="editProgramOutcome" value="${escapeAttribute(question.programOutcome || "")}" placeholder="SO a" required />
           </label>
         </div>
 
         <div class="field-grid two">
           <label>
             <span class="field-label">Bloom Level</span>
-            <select id="editBloomLevel">
+            <select id="editBloomLevel" required>
               ${["", "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
                 .map(
                   (level) => `
@@ -505,7 +505,7 @@ async function editQuestion(id) {
           </label>
           <label>
             <span class="field-label">Outcome Weight</span>
-            <input id="editOutcomeWeight" type="number" min="0" step="0.1" value="${escapeAttribute(question.outcomeWeight || 1)}" />
+            <input id="editOutcomeWeight" type="number" min="0.1" step="0.1" value="${escapeAttribute(question.outcomeWeight || 1)}" required />
           </label>
         </div>
 

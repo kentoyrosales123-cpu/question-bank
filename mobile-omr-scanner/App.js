@@ -260,8 +260,8 @@ function buildDetectorHtml(
               };
             }
 
-            if (Date.now() - startedAt > 12000) {
-              reject(new Error("OpenCV did not load. Check that the backend can serve /js/opencv.js to this phone."));
+            if (Date.now() - startedAt > 45000) {
+              reject(new Error("OpenCV did not load from " + ${safeOpenCvUrl} + ". Open this URL on the phone browser to verify it can reach the backend."));
               return;
             }
 
@@ -706,6 +706,40 @@ function buildDetectorHtml(
         };
       }
 
+      function preprocessCanvasWithOpenCv() {
+        if (!cvReady) {
+          return "";
+        }
+
+        const src = cv.imread(canvas);
+        const gray = new cv.Mat();
+        const blurred = new cv.Mat();
+        const thresh = new cv.Mat();
+        const rgba = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
+        cv.adaptiveThreshold(
+          blurred,
+          thresh,
+          255,
+          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+          cv.THRESH_BINARY,
+          31,
+          8,
+        );
+        cv.cvtColor(thresh, rgba, cv.COLOR_GRAY2RGBA);
+        cv.imshow(canvas, rgba);
+
+        src.delete();
+        gray.delete();
+        blurred.delete();
+        thresh.delete();
+        rgba.delete();
+
+        return canvas.toDataURL("image/jpeg", 0.78);
+      }
+
       function sampleStrip(x, y, width, height) {
         if (cvReady) {
           return sampleStripWithOpenCv(x, y, width, height);
@@ -870,6 +904,7 @@ function buildDetectorHtml(
 const markerBounds = detectCornerMarkers(manualBounds);
 
 const bounds = markerBounds ? warpCanvasToMarkerBounds(markerBounds) : manualBounds;
+          const processedImageUri = preprocessCanvasWithOpenCv();
           const rowsPerBlock = ${OMR_ROWS_PER_BLOCK};
           const blockCount = ${blockCount};
           const answerY = bounds.y + bounds.height * scan.headerRow;
@@ -897,6 +932,7 @@ const bounds = markerBounds ? warpCanvasToMarkerBounds(markerBounds) : manualBou
               type: "no_sheet",
               message: "No OMR sheet detected. Align the answer table inside the camera guide and capture again.",
               tableEvidence,
+              processedImageUri,
             });
             return;
           }
@@ -960,6 +996,7 @@ const bounds = markerBounds ? warpCanvasToMarkerBounds(markerBounds) : manualBou
             diagnostics,
             detected: answers.filter(Boolean).length,
             engine: "opencv",
+            processedImageUri,
             bounds: {
               x: bounds.x / canvas.width,
               y: bounds.y / canvas.height,
@@ -1039,6 +1076,7 @@ export default function App() {
   const [fullScanner, setFullScanner] = useState(true);
   const [scanStep, setScanStep] = useState("scan");
   const [markerGuide, setMarkerGuide] = useState(null);
+  const [alignmentStatus, setAlignmentStatus] = useState("idle");
   const [permission, requestPermission] = useCameraPermissions();
 
   const selectedExam = exams.find((exam) => exam._id === selectedExamId);
@@ -1108,6 +1146,8 @@ export default function App() {
     activeScanRangeRef.current = null;
     setScanStep("scan");
     setDetectionStatus("Ready to scan.");
+    setMarkerGuide(null);
+    setAlignmentStatus("idle");
 
     if (!options.preserveQr) {
       setQrMetadata(null);
@@ -1118,6 +1158,8 @@ export default function App() {
 
     if (Array.isArray(options.preloadedResults)) {
       setHistory(options.preloadedResults);
+    } else if (options.skipHistoryLoad) {
+      setHistory([]);
     } else {
       await loadHistory(exam._id, authToken);
     }
@@ -1136,7 +1178,7 @@ export default function App() {
       setQrStatus("QR detected, but it is not a UM OMR sheet code.");
       setTimeout(() => {
         qrScanLockRef.current = false;
-      }, 1200);
+      }, 450);
       return;
     }
 
@@ -1224,6 +1266,7 @@ export default function App() {
       await selectExam(matchingExam, token, {
         preserveQr: true,
         preloadedResults,
+        skipHistoryLoad: !Array.isArray(preloadedResults),
       });
     } else if (Array.isArray(preloadedResults)) {
       setHistory(preloadedResults);
@@ -1241,6 +1284,14 @@ export default function App() {
       `QR linked: ${metadata.title || matchingExam.title} | Page ${metadata.pageNo || 1}/${metadata.pageCount || 1} | Items ${metadata.startItem || 1}-${metadata.endItem || metadata.numberOfItems || matchingExam.numberOfItems}`,
     );
     qrScanLockRef.current = false;
+
+    if (!Array.isArray(preloadedResults)) {
+      loadHistory(matchingExam._id, token).catch((error) => {
+        setQrStatus(
+          `QR linked, but scan history could not load yet: ${error.message}`,
+        );
+      });
+    }
   };
 
   const toggleQrScan = () => {
@@ -1268,6 +1319,7 @@ export default function App() {
     setCapturedImage("");
     setDetectorHtml("");
     setMarkerGuide(null);
+    setAlignmentStatus("idle");
     setActiveScanRange(null);
     activeScanRangeRef.current = null;
     setDetectionStatus("Ready to scan.");
@@ -1319,6 +1371,7 @@ export default function App() {
 
     try {
       setDetectionStatus("Capturing sheet...");
+      setAlignmentStatus("checking");
       const photo = await cameraRef.current?.takePictureAsync({
         base64: true,
         quality: 1,
@@ -1347,6 +1400,7 @@ export default function App() {
       );
     } catch (error) {
       setDetectionStatus("Detection failed.");
+      setAlignmentStatus("misaligned");
       setActiveScanRange(null);
       activeScanRangeRef.current = null;
       Alert.alert("Scan failed", error.message);
@@ -1360,6 +1414,10 @@ export default function App() {
       if (payload.type === "detected") {
         if (payload.bounds) {
           setMarkerGuide(payload.bounds);
+        }
+        setAlignmentStatus("aligned");
+        if (payload.processedImageUri) {
+          setCapturedImage(payload.processedImageUri);
         }
         const pageAnswers = payload.answers || [];
         const scanRange =
@@ -1400,9 +1458,14 @@ export default function App() {
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
         setDetectorHtml("");
-        setCapturedImage("");
-        setScanStep("review");
+        setTimeout(() => {
+          setScanStep("review");
+        }, 650);
       } else if (payload.type === "no_sheet") {
+        setAlignmentStatus("misaligned");
+        if (payload.processedImageUri) {
+          setCapturedImage(payload.processedImageUri);
+        }
         setDetectionStatus(
           payload.message ||
             "No OMR sheet detected. Align the answer table and retake.",
@@ -1410,11 +1473,13 @@ export default function App() {
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
       } else if (payload.type === "error") {
+        setAlignmentStatus("misaligned");
         setDetectionStatus(payload.message || "Detection failed.");
         setActiveScanRange(null);
         activeScanRangeRef.current = null;
       }
     } catch {
+      setAlignmentStatus("misaligned");
       setDetectionStatus("Detection returned invalid data.");
     }
   };
@@ -1473,6 +1538,10 @@ export default function App() {
             studentId: studentId.trim(),
             section: section.trim() || selectedExam.section,
             answers,
+            scanMetadata: {
+              processedWith: "opencv-js",
+              scannedPages,
+            },
           },
         },
       );
@@ -1701,6 +1770,7 @@ export default function App() {
                     <PrimaryButton
                       label="Scan Again"
                       onPress={() => {
+                        setAlignmentStatus("idle");
                         setScanStep("scan");
                       }}
                     />
@@ -1731,6 +1801,7 @@ export default function App() {
                       }
                     />
                     <CameraAlignmentGuide
+                      alignmentStatus={alignmentStatus}
                       guideBox={guideBox}
                       markerGuide={markerGuide}
                       itemsOnPage={
@@ -1978,6 +2049,7 @@ function ScanAreaControls({ scanSettings, setScanSettings }) {
 }
 
 function CameraAlignmentGuide({
+  alignmentStatus = "idle",
   itemsOnPage,
   scanSettings,
   markerGuide,
@@ -1994,6 +2066,28 @@ function CameraAlignmentGuide({
     width: `${guideBox.width}%`,
     height: `${guideBox.height}%`,
   };
+  const statusStyles = {
+    aligned: {
+      corner: styles.cornerAligned,
+      edge: styles.guideEdgeAligned,
+      text: "Aligned",
+    },
+    misaligned: {
+      corner: styles.cornerMisaligned,
+      edge: styles.guideEdgeMisaligned,
+      text: "Adjust sheet",
+    },
+    checking: {
+      corner: styles.cornerChecking,
+      edge: styles.guideEdgeChecking,
+      text: "Checking",
+    },
+    idle: {
+      corner: null,
+      edge: null,
+      text: "",
+    },
+  }[alignmentStatus] || {};
   const headerStyle = markerGuide
     ? {
         top: `${scan.headerRow * 100}%`,
@@ -2051,6 +2145,7 @@ function CameraAlignmentGuide({
         <View
           style={[
             styles.guideEdge,
+            statusStyles.edge,
             {
               top: 0,
               left: 0,
@@ -2064,6 +2159,7 @@ function CameraAlignmentGuide({
         <View
           style={[
             styles.guideEdge,
+            statusStyles.edge,
             {
               bottom: 0,
               left: 0,
@@ -2077,6 +2173,7 @@ function CameraAlignmentGuide({
         <View
           style={[
             styles.guideEdge,
+            statusStyles.edge,
             {
               left: 0,
               top: 0,
@@ -2090,6 +2187,7 @@ function CameraAlignmentGuide({
         <View
           style={[
             styles.guideEdge,
+            statusStyles.edge,
             {
               right: 0,
               top: 0,
@@ -2098,11 +2196,13 @@ function CameraAlignmentGuide({
             },
           ]}
         />
-        <View style={[styles.corner, styles.cornerTopLeft]} />
-        <View style={[styles.corner, styles.cornerTopRight]} />
-        <View style={[styles.corner, styles.cornerBottomLeft]} />
-        <View style={[styles.corner, styles.cornerBottomRight]} />
-        <Text style={styles.cameraGuideText}></Text>
+        <View style={[styles.corner, statusStyles.corner, styles.cornerTopLeft]} />
+        <View style={[styles.corner, statusStyles.corner, styles.cornerTopRight]} />
+        <View style={[styles.corner, statusStyles.corner, styles.cornerBottomLeft]} />
+        <View style={[styles.corner, statusStyles.corner, styles.cornerBottomRight]} />
+        {statusStyles.text ? (
+          <Text style={styles.cameraGuideText}>{statusStyles.text}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -2583,6 +2683,15 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: "rgba(255,255,255,0.95)",
   },
+  guideEdgeAligned: {
+    backgroundColor: "#16c784",
+  },
+  guideEdgeChecking: {
+    backgroundColor: "#f0b318",
+  },
+  guideEdgeMisaligned: {
+    backgroundColor: "#ff4d5f",
+  },
   cameraGuideHeaderLine: {
     position: "absolute",
     left: 0,
@@ -2642,33 +2751,40 @@ const styles = StyleSheet.create({
   },
   corner: {
     position: "absolute",
-    borderColor: "#00FF00",
-    height: 70,
-    width: 70,
+    backgroundColor: "#000000",
+    borderColor: "#ffffff",
+    borderRadius: 2,
+    borderWidth: 2,
+    height: 30,
+    width: 30,
+  },
+  cornerAligned: {
+    backgroundColor: "#16c784",
+    borderColor: "#dfffee",
+  },
+  cornerChecking: {
+    backgroundColor: "#f0b318",
+    borderColor: "#fff4c7",
+  },
+  cornerMisaligned: {
+    backgroundColor: "#ff4d5f",
+    borderColor: "#ffe3e8",
   },
   cornerTopLeft: {
-    borderLeftWidth: 6,
-    borderTopWidth: 6,
-    left: -3,
-    top: -3,
+    left: -15,
+    top: -15,
   },
   cornerTopRight: {
-    borderRightWidth: 6,
-    borderTopWidth: 6,
-    right: -3,
-    top: -3,
+    right: -15,
+    top: -15,
   },
   cornerBottomLeft: {
-    borderBottomWidth: 6,
-    borderLeftWidth: 6,
-    bottom: -3,
-    left: -3,
+    bottom: -15,
+    left: -15,
   },
   cornerBottomRight: {
-    borderBottomWidth: 6,
-    borderRightWidth: 6,
-    bottom: -3,
-    right: -3,
+    bottom: -15,
+    right: -15,
   },
   detectorWebView: {
     height: 1,

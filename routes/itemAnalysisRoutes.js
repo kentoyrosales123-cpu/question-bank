@@ -12,6 +12,8 @@ const {
   getItemAnalysis,
   listItemAnalysisResults,
   exportItemAnalysis,
+  upsertCqiInterventionPlan,
+  updateCqiPlanStatus,
 } = require("../controllers/itemAnalysisController");
 
 const { protect } = require("../middleware/authMiddleware");
@@ -41,6 +43,13 @@ router.post(
 );
 
 router.post("/:id/scanned-result", protect, itemAnalysisAccess, saveScannedResult);
+router.patch(
+  "/:id/cqi-plan/status",
+  protect,
+  itemAnalysisAccess,
+  updateCqiPlanStatus,
+);
+router.put("/:id/cqi-plan", protect, itemAnalysisAccess, upsertCqiInterventionPlan);
 router.get("/:id/results", protect, itemAnalysisAccess, listItemAnalysisResults);
 router.get("/:id/export", protect, itemAnalysisAccess, exportItemAnalysis);
 router.get("/:id", protect, itemAnalysisAccess, getItemAnalysis);

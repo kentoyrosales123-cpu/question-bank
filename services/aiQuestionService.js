@@ -4,7 +4,6 @@ const { suggestCourseOutcomes } = require("./obeSuggestionService");
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = "qwen3:14b";
 const ENGINEERING_PROGRAMS = [
-  "General Engineering",
   "ECE",
   "CE",
   "EE",
