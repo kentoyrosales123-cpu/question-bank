@@ -191,12 +191,38 @@ function renderParsedCard(q, index) {
             </div>
           </div>
 
+          <div class="obe-suggestion">
+            <small>
+              Complex engineering problem score:
+              ${escapeHTML(q.complexityScore || 0)}%
+            </small>
+            <strong>
+              ${escapeHTML(q.complexityLevel || (q.isComplexEngineeringProblem ? "Complex Engineering Problem" : "Routine Engineering Problem"))}
+            </strong>
+            ${
+              Array.isArray(q.complexityReasons) && q.complexityReasons.length
+                ? `<span>${q.complexityReasons.map(escapeHTML).join(" | ")}</span>`
+                : `<span>No complexity indicators detected yet.</span>`
+            }
+          </div>
+
+          <label class="checkbox-row">
+            <input
+              id="isComplexEngineeringProblem_${q._id}"
+              type="checkbox"
+              ${q.isComplexEngineeringProblem ? "checked" : ""}
+            />
+            <span>Complex engineering problem</span>
+          </label>
+
           ${renderOutcomeSuggestion(q)}
 
           <div class="field-grid two">
             ${renderField("Course Outcome", `courseOutcome_${q._id}`, appliedOutcome.courseOutcome)}
             ${renderField("Student Outcome", `programOutcome_${q._id}`, appliedOutcome.programOutcome)}
           </div>
+
+          ${renderField("Student Learning Outcome", `studentLearningOutcome_${q._id}`, appliedOutcome.studentLearningOutcome)}
 
           <div class="field-grid two">
             <div>
@@ -240,6 +266,8 @@ function getAutoAppliedOutcomeValues(q) {
   return {
     courseOutcome: q.courseOutcome || suggestion.code || "",
     programOutcome: q.programOutcome || suggestion.programOutcome || "",
+    studentLearningOutcome:
+      q.studentLearningOutcome || suggestion.studentLearningOutcome || "",
     bloomLevel: q.bloomLevel || suggestion.bloomLevel || "",
   };
 }
@@ -273,13 +301,19 @@ function renderOutcomeSuggestion(q) {
       </div>
     `;
   }
+  const outcomeTitle = suggestion.code
+    ? `${escapeHTML(suggestion.code)} - ${escapeHTML(suggestion.description)}`
+    : escapeHTML(suggestion.description || "No CO/CLO match");
 
   return `
     <div class="obe-suggestion">
-      <small>Suggested CO/CLO auto-applied - ${suggestion.confidence}% confidence</small>
-      <strong>${escapeHTML(suggestion.code)} - ${escapeHTML(suggestion.description)}</strong>
+      <small>Suggested mapping auto-applied - ${suggestion.confidence}% confidence</small>
+      <strong>${outcomeTitle}</strong>
       <span>
         ${escapeHTML(suggestion.programOutcome || "No SO mapped")}
+        ${suggestion.studentLearningOutcome
+          ? ` | ${escapeHTML(suggestion.studentLearningOutcome)}`
+          : ""}
         ${suggestion.bloomLevel ? ` | ${escapeHTML(suggestion.bloomLevel)}` : ""}
       </span>
       <button class="btn secondary compact-btn" type="button" onclick="applyOutcomeSuggestion('${q._id}')">
@@ -301,6 +335,8 @@ function applyOutcomeSuggestion(id) {
   document.getElementById(`courseOutcome_${id}`).value = suggestion.code || "";
   document.getElementById(`programOutcome_${id}`).value =
     suggestion.programOutcome || "";
+  document.getElementById(`studentLearningOutcome_${id}`).value =
+    suggestion.studentLearningOutcome || "";
   document.getElementById(`bloomLevel_${id}`).value = suggestion.bloomLevel || "";
   setMessage(id, "CO/CLO suggestion applied. Review it before approving.", "success");
 }
@@ -408,6 +444,7 @@ function getQuestionWarnings(q) {
   if (!q.topic) warnings.push("Missing topic");
   if (!q.courseOutcome) warnings.push("Missing CO/CLO");
   if (!q.programOutcome) warnings.push("Missing SO");
+  if (!q.studentLearningOutcome) warnings.push("Missing SLO");
   if (!q.bloomLevel) warnings.push("Missing Bloom level");
   if (!Number.isFinite(Number(q.outcomeWeight)) || Number(q.outcomeWeight) <= 0) {
     warnings.push("Missing outcome weight");
@@ -465,11 +502,12 @@ function getParsedQuestionApprovalError(body) {
   if (
     !body.courseOutcome ||
     !body.programOutcome ||
+    !body.studentLearningOutcome ||
     !body.bloomLevel ||
     !Number.isFinite(Number(body.outcomeWeight)) ||
     Number(body.outcomeWeight) <= 0
   ) {
-    return "Complete CO/CLO, SO, Bloom level, and positive outcome weight before approving.";
+    return "Complete CO/CLO, SO, SLO, Bloom level, and positive outcome weight before approving.";
   }
 
   return "";
@@ -769,8 +807,14 @@ function getParsedFormBody(id) {
     },
     correctAnswer: document.getElementById(`correctAnswer_${id}`).value,
     difficulty: document.getElementById(`difficulty_${id}`).value,
+    isComplexEngineeringProblem: document.getElementById(
+      `isComplexEngineeringProblem_${id}`,
+    ).checked,
     courseOutcome: document.getElementById(`courseOutcome_${id}`).value.trim(),
     programOutcome: document.getElementById(`programOutcome_${id}`).value.trim(),
+    studentLearningOutcome: document
+      .getElementById(`studentLearningOutcome_${id}`)
+      .value.trim(),
     bloomLevel: document.getElementById(`bloomLevel_${id}`).value,
     outcomeWeight: document.getElementById(`outcomeWeight_${id}`).value,
     explanation: document.getElementById(`explanation_${id}`).value.trim(),
@@ -804,6 +848,7 @@ function getFilteredQuestions() {
       q.difficulty,
       q.courseOutcome,
       q.programOutcome,
+      q.studentLearningOutcome,
       q.bloomLevel,
     ]
       .join(" ")

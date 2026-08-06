@@ -1618,6 +1618,7 @@ exports.uploadItemAnalysis = async (req, res) => {
       numberOfItems,
       answerKey,
       generatedExamId,
+      includeInObe,
     } = req.body;
     const itemCount = Number(numberOfItems);
     const resultFile = req.files?.resultFile?.[0];

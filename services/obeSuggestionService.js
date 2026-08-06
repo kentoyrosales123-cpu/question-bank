@@ -1,5 +1,36 @@
 const CourseOutcome = require("../models/CourseOutcome");
 
+const STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "basic",
+  "principle",
+  "principles",
+  "apply",
+  "using",
+  "given",
+  "problem",
+  "engineering",
+  "correct",
+  "answer",
+]);
+const MIN_AUTO_APPLY_CONFIDENCE = 60;
+const TOKEN_ALIASES = {
+  index: ["indices", "exponent", "exponents", "power", "powers"],
+  indices: ["index", "exponent", "exponents", "power", "powers"],
+  exponent: ["index", "indices", "exponents", "power", "powers"],
+  exponents: ["index", "indices", "exponent", "power", "powers"],
+  law: ["laws", "rule", "rules"],
+  laws: ["law", "rule", "rules"],
+  simplify: ["simplification"],
+  simplification: ["simplify"],
+};
+
 const normalize = (value = "") =>
   String(value || "")
     .toLowerCase()
@@ -7,12 +38,28 @@ const normalize = (value = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
-const tokenize = (value = "") =>
-  new Set(
-    normalize(value)
-      .split(" ")
-      .filter((token) => token.length > 2),
-  );
+const expandToken = (token) => {
+  const tokens = [token];
+
+  if (token.endsWith("s") && token.length > 3) {
+    tokens.push(token.slice(0, -1));
+  }
+
+  if (TOKEN_ALIASES[token]) {
+    tokens.push(...TOKEN_ALIASES[token]);
+  }
+
+  return tokens;
+};
+
+const tokenize = (value = "") => {
+  const tokens = normalize(value)
+    .split(" ")
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token))
+    .flatMap(expandToken);
+
+  return new Set(tokens);
+};
 
 const intersectionSize = (left, right) => {
   let count = 0;
@@ -51,6 +98,52 @@ const getBloomHint = (questionText = "") => {
   return "";
 };
 
+const BLOOM_SLO_VERBS = {
+  Remember: "Identify",
+  Understand: "Explain",
+  Apply: "Apply",
+  Analyze: "Analyze",
+  Evaluate: "Evaluate",
+  Create: "Design",
+};
+
+const titleCase = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+
+const getQuestionFocus = (question = {}) => {
+  const topic = String(question.topic || "").trim();
+
+  if (topic) {
+    return topic;
+  }
+
+  const text = normalize(question.questionText)
+    .replace(
+      /\b(what|which|when|where|why|how|following|correct|best|most|least|value|find|determine|calculate|compute|solve|identify|explain|describe|analyze|evaluate|design)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const focus = text
+    .split(" ")
+    .filter((token) => token.length > 2)
+    .slice(0, 8)
+    .join(" ");
+
+  return focus ? titleCase(focus) : "the assessed concept";
+};
+
+const suggestStudentLearningOutcome = (question = {}, bloomLevel = "") => {
+  const level = bloomLevel || getBloomHint(question.questionText) || "Apply";
+  const verb = BLOOM_SLO_VERBS[level] || "Apply";
+  const focus = getQuestionFocus(question);
+
+  return `${verb} ${focus} in an engineering problem.`;
+};
+
 const scoreOutcome = (question, outcome) => {
   const questionTokens = tokenize(
     [
@@ -69,24 +162,45 @@ const scoreOutcome = (question, outcome) => {
     normalize(question.subject) === normalize(outcome.subject);
   const topicTokens = tokenize(question.topic);
   const bloomHint = getBloomHint(question.questionText);
+  const topicOverlap = intersectionSize(topicTokens, outcomeTokens);
+  const questionOutcomeOverlap = intersectionSize(questionTokens, outcomeTokens);
+  const keywordOverlap = intersectionSize(questionTokens, keywordTokens);
   let score = 0;
 
-  if (subjectMatches) score += 35;
-  score += Math.min(30, intersectionSize(questionTokens, outcomeTokens) * 6);
-  score += Math.min(20, intersectionSize(questionTokens, keywordTokens) * 8);
-  score += Math.min(10, intersectionSize(topicTokens, outcomeTokens) * 5);
+  if (subjectMatches) score += 15;
+  score += Math.min(30, questionOutcomeOverlap * 8);
+  score += Math.min(25, keywordOverlap * 10);
+  score += Math.min(20, topicOverlap * 10);
 
   if (bloomHint && bloomHint === outcome.bloomLevel) {
     score += 5;
   }
 
-  return Math.min(100, score);
+  return {
+    confidence: Math.min(100, score),
+    hasSemanticOverlap:
+      topicOverlap > 0 || questionOutcomeOverlap > 0 || keywordOverlap > 0,
+    overlapCount: topicOverlap + questionOutcomeOverlap + keywordOverlap,
+  };
 };
 
 const suggestCourseOutcome = async (question) => {
   const subject = String(question.subject || "").trim();
   const department = String(question.department || "").trim();
   const query = {};
+  const fallbackBloomLevel = getBloomHint(question.questionText);
+  const fallbackSuggestion = {
+    code: "",
+    description: "No CO/CLO match",
+    subject,
+    programOutcome: "",
+    bloomLevel: fallbackBloomLevel || "",
+    studentLearningOutcome: suggestStudentLearningOutcome(
+      question,
+      fallbackBloomLevel,
+    ),
+    confidence: 0,
+  };
 
   if (subject) {
     query.$or = [
@@ -101,30 +215,36 @@ const suggestCourseOutcome = async (question) => {
   const outcomes = await CourseOutcome.find(query).lean();
 
   if (outcomes.length === 0) {
-    return null;
+    return fallbackSuggestion;
   }
 
   const ranked = outcomes
     .map((outcome) => ({
       outcome,
-      confidence: scoreOutcome(question, outcome),
+      match: scoreOutcome(question, outcome),
     }))
-    .filter((item) => item.confidence > 0)
-    .sort((a, b) => b.confidence - a.confidence);
+    .filter(
+      (item) =>
+        item.match.hasSemanticOverlap &&
+        item.match.confidence >= MIN_AUTO_APPLY_CONFIDENCE,
+    )
+    .sort((a, b) => b.match.confidence - a.match.confidence);
 
   if (ranked.length === 0) {
-    return null;
+    return fallbackSuggestion;
   }
 
   const best = ranked[0];
+  const bloomLevel = best.outcome.bloomLevel || getBloomHint(question.questionText);
 
   return {
     code: best.outcome.code,
     description: best.outcome.description,
     subject: best.outcome.subject,
     programOutcome: best.outcome.programOutcome || "",
-    bloomLevel: best.outcome.bloomLevel || "",
-    confidence: best.confidence,
+    bloomLevel: bloomLevel || "",
+    studentLearningOutcome: suggestStudentLearningOutcome(question, bloomLevel),
+    confidence: best.match.confidence,
   };
 };
 

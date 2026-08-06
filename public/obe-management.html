@@ -202,6 +202,46 @@
             </div>
           </div>
 
+          <div class="difficulty-panel report-card" id="teacherObeSubmissionPanel">
+            <h2>Per-Teacher OBE Submission Status</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Teacher / Account</th>
+                    <th>Generated Exams</th>
+                    <th>Item Analysis</th>
+                    <th>CO/SO Attainment</th>
+                    <th>Rubrics</th>
+                    <th>Evidence</th>
+                    <th>CQI</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="teacherObeSubmissionBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="difficulty-panel report-card" id="liveObeCqiRecommendationPanel">
+            <h2>Automatic CQI Recommendations</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Exam</th>
+                    <th>Outcome</th>
+                    <th>Gap</th>
+                    <th>Priority</th>
+                    <th>Recommended Action</th>
+                    <th>Evidence to Collect</th>
+                  </tr>
+                </thead>
+                <tbody id="liveObeCqiRecommendationBody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="dashboard-insights">
             <div class="difficulty-panel report-card">
               <h2>CO/CLO Attainment</h2>
@@ -238,6 +278,27 @@
                     </tr>
                   </thead>
                   <tbody id="liveObeSoBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="difficulty-panel report-card">
+              <h2>CEP-Based Attainment</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Problem Type</th>
+                      <th>Program</th>
+                      <th>Questions</th>
+                      <th>Assessed</th>
+                      <th>Correct</th>
+                      <th>Students</th>
+                      <th>Target</th>
+                      <th>Attainment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="liveObeCepBody"></tbody>
                 </table>
               </div>
             </div>
@@ -448,7 +509,7 @@
         <div class="obe-subpage" data-obe-page="course-outcomes">
         <section class="dashboard-insights">
           <form class="card" id="outcomeForm">
-            <h2>Add CO/CLO</h2>
+            <h2 id="outcomeFormTitle">Add CO/CLO</h2>
             <div class="field-grid two">
               <label>
                 <span class="field-label">Engineering Department</span>
@@ -497,7 +558,16 @@
               <span class="field-label">Keywords</span>
               <input id="keywords" placeholder="ohm, resistance, voltage, current" />
             </label>
-            <button class="btn" type="submit">Save CO/CLO</button>
+            <div class="form-actions">
+              <button class="btn" id="outcomeSubmitButton" type="submit">Save CO/CLO</button>
+              <button
+                class="btn secondary hidden"
+                id="cancelOutcomeEditButton"
+                type="button"
+              >
+                Cancel Edit
+              </button>
+            </div>
             <p class="message" id="outcomeMessage"></p>
           </form>
 

@@ -78,6 +78,7 @@ ${isAdmin ? `<button class="btn danger" onclick="deleteUpload('${file._id}')">De
 
           <select id="engineeringProgram_${file._id}" required>
             <option value="">Select engineering program</option>
+            <option value="GE">General Engineering</option>
             <option value="ECE">ECE</option>
             <option value="CE">CE</option>
             <option value="EE">EE</option>

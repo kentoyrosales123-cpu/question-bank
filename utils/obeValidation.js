@@ -10,6 +10,9 @@ const getMissingObeMappingFields = (item = {}) => {
   if (!String(item.programOutcome || "").trim()) {
     missing.push("SO");
   }
+  if (!String(item.studentLearningOutcome || "").trim()) {
+    missing.push("SLO");
+  }
   if (!String(item.bloomLevel || "").trim()) {
     missing.push("Bloom level");
   }

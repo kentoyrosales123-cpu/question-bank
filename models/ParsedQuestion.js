@@ -18,7 +18,7 @@ const parsedQuestionSchema = new mongoose.Schema(
     subject: { type: String, default: "" },
     engineeringProgram: {
       type: String,
-      enum: ["", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
+      enum: ["", "GE", "ECE", "CE", "EE", "ME", "CpE", "CHE"],
       default: "",
     },
     topic: { type: String, default: "" },
@@ -41,6 +41,7 @@ const parsedQuestionSchema = new mongoose.Schema(
     },
     courseOutcome: { type: String, default: "", trim: true },
     programOutcome: { type: String, default: "", trim: true },
+    studentLearningOutcome: { type: String, default: "", trim: true },
     bloomLevel: {
       type: String,
       enum: [
@@ -55,6 +56,14 @@ const parsedQuestionSchema = new mongoose.Schema(
       default: "",
     },
     outcomeWeight: { type: Number, default: 1, min: 0 },
+    isComplexEngineeringProblem: { type: Boolean, default: false },
+    complexityScore: { type: Number, default: 0, min: 0, max: 100 },
+    complexityLevel: {
+      type: String,
+      default: "Routine Engineering Problem",
+      trim: true,
+    },
+    complexityReasons: { type: [String], default: [] },
     explanation: { type: String, default: "" },
     image: {
       data: Buffer,

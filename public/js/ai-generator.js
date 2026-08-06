@@ -178,6 +178,7 @@ function renderAiQueue(items = []) {
               <td>${escapeHTML(item.questionText || "Untitled question")}</td>
               <td>${escapeHTML(item.courseOutcome || "Not mapped")}</td>
               <td>${escapeHTML(item.programOutcome || "Not mapped")}</td>
+              <td>${escapeHTML(item.studentLearningOutcome || "Not mapped")}</td>
               <td>${escapeHTML(item.bloomLevel || "Not mapped")}</td>
               <td><span class="badge average">${escapeHTML(item.status || "Pending")}</span></td>
               <td>
@@ -191,7 +192,7 @@ function renderAiQueue(items = []) {
         .join("")
     : `
       <tr>
-        <td colspan="9" class="empty-table-cell">No pending AI-generated questions yet.</td>
+        <td colspan="10" class="empty-table-cell">No pending AI-generated questions yet.</td>
       </tr>
     `;
 }
@@ -203,7 +204,7 @@ function renderAiQueueLoading() {
 
   body.innerHTML = `
     <tr>
-      <td colspan="9" class="empty-table-cell">Generating draft questions...</td>
+      <td colspan="10" class="empty-table-cell">Generating draft questions...</td>
     </tr>
   `;
 }
@@ -224,7 +225,7 @@ async function loadAiQueue() {
     if (body) {
       body.innerHTML = `
         <tr>
-          <td colspan="9" class="empty-table-cell">${escapeHTML(error.message)}</td>
+          <td colspan="10" class="empty-table-cell">${escapeHTML(error.message)}</td>
         </tr>
       `;
     }

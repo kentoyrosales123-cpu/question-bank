@@ -73,8 +73,15 @@ document
       "programOutcome",
       document.getElementById("programOutcome").value,
     );
+    form.append(
+      "studentLearningOutcome",
+      document.getElementById("studentLearningOutcome").value,
+    );
     form.append("bloomLevel", document.getElementById("bloomLevel").value);
     form.append("outcomeWeight", document.getElementById("outcomeWeight").value);
+    if (document.getElementById("isComplexEngineeringProblem").checked) {
+      form.append("isComplexEngineeringProblem", true);
+    }
     form.append("tableData", document.getElementById("tableData").value);
     form.append("explanation", document.getElementById("explanation").value);
 

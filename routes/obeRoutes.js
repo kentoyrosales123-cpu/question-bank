@@ -27,6 +27,7 @@ const {
   importCourseOutcomes,
   importProgramEducationalObjectives,
   importStudentOutcomes,
+  updateCourseOutcome,
   updateSettings,
 } = require("../controllers/obeController");
 const { protect, superAdminOnly } = require("../middleware/authMiddleware");
@@ -66,6 +67,12 @@ router.delete(
 
 router.get("/course-outcomes", protect, superAdminOnly, getCourseOutcomes);
 router.post("/course-outcomes", protect, superAdminOnly, createCourseOutcome);
+router.put(
+  "/course-outcomes/:id",
+  protect,
+  superAdminOnly,
+  updateCourseOutcome,
+);
 router.post(
   "/course-outcomes/import",
   protect,

@@ -19,6 +19,7 @@ let curriculumMapPage = 1;
 let rubricAssessments = [];
 let evidenceRecords = [];
 let attainmentSnapshots = [];
+let editingCourseOutcomeId = null;
 const peosPerPage = 15;
 const studentOutcomesPerPage = 15;
 const courseOutcomesPerPage = 15;
@@ -154,6 +155,24 @@ async function loadLiveObeAttainment() {
         renderLiveOutcomeRows(obeReport.courseOutcomes || [], "CLO");
       document.getElementById("liveObeSoBody").innerHTML =
         renderLiveOutcomeRows(obeReport.programOutcomes || [], "SO");
+      document.getElementById("liveObeCepBody").innerHTML =
+        renderLiveCepRows(obeReport.cepAttainment || []);
+      document
+        .getElementById("teacherObeSubmissionPanel")
+        ?.classList.remove("hidden");
+      document.getElementById("teacherObeSubmissionBody").innerHTML =
+        Array.isArray(report.teacherSubmissionStatus)
+          ? renderTeacherObeSubmissionRows(report.teacherSubmissionStatus)
+          : `<tr><td colspan="8" class="empty-table-cell">Submission status data is not available from the server yet. Restart the server, then refresh Live Attainment.</td></tr>`;
+      document
+        .getElementById("liveObeCqiRecommendationPanel")
+        ?.classList.remove("hidden");
+      document.getElementById("liveObeCqiRecommendationBody").innerHTML =
+        renderCqiRecommendationRows(
+          report.cqiReport?.recommendationRows ||
+            report.cqiReport?.neededPlanRows ||
+            [],
+        );
       document.getElementById("liveObeEvidenceBody").innerHTML =
         renderLiveEvidenceRows(obeReport.evidenceTraceabilityMatrix || []);
     } else {
@@ -196,6 +215,14 @@ async function loadLiveObeAttainment() {
         renderLiveOutcomeRows(courseRows, "CLO");
       document.getElementById("liveObeSoBody").innerHTML =
         renderLiveOutcomeRows(soRows, "SO");
+      document.getElementById("liveObeCepBody").innerHTML =
+        renderLiveCepRows(dashboard.cepAttainment || []);
+      document
+        .getElementById("teacherObeSubmissionPanel")
+        ?.classList.add("hidden");
+      document
+        .getElementById("liveObeCqiRecommendationPanel")
+        ?.classList.add("hidden");
       document.getElementById("liveObeEvidenceBody").innerHTML =
         renderTeacherSubmissionEvidenceRows(dashboard.submissionStatus || []);
     }
@@ -231,6 +258,83 @@ function renderTeacherSubmissionEvidenceRows(rows = []) {
     .join("");
 }
 
+function getTeacherSubmissionStatusClass(status = "") {
+  if (status === "Ready for Review") return "easy";
+  if (status === "CQI In Progress") return "average";
+  return "difficult";
+}
+
+function renderTeacherObeSubmissionRows(rows = []) {
+  if (!rows.length) {
+    return `<tr><td colspan="8" class="empty-table-cell">No teacher OBE submission records yet.</td></tr>`;
+  }
+
+  return rows
+    .map(
+      (row) => `
+        <tr>
+          <td>
+            <strong>${escapeHTML(row.teacherName || "Unnamed user")}</strong>
+            <small class="muted-text">${escapeHTML(row.email || row.role || "")}</small>
+          </td>
+          <td>${row.generatedExams || 0}</td>
+          <td>${row.linkedItemAnalysis || 0}</td>
+          <td>
+            <span class="badge ${row.coSoAttainmentAvailable ? "easy" : "difficult"}">
+              ${row.itemAnalysisWithResults || 0}
+            </span>
+          </td>
+          <td>${row.rubricAssessments || 0}</td>
+          <td>${row.evidenceRecords || 0}</td>
+          <td>${row.completedCqiPlans || 0} / ${row.cqiPlans || 0}</td>
+          <td>
+            <span class="badge ${getTeacherSubmissionStatusClass(row.status)}">
+              ${escapeHTML(row.status || "Missing Evidence")}
+            </span>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function getCqiRecommendationClass(priority = "") {
+  if (priority === "High") return "difficult";
+  if (priority === "Medium") return "average";
+  return "easy";
+}
+
+function renderCqiRecommendationRows(rows = []) {
+  if (!rows.length) {
+    return `<tr><td colspan="6" class="empty-table-cell">No automatic CQI recommendations right now.</td></tr>`;
+  }
+
+  return rows
+    .map(
+      (row) => `
+        <tr>
+          <td>
+            <strong>${escapeHTML(row.examTitle || "Untitled exam")}</strong>
+            <small class="muted-text">${escapeHTML([row.subject, row.section].filter(Boolean).join(" - "))}</small>
+          </td>
+          <td><span class="badge difficult">${escapeHTML(row.outcomeType)} ${escapeHTML(row.outcomeCode)}</span></td>
+          <td>${escapeHTML(row.attainmentRate || 0)}% / ${escapeHTML(row.targetRate ?? 75)}% <strong>(${escapeHTML(row.gap || 0)}%)</strong></td>
+          <td>
+            <span class="badge ${getCqiRecommendationClass(row.recommendationPriority)}">
+              ${escapeHTML(row.recommendationPriority || "Low")}
+            </span>
+          </td>
+          <td>
+            <strong>${escapeHTML(row.recommendedAction || "Create a CQI intervention plan.")}</strong>
+            <small class="muted-text">${escapeHTML(row.recommendedRootCause || "")}</small>
+          </td>
+          <td>${escapeHTML(row.recommendedEvidence || "Follow-up item analysis and reassessment result.")}</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
 function renderLiveOutcomeRows(rows = [], type = "CLO") {
   if (!rows.length) {
     return `<tr><td colspan="${type === "CLO" ? 7 : 6}" class="empty-table-cell">No ${type} attainment evidence yet.</td></tr>`;
@@ -258,6 +362,39 @@ function renderLiveOutcomeRows(rows = [], type = "CLO") {
         </tr>
       `,
     )
+    .join("");
+}
+
+function renderLiveCepRows(rows = []) {
+  if (!rows.length) {
+    return `<tr><td colspan="8" class="empty-table-cell">No CEP-based attainment evidence yet.</td></tr>`;
+  }
+
+  return rows
+    .map((row) => {
+      const assessed = Number(row.assessedItems || 0);
+      const target = Number(row.targetRate ?? 75);
+      const rate = Number(row.attainmentRate || 0);
+      const badgeClass =
+        assessed <= 0 ? "average" : rate >= target ? "easy" : "difficult";
+
+      return `
+        <tr>
+          <td><strong>${escapeHTML(row.code)}</strong></td>
+          <td>${escapeHTML(row.programs || "Not set")}</td>
+          <td>${row.questionCount || 0}</td>
+          <td>${row.assessedItems || 0}</td>
+          <td>${row.correctItems || 0}</td>
+          <td>${row.attainedStudents || 0} / ${row.assessedStudents || 0}</td>
+          <td>${row.targetRate ?? 75}%</td>
+          <td>
+            <span class="badge ${badgeClass}">
+              ${row.attainmentRate || 0}%
+            </span>
+          </td>
+        </tr>
+      `;
+    })
     .join("");
 }
 
@@ -1107,6 +1244,9 @@ function renderOutcomes() {
               <td>${escapeHTML(outcome.bloomLevel || "Not set")}</td>
               <td>${escapeHTML(outcome.keywords || "")}</td>
               <td>
+                <button class="btn secondary compact-btn" type="button" onclick="editOutcome('${outcome._id}')">
+                  Edit
+                </button>
                 <button class="btn danger compact-btn" type="button" onclick="deleteOutcome('${outcome._id}')">
                   Delete
                 </button>
@@ -1304,14 +1444,26 @@ document.getElementById("outcomeForm").addEventListener("submit", async (event) 
   };
 
   try {
-    const data = await apiRequest("/obe/course-outcomes", "POST", body);
+    const endpoint = editingCourseOutcomeId
+      ? `/obe/course-outcomes/${editingCourseOutcomeId}`
+      : "/obe/course-outcomes";
+    const method = editingCourseOutcomeId ? "PUT" : "POST";
+    const data = await apiRequest(endpoint, method, body);
+
     setMessage("outcomeMessage", data.message, false);
-    document.getElementById("outcomeForm").reset();
+    resetOutcomeForm();
     await loadOutcomes();
   } catch (error) {
     setMessage("outcomeMessage", error.message);
   }
 });
+
+document
+  .getElementById("cancelOutcomeEditButton")
+  ?.addEventListener("click", () => {
+    resetOutcomeForm();
+    setMessage("outcomeMessage", "", false);
+  });
 
 document
   .getElementById("bulkOutcomeForm")
@@ -1371,6 +1523,44 @@ async function deleteOutcome(id) {
   } catch (error) {
     setMessage("outcomeMessage", error.message);
   }
+}
+
+function editOutcome(id) {
+  const outcome = outcomes.find((item) => item._id === id);
+
+  if (!outcome) {
+    setMessage("outcomeMessage", "CO/CLO row not found.");
+    return;
+  }
+
+  editingCourseOutcomeId = id;
+  document.getElementById("department").value = outcome.department || "";
+  document.getElementById("subject").value = outcome.subject || "";
+  document.getElementById("code").value = outcome.code || "";
+  document.getElementById("description").value = outcome.description || "";
+  document.getElementById("programOutcome").value =
+    formatStudentOutcomeLink(outcome.programOutcome) || "";
+  document.getElementById("bloomLevel").value = outcome.bloomLevel || "";
+  document.getElementById("keywords").value = outcome.keywords || "";
+  document.getElementById("outcomeFormTitle").textContent = "Edit CO/CLO";
+  document.getElementById("outcomeSubmitButton").textContent = "Update CO/CLO";
+  document
+    .getElementById("cancelOutcomeEditButton")
+    ?.classList.remove("hidden");
+  document.getElementById("outcomeForm").scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+function resetOutcomeForm() {
+  editingCourseOutcomeId = null;
+  document.getElementById("outcomeForm").reset();
+  document.getElementById("outcomeFormTitle").textContent = "Add CO/CLO";
+  document.getElementById("outcomeSubmitButton").textContent = "Save CO/CLO";
+  document
+    .getElementById("cancelOutcomeEditButton")
+    ?.classList.add("hidden");
 }
 
 async function deleteStudentOutcome(id) {

@@ -300,7 +300,9 @@ function getProgramSubjectOutcomeOptions(type) {
     examOutcomeOptionData
       .filter((item) => {
         const matchesProgram =
-          !engineeringProgram || item.engineeringProgram === engineeringProgram;
+          !engineeringProgram ||
+          item.engineeringProgram === engineeringProgram ||
+          item.engineeringProgram === "GE";
         const matchesSubject =
           selectedSubjects.length === 0 || selectedSubjectSet.has(item.subject);
 

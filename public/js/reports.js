@@ -207,7 +207,7 @@ function updateCqiReport(cqiReport) {
   document.getElementById("cqiNeededBody").innerHTML =
     cqiReport.neededPlanRows?.length > 0
       ? cqiReport.neededPlanRows.map(renderNeededCqiRow).join("")
-      : `<tr><td colspan="4" class="empty-table-cell">No missing CQI plans detected.</td></tr>`;
+      : `<tr><td colspan="5" class="empty-table-cell">No missing CQI plans detected.</td></tr>`;
   document.getElementById("cqiOverdueBody").innerHTML =
     cqiReport.overduePlanRows?.length > 0
       ? cqiReport.overduePlanRows.map(renderOverdueCqiRow).join("")
@@ -236,8 +236,20 @@ function renderNeededCqiRow(row) {
       <td><span class="badge difficult">${escapeHTML(row.outcomeType)} ${escapeHTML(row.outcomeCode)}</span></td>
       <td>${escapeHTML(row.attainmentRate || 0)}% / ${escapeHTML(row.targetRate ?? 75)}%</td>
       <td><strong>${escapeHTML(row.gap || 0)}%</strong></td>
+      <td>
+        <span class="badge ${getCqiRecommendationClass(row.recommendationPriority)}">
+          ${escapeHTML(row.recommendationPriority || "Low")}
+        </span>
+        <small>${escapeHTML(row.recommendedAction || "Create a CQI intervention plan and collect follow-up evidence.")}</small>
+      </td>
     </tr>
   `;
+}
+
+function getCqiRecommendationClass(priority = "") {
+  if (priority === "High") return "difficult";
+  if (priority === "Medium") return "average";
+  return "easy";
 }
 
 function formatDate(value) {

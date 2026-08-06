@@ -17,6 +17,10 @@ const {
   ROLES,
 } = require("../utils/roles");
 const { hasCompleteObeMapping } = require("../utils/obeValidation");
+const {
+  getQuestionProgramMatch,
+  SPECIFIC_ENGINEERING_PROGRAMS,
+} = require("../utils/engineeringPrograms");
 
 const {
   Document,
@@ -44,7 +48,7 @@ const TOS_LOGO_DOCX_PATH = path.join(
   "logo-docx.png",
 );
 
-const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
+const ENGINEERING_PROGRAMS = SPECIFIC_ENGINEERING_PROGRAMS;
 
 const canAccessExam = (exam, user) => {
   if (!exam || !user) return false;
@@ -179,7 +183,7 @@ const getRandomQuestions = async (
 
   const match = {
     difficulty,
-    engineeringProgram,
+    engineeringProgram: getQuestionProgramMatch(engineeringProgram),
     courseOutcome: { $ne: "" },
     programOutcome: { $ne: "" },
     bloomLevel: { $ne: "" },

@@ -640,6 +640,63 @@ exports.createCourseOutcome = async (req, res) => {
   }
 };
 
+exports.updateCourseOutcome = async (req, res) => {
+  try {
+    const {
+      department,
+      subject,
+      code,
+      description,
+      programOutcome,
+      bloomLevel,
+      keywords,
+    } = req.body;
+
+    if (!subject || !code || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "Subject, CO/CLO code, and description are required.",
+      });
+    }
+
+    const outcome = await CourseOutcome.findByIdAndUpdate(
+      req.params.id,
+      {
+        department: String(department || "").trim(),
+        subject: String(subject || "").trim(),
+        code: String(code || "").trim(),
+        description: String(description || "").trim(),
+        programOutcome: normalizeStudentOutcomeLink(programOutcome),
+        bloomLevel: normalizeBloomLevel(bloomLevel),
+        keywords: String(keywords || "").trim(),
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (!outcome) {
+      return res.status(404).json({
+        success: false,
+        message: "CO/CLO not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "CO/CLO updated.",
+      outcome,
+    });
+  } catch (error) {
+    const duplicateCode = Number(error?.code) === 11000;
+
+    res.status(duplicateCode ? 409 : 500).json({
+      success: false,
+      message: duplicateCode
+        ? "A CO/CLO with the same department, subject, and code already exists."
+        : error.message,
+    });
+  }
+};
+
 exports.importCourseOutcomes = async (req, res) => {
   try {
     const subject = String(req.body.subject || "").trim();

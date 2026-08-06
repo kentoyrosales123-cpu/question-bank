@@ -8,7 +8,19 @@ const {
   formatObeMappingError,
   getMissingObeMappingFields,
 } = require("../utils/obeValidation");
-const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
+const {
+  classifyComplexEngineeringProblem,
+} = require("../utils/complexEngineeringProblem");
+const {
+  getQuestionProgramMatch,
+  isValidEngineeringProgram,
+} = require("../utils/engineeringPrograms");
+
+const parseBooleanBodyValue = (value, fallback = false) => {
+  if (value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes", "on"].includes(String(value).toLowerCase());
+};
 
 const getQuestionSnapshot = (question) => ({
   subject: question.subject,
@@ -25,8 +37,13 @@ const getQuestionSnapshot = (question) => ({
   difficulty: question.difficulty,
   courseOutcome: question.courseOutcome || "",
   programOutcome: question.programOutcome || "",
+  studentLearningOutcome: question.studentLearningOutcome || "",
   bloomLevel: question.bloomLevel || "",
   outcomeWeight: Number(question.outcomeWeight || 1),
+  isComplexEngineeringProblem: Boolean(question.isComplexEngineeringProblem),
+  complexityScore: Number(question.complexityScore || 0),
+  complexityLevel: question.complexityLevel || "Routine Engineering Problem",
+  complexityReasons: question.complexityReasons || [],
   explanation: question.explanation || "",
   tableData: question.tableData || "",
   tables: question.tables || [],
@@ -92,8 +109,10 @@ exports.createQuestion = async (req, res) => {
       difficulty,
       courseOutcome,
       programOutcome,
+      studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
+      isComplexEngineeringProblem,
       explanation,
       tableData,
       tables,
@@ -117,7 +136,7 @@ exports.createQuestion = async (req, res) => {
       });
     }
 
-    if (!ENGINEERING_PROGRAMS.includes(engineeringProgram)) {
+    if (!isValidEngineeringProgram(engineeringProgram)) {
       return res.status(400).json({
         success: false,
         message: "Selected engineering program is invalid.",
@@ -128,6 +147,7 @@ exports.createQuestion = async (req, res) => {
       engineeringProgram,
       courseOutcome,
       programOutcome,
+      studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
     });
@@ -153,6 +173,21 @@ exports.createQuestion = async (req, res) => {
         }
       : undefined;
 
+    const complexity = classifyComplexEngineeringProblem({
+      subject,
+      topic,
+      questionText,
+      choices: {
+        A: choiceA,
+        B: choiceB,
+        C: choiceC,
+        D: choiceD,
+      },
+      difficulty,
+      explanation,
+      tableData,
+    });
+
     const question = await Question.create({
       subject,
       engineeringProgram,
@@ -168,8 +203,21 @@ exports.createQuestion = async (req, res) => {
       difficulty,
       courseOutcome,
       programOutcome,
+      studentLearningOutcome,
       bloomLevel,
       outcomeWeight: Number(outcomeWeight || 1),
+      isComplexEngineeringProblem: parseBooleanBodyValue(
+        isComplexEngineeringProblem,
+        complexity.isComplexEngineeringProblem,
+      ),
+      complexityScore: complexity.complexityScore,
+      complexityLevel: parseBooleanBodyValue(
+        isComplexEngineeringProblem,
+        complexity.isComplexEngineeringProblem,
+      )
+        ? "Complex Engineering Problem"
+        : complexity.complexityLevel,
+      complexityReasons: complexity.complexityReasons,
       explanation,
       tableData,
       tables: tables ? JSON.parse(tables) : [],
@@ -306,6 +354,10 @@ exports.updateQuestion = async (req, res) => {
       difficulty: getBodyValue("difficulty", question.difficulty),
       courseOutcome: getBodyValue("courseOutcome", question.courseOutcome),
       programOutcome: getBodyValue("programOutcome", question.programOutcome),
+      studentLearningOutcome: getBodyValue(
+        "studentLearningOutcome",
+        question.studentLearningOutcome,
+      ),
       bloomLevel: getBodyValue("bloomLevel", question.bloomLevel),
       outcomeWeight: Number(
         getBodyValue("outcomeWeight", question.outcomeWeight || 1) || 1,
@@ -320,6 +372,17 @@ exports.updateQuestion = async (req, res) => {
           }
         : question.image,
     };
+    const complexity = classifyComplexEngineeringProblem(updateData);
+
+    updateData.isComplexEngineeringProblem = parseBooleanBodyValue(
+      req.body.isComplexEngineeringProblem,
+      complexity.isComplexEngineeringProblem,
+    );
+    updateData.complexityScore = complexity.complexityScore;
+    updateData.complexityLevel = updateData.isComplexEngineeringProblem
+      ? "Complex Engineering Problem"
+      : complexity.complexityLevel;
+    updateData.complexityReasons = complexity.complexityReasons;
 
     if (!canAccessSubject(req.user, updateData.subject)) {
       return res.status(403).json({
@@ -410,7 +473,7 @@ exports.getQuestionHistory = async (req, res) => {
 exports.getQuestionAnalytics = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id).select(
-      "subject engineeringProgram topic questionText difficulty courseOutcome programOutcome bloomLevel outcomeWeight",
+      "subject engineeringProgram topic questionText difficulty courseOutcome programOutcome studentLearningOutcome bloomLevel outcomeWeight",
     );
 
     if (!question) {
@@ -523,13 +586,16 @@ exports.filterQuestions = async (req, res) => {
       difficulty,
       courseOutcome,
       programOutcome,
+      studentLearningOutcome,
       bloomLevel,
     } = req.query;
 
     const filter = {};
 
     if (subject) filter.subject = new RegExp(escapeRegex(subject), "i");
-    if (engineeringProgram) filter.engineeringProgram = engineeringProgram;
+    if (engineeringProgram) {
+      filter.engineeringProgram = getQuestionProgramMatch(engineeringProgram);
+    }
     if (topic) filter.topic = new RegExp(escapeRegex(topic), "i");
     if (difficulty) filter.difficulty = difficulty;
     if (courseOutcome) {
@@ -537,6 +603,12 @@ exports.filterQuestions = async (req, res) => {
     }
     if (programOutcome) {
       filter.programOutcome = new RegExp(escapeRegex(programOutcome), "i");
+    }
+    if (studentLearningOutcome) {
+      filter.studentLearningOutcome = new RegExp(
+        escapeRegex(studentLearningOutcome),
+        "i",
+      );
     }
     if (bloomLevel) filter.bloomLevel = bloomLevel;
 

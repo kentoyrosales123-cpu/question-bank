@@ -19,9 +19,12 @@ const {
   formatObeMappingError,
   getMissingObeMappingFields,
 } = require("../utils/obeValidation");
+const {
+  classifyComplexEngineeringProblem,
+} = require("../utils/complexEngineeringProblem");
+const { isValidEngineeringProgram } = require("../utils/engineeringPrograms");
 
 const isAdminUser = (user) => isAdmin(user);
-const ENGINEERING_PROGRAMS = ["ECE", "CE", "EE", "ME", "CpE", "CHE"];
 
 const isUploadOwner = (upload, user) =>
   Boolean(
@@ -79,7 +82,9 @@ const getParsedQuestionUpdates = (body = {}) => {
     "difficulty",
     "courseOutcome",
     "programOutcome",
+    "studentLearningOutcome",
     "bloomLevel",
+    "isComplexEngineeringProblem",
     "explanation",
   ];
 
@@ -102,7 +107,25 @@ const getParsedQuestionUpdates = (body = {}) => {
     updates.outcomeWeight = Number(body.outcomeWeight || 1);
   }
 
+  if (body.complexityScore !== undefined) {
+    updates.complexityScore = Number(body.complexityScore || 0);
+  }
+
+  if (body.complexityLevel !== undefined) {
+    updates.complexityLevel = body.complexityLevel;
+  }
+
+  if (Array.isArray(body.complexityReasons)) {
+    updates.complexityReasons = body.complexityReasons;
+  }
+
   return updates;
+};
+
+const parseBooleanBodyValue = (value, fallback = false) => {
+  if (value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes", "on"].includes(String(value).toLowerCase());
 };
 
 const normalizeQuestionForDuplicateCheck = (value = "") =>
@@ -761,7 +784,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
-    if (!ENGINEERING_PROGRAMS.includes(selectedEngineeringProgram)) {
+    if (!isValidEngineeringProgram(selectedEngineeringProgram)) {
       return res.status(400).json({
         success: false,
         message: "Selected engineering program is invalid.",
@@ -864,6 +887,12 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           imageIndex++;
         }
 
+        const complexity = classifyComplexEngineeringProblem({
+          ...q,
+          subject,
+          topic,
+        });
+
         return {
           upload: upload._id,
           engineeringProgram: selectedEngineeringProgram,
@@ -875,8 +904,16 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           difficulty: q.difficulty,
           courseOutcome: q.courseOutcome || "",
           programOutcome: q.programOutcome || "",
+          studentLearningOutcome: q.studentLearningOutcome || "",
           bloomLevel: q.bloomLevel || "",
           outcomeWeight: Number(q.outcomeWeight || 1),
+          isComplexEngineeringProblem:
+            q.isComplexEngineeringProblem ??
+            complexity.isComplexEngineeringProblem,
+          complexityScore: q.complexityScore ?? complexity.complexityScore,
+          complexityLevel: q.complexityLevel || complexity.complexityLevel,
+          complexityReasons:
+            q.complexityReasons || complexity.complexityReasons,
           explanation: q.explanation,
           tables: q.tables || [],
           image,
@@ -1060,8 +1097,13 @@ exports.approveParsedQuestion = async (req, res) => {
       difficulty: parsed.difficulty,
       courseOutcome: parsed.courseOutcome,
       programOutcome: parsed.programOutcome,
+      studentLearningOutcome: parsed.studentLearningOutcome,
       bloomLevel: parsed.bloomLevel,
       outcomeWeight: Number(parsed.outcomeWeight || 1),
+      isComplexEngineeringProblem: parsed.isComplexEngineeringProblem,
+      complexityScore: parsed.complexityScore,
+      complexityLevel: parsed.complexityLevel,
+      complexityReasons: parsed.complexityReasons || [],
       explanation: parsed.explanation,
       tables: parsed.tables || [],
 
@@ -1107,7 +1149,19 @@ exports.updateParsedQuestion = async (req, res) => {
       });
     }
 
-    Object.assign(parsed, getParsedQuestionUpdates(req.body));
+    const updates = getParsedQuestionUpdates(req.body);
+    Object.assign(parsed, updates);
+    const complexity = classifyComplexEngineeringProblem(parsed);
+
+    parsed.isComplexEngineeringProblem = parseBooleanBodyValue(
+      req.body.isComplexEngineeringProblem,
+      complexity.isComplexEngineeringProblem,
+    );
+    parsed.complexityScore = complexity.complexityScore;
+    parsed.complexityLevel = parsed.isComplexEngineeringProblem
+      ? "Complex Engineering Problem"
+      : complexity.complexityLevel;
+    parsed.complexityReasons = complexity.complexityReasons;
 
     if (!canAccessSubject(req.user, parsed.subject)) {
       return res.status(403).json({

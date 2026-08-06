@@ -1,16 +1,12 @@
 const CourseOutcome = require("../models/CourseOutcome");
 const { suggestCourseOutcomes } = require("./obeSuggestionService");
+const {
+  classifyComplexEngineeringProblem,
+} = require("../utils/complexEngineeringProblem");
+const { isValidEngineeringProgram } = require("../utils/engineeringPrograms");
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = "qwen3:14b";
-const ENGINEERING_PROGRAMS = [
-  "ECE",
-  "CE",
-  "EE",
-  "ME",
-  "CpE",
-  "CHE",
-];
 const DIFFICULTIES = ["Easy", "Average", "Difficult"];
 const BLOOM_LEVELS = [
   "",
@@ -140,7 +136,8 @@ Rules:
 - Include a concise explanation.
 - Select the most fitting CO/CLO code from the provided mappings when possible.
 - Select the matching SO letter from the CO/CLO mapping when possible.
-- If no mapping fits, leave courseOutcome and studentOutcome blank.
+- Include the specific student learning outcome as studentLearningOutcome when known.
+- If no mapping fits, leave courseOutcome, studentOutcome, and studentLearningOutcome blank.
 - Return only a JSON object. Do not include markdown, commentary, or extra text.
 - Do not include <think> tags.
 
@@ -155,6 +152,7 @@ Required JSON shape:
       "bloomLevel": "Remember|Understand|Apply|Analyze|Evaluate|Create",
       "courseOutcome": "CO1",
       "studentOutcome": "a",
+      "studentLearningOutcome": "SLO1",
       "explanation": "Short explanation"
     }
   ]
@@ -303,7 +301,7 @@ const looksLikeGeneratedQuestion = (item) =>
 const normalizeGeneratedQuestion = (question, defaults) => {
   const choices = normalizeChoices(question);
 
-  return {
+  const normalizedQuestion = {
     engineeringProgram: defaults.engineeringProgram,
     department: defaults.department,
     subject: defaults.subject,
@@ -322,10 +320,24 @@ const normalizeGeneratedQuestion = (question, defaults) => {
     programOutcome: String(
       getFirstValue(question, ["studentOutcome", "so", "SO", "programOutcome"]),
     ).trim(),
+    studentLearningOutcome: String(
+      getFirstValue(question, [
+        "studentLearningOutcome",
+        "slo",
+        "SLO",
+        "learningOutcome",
+      ]),
+    ).trim(),
     bloomLevel: normalizeBloomLevel(question.bloomLevel || question.bloom, defaults.bloomLevel),
     outcomeWeight: 1,
     explanation: String(question.explanation || question.rationale || "").trim(),
     tables: [],
+  };
+  const complexity = classifyComplexEngineeringProblem(normalizedQuestion);
+
+  return {
+    ...normalizedQuestion,
+    ...complexity,
   };
 };
 
@@ -400,6 +412,10 @@ const applyOutcomeSuggestions = async (questions) => {
       ...question,
       courseOutcome: question.courseOutcome || suggestion.code || "",
       programOutcome: question.programOutcome || suggestion.programOutcome || "",
+      studentLearningOutcome:
+        question.studentLearningOutcome ||
+        suggestion.studentLearningOutcome ||
+        "",
       bloomLevel: question.bloomLevel || suggestion.bloomLevel || "",
     };
   });
@@ -420,7 +436,7 @@ const generateQuestions = async (options, onProgress = () => {}) => {
       : "",
   };
 
-  if (!ENGINEERING_PROGRAMS.includes(defaults.engineeringProgram)) {
+  if (!isValidEngineeringProgram(defaults.engineeringProgram)) {
     throw new Error("Selected engineering program is invalid.");
   }
 

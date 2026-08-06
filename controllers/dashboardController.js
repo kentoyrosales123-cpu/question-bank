@@ -16,6 +16,21 @@ const {
   ASSESSMENT_METHODS,
   DEFAULT_ASSESSMENT_METHOD,
 } = require("../utils/assessmentMethods");
+const {
+  GENERAL_ENGINEERING_PROGRAM,
+  getQuestionProgramMatch,
+} = require("../utils/engineeringPrograms");
+
+const OBE_SUBMISSION_ROLES = Object.freeze([
+  "super_admin",
+  "admin",
+  "cee_cac_coordinator",
+  "exam_creator",
+  "exam_requestor",
+  "professor",
+  "user",
+  "student",
+]);
 
 const getActivityAction = (activityOrAction) =>
   typeof activityOrAction === "string" ? activityOrAction : activityOrAction?.action;
@@ -256,7 +271,7 @@ const buildQuestionFilter = (filters = {}) => {
   const filter = {};
 
   if (filters.engineeringProgram) {
-    filter.engineeringProgram = filters.engineeringProgram;
+    filter.engineeringProgram = getQuestionProgramMatch(filters.engineeringProgram);
   }
   if (filters.subject) {
     filter.subject = exactTextFilter(filters.subject);
@@ -312,10 +327,33 @@ const buildItemAnalysisFilter = (filters = {}) => {
   return filter;
 };
 
+const buildEvidenceFilter = (filters = {}) => {
+  const filter = {};
+
+  if (filters.engineeringProgram) {
+    filter.engineeringProgram = filters.engineeringProgram;
+  }
+  if (filters.subject) {
+    filter.subject = exactTextFilter(filters.subject);
+  }
+  if (filters.section) {
+    filter.section = exactTextFilter(filters.section);
+  }
+  if (filters.semester) {
+    filter.semester = exactTextFilter(filters.semester);
+  }
+  if (filters.schoolYear) {
+    filter.schoolYear = exactTextFilter(filters.schoolYear);
+  }
+
+  return filter;
+};
+
 const questionMatchesObeFilters = (question = {}, filters = {}) => {
   if (
     filters.engineeringProgram &&
-    question.engineeringProgram !== filters.engineeringProgram
+    question.engineeringProgram !== filters.engineeringProgram &&
+    question.engineeringProgram !== GENERAL_ENGINEERING_PROGRAM
   ) {
     return false;
   }
@@ -356,6 +394,32 @@ const createOutcomeBucket = (code, targetRate) => ({
   assessedStudents: 0,
   attainedStudents: 0,
 });
+
+const CEP_LEVELS = Object.freeze([
+  "Routine Engineering Problem",
+  "Moderately Complex Engineering Problem",
+  "Complex Engineering Problem",
+]);
+
+const getQuestionCepLevel = (question = {}) => {
+  const level = String(question.complexityLevel || "").trim();
+
+  if (CEP_LEVELS.includes(level)) {
+    return level;
+  }
+
+  return question.isComplexEngineeringProblem
+    ? "Complex Engineering Problem"
+    : "Routine Engineering Problem";
+};
+
+const createCepBuckets = (targetRate) =>
+  new Map(
+    CEP_LEVELS.map((level) => [
+      level,
+      createOutcomeBucket(level, targetRate),
+    ]),
+  );
 
 const getTraceabilityKey = (courseOutcome, programOutcome) =>
   `${courseOutcome}|||${programOutcome}`;
@@ -674,13 +738,13 @@ const calculateObeReport = async (filters = {}) => {
     getObeSettings(),
     Question.find()
       .where(questionFilter)
-      .select("engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight")
+      .select("engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel")
       .lean(),
     Exam.find(submittedExamFilter)
       .select("title subject section semester schoolYear assessmentMethod answers questions user")
       .populate({
         path: "questions",
-        select: "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight",
+        select: "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
       })
         .lean(),
     ItemAnalysisExam.find({
@@ -695,7 +759,7 @@ const calculateObeReport = async (filters = {}) => {
         populate: {
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight",
+            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         },
       })
       .lean(),
@@ -710,6 +774,7 @@ const calculateObeReport = async (filters = {}) => {
   const courseOutcomes = new Map();
   const programOutcomes = new Map();
   const bloomLevels = new Map();
+  const cepAttainment = createCepBuckets(settings.courseOutcomeTarget);
   const traceabilityMatrix = new Map();
   const analysisResultsByExam = new Map();
   let alignedQuestions = 0;
@@ -726,6 +791,7 @@ const calculateObeReport = async (filters = {}) => {
     const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
     const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
     const bloomLevel = toOutcomeKey(question.bloomLevel, "Unmapped Bloom");
+    const cepLevel = getQuestionCepLevel(question);
 
     if (question.courseOutcome && question.programOutcome) {
       alignedQuestions++;
@@ -759,9 +825,11 @@ const calculateObeReport = async (filters = {}) => {
     courseOutcomes.get(courseOutcome).questionCount++;
     if (question.engineeringProgram) {
       courseOutcomes.get(courseOutcome).programs.add(question.engineeringProgram);
+      cepAttainment.get(cepLevel)?.programs.add(question.engineeringProgram);
     }
     programOutcomes.get(programOutcome).questionCount++;
     bloomLevels.get(bloomLevel).questionCount++;
+    cepAttainment.get(cepLevel).questionCount++;
   });
 
   submittedExams.forEach((exam) => {
@@ -780,6 +848,7 @@ const calculateObeReport = async (filters = {}) => {
 
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+      const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const studentKey = `exam:${exam.user || exam._id}`;
       const traceBucket = ensureTraceabilityBucket(
@@ -819,6 +888,12 @@ const calculateObeReport = async (filters = {}) => {
           }
         },
       );
+      recordOutcomeResponse(
+        cepAttainment.get(cepLevel),
+        answer,
+        weight,
+        studentKey,
+      );
     });
   });
 
@@ -832,6 +907,7 @@ const calculateObeReport = async (filters = {}) => {
       const itemNo = index + 1;
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+      const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const traceBucket = ensureTraceabilityBucket(
         traceabilityMatrix,
@@ -883,6 +959,12 @@ const calculateObeReport = async (filters = {}) => {
               bucket.programs.add(question.engineeringProgram);
             }
           },
+        );
+        recordOutcomeResponse(
+          cepAttainment.get(cepLevel),
+          itemResult,
+          weight,
+          studentKey,
         );
       });
     });
@@ -1015,6 +1097,9 @@ const calculateObeReport = async (filters = {}) => {
 
   const courseOutcomeRows = finalizeBuckets(courseOutcomes);
   const programOutcomeRows = finalizeBuckets(programOutcomes);
+  const cepAttainmentRows = finalizeBuckets(cepAttainment).sort(
+    (a, b) => CEP_LEVELS.indexOf(a.code) - CEP_LEVELS.indexOf(b.code),
+  );
   const report = {
     settings,
     attainmentMethod: settings.attainmentMethod,
@@ -1028,6 +1113,7 @@ const calculateObeReport = async (filters = {}) => {
         : 0,
     courseOutcomes: courseOutcomeRows,
     programOutcomes: programOutcomeRows,
+    cepAttainment: cepAttainmentRows,
     evidenceTraceabilityMatrix: finalizeTraceabilityRows(
       traceabilityMatrix,
       settings,
@@ -1040,6 +1126,135 @@ const calculateObeReport = async (filters = {}) => {
   report.courseLevelSummary = buildCourseLevelSummary(filters, report);
 
   return report;
+};
+
+const createTeacherSubmissionBucket = (user) => ({
+  teacherId: user._id.toString(),
+  teacherName: user.name || "Unnamed user",
+  email: user.email || "",
+  role: user.role || "",
+  generatedExams: 0,
+  linkedItemAnalysis: 0,
+  itemAnalysisWithResults: 0,
+  rubricAssessments: 0,
+  evidenceRecords: 0,
+  cqiPlans: 0,
+  completedCqiPlans: 0,
+  coSoAttainmentAvailable: false,
+  status: "Missing Assessment Evidence",
+});
+
+const calculateTeacherObeSubmissionStatus = async (filters = {}) => {
+  const users = await User.find({
+    role: { $in: [...OBE_SUBMISSION_ROLES] },
+    accountStatus: { $ne: "pending" },
+  })
+    .select("name email role")
+    .sort({ name: 1, email: 1 })
+    .lean();
+  const userIds = users.map((user) => user._id);
+  const buckets = new Map(
+    users.map((user) => [user._id.toString(), createTeacherSubmissionBucket(user)]),
+  );
+  const examFilter = buildExamFilter(filters);
+  const itemAnalysisFilter = buildItemAnalysisFilter(filters);
+  const evidenceFilter = buildEvidenceFilter(filters);
+  const [
+    generatedExams,
+    analysisExams,
+    rubricAssessments,
+    evidenceRecords,
+    cqiPlans,
+  ] = await Promise.all([
+    Exam.find({ user: { $in: userIds }, ...examFilter })
+      .select("user")
+      .lean(),
+    ItemAnalysisExam.find({
+      uploadedBy: { $in: userIds },
+      generatedExamId: { $ne: null },
+      includeInObe: { $ne: false },
+      ...itemAnalysisFilter,
+    })
+      .select("uploadedBy")
+      .lean(),
+    RubricAssessment.find({ createdBy: { $in: userIds }, ...examFilter })
+      .select("createdBy")
+      .lean(),
+    ObeEvidence.find({ uploadedBy: { $in: userIds }, ...evidenceFilter })
+      .select("uploadedBy")
+      .lean(),
+    CqiInterventionPlan.find({ createdBy: { $in: userIds } })
+      .select("createdBy status")
+      .lean(),
+  ]);
+  const analysisExamIds = analysisExams.map((exam) => exam._id);
+  const analysisIdsWithResults = new Set(
+    (
+      analysisExamIds.length
+        ? await ItemAnalysisStudentResult.distinct("analysisExamId", {
+            analysisExamId: { $in: analysisExamIds },
+          })
+        : []
+    ).map((id) => id.toString()),
+  );
+
+  generatedExams.forEach((exam) => {
+    const bucket = buckets.get(exam.user?.toString());
+    if (bucket) bucket.generatedExams++;
+  });
+
+  analysisExams.forEach((exam) => {
+    const bucket = buckets.get(exam.uploadedBy?.toString());
+    if (!bucket) return;
+
+    bucket.linkedItemAnalysis++;
+    if (analysisIdsWithResults.has(exam._id.toString())) {
+      bucket.itemAnalysisWithResults++;
+      bucket.coSoAttainmentAvailable = true;
+    }
+  });
+
+  rubricAssessments.forEach((assessment) => {
+    const bucket = buckets.get(assessment.createdBy?.toString());
+    if (bucket) bucket.rubricAssessments++;
+  });
+
+  evidenceRecords.forEach((evidence) => {
+    const bucket = buckets.get(evidence.uploadedBy?.toString());
+    if (bucket) bucket.evidenceRecords++;
+  });
+
+  cqiPlans.forEach((plan) => {
+    const bucket = buckets.get(plan.createdBy?.toString());
+    if (!bucket) return;
+
+    bucket.cqiPlans++;
+    if (["Completed", "Verified"].includes(plan.status)) {
+      bucket.completedCqiPlans++;
+    }
+  });
+
+  buckets.forEach((bucket) => {
+    if (bucket.generatedExams <= 0) {
+      bucket.status = "No Generated Exam";
+    } else if (bucket.linkedItemAnalysis <= 0 && bucket.rubricAssessments <= 0) {
+      bucket.status = "Missing Assessment Evidence";
+    } else if (!bucket.coSoAttainmentAvailable && bucket.rubricAssessments <= 0) {
+      bucket.status = "Missing CO/SO Attainment";
+    } else if (bucket.evidenceRecords <= 0) {
+      bucket.status = "Missing Evidence Files";
+    } else if (bucket.cqiPlans > 0 && bucket.completedCqiPlans < bucket.cqiPlans) {
+      bucket.status = "CQI In Progress";
+    } else {
+      bucket.status = "Ready for Review";
+    }
+  });
+
+  return Array.from(buckets.values()).sort(
+    (a, b) =>
+      a.status.localeCompare(b.status) ||
+      a.teacherName.localeCompare(b.teacherName),
+  );
 };
 
 const createCqiBucket = (code, targetRate) => ({
@@ -1076,6 +1291,75 @@ const finalizeCqiBucket = (bucket) => {
         : attainmentRate >= Number(bucket.targetRate ?? 75)
           ? "Attained"
           : "Not attained",
+  };
+};
+
+const buildAutomaticCqiRecommendation = (bucket = {}, outcomeType = "CO") => {
+  const targetRate = Number(bucket.targetRate ?? 75);
+  const attainmentRate = Number(bucket.attainmentRate || 0);
+  const gap = Math.max(0, targetRate - attainmentRate);
+  const itemCount = Number(bucket.itemCount || 0);
+  const responseCount = Number(bucket.responseCount || 0);
+  const priority = gap >= 25 ? "High" : gap >= 10 ? "Medium" : "Low";
+  const outcomeLabel = outcomeType === "SO" ? "student outcome" : "course outcome";
+  const coverageConcern =
+    itemCount < 3
+      ? "limited assessment coverage"
+      : responseCount < 10
+        ? "limited student response evidence"
+        : "low attainment against the target";
+
+  if (itemCount < 3) {
+    return {
+      recommendationPriority: priority,
+      recommendedRootCause: `Possible ${coverageConcern} for this ${outcomeLabel}.`,
+      recommendedIntervention:
+        "Add more mapped assessment items before the next evaluation cycle and verify that each item directly measures the outcome.",
+      recommendedEvidence:
+        "Updated TOS, mapped questions, generated exam, and item analysis result after reassessment.",
+      recommendedAction:
+        "Increase outcome coverage, then reassess with item analysis evidence.",
+    };
+  }
+
+  if (gap >= 25) {
+    return {
+      recommendationPriority: priority,
+      recommendedRootCause:
+        "Major attainment gap suggests prerequisite or concept mastery issues.",
+      recommendedIntervention:
+        "Conduct targeted remediation, provide worked examples and practice items, then run a short reassessment focused on the weak outcome.",
+      recommendedEvidence:
+        "Remediation attendance, revised learning materials, reassessment scores, and comparison of pre/post item analysis.",
+      recommendedAction:
+        "Start a high-priority remediation plan and reassess the outcome.",
+    };
+  }
+
+  if (gap >= 10) {
+    return {
+      recommendationPriority: priority,
+      recommendedRootCause:
+        "Moderate gap suggests item-level misconceptions or insufficient guided practice.",
+      recommendedIntervention:
+        "Review the weakest items with the class, add guided practice, and adjust the next assessment to include equivalent outcome-mapped items.",
+      recommendedEvidence:
+        "Class intervention notes, revised practice activity, and next item analysis report.",
+      recommendedAction:
+        "Review weak items and add guided practice before the next assessment.",
+    };
+  }
+
+  return {
+    recommendationPriority: priority,
+    recommendedRootCause:
+      "Outcome is slightly below target and should be monitored in the next cycle.",
+    recommendedIntervention:
+      "Provide quick feedback on missed concepts and keep the outcome mapped in the next assessment.",
+    recommendedEvidence:
+      "Feedback record and follow-up item analysis for the same outcome.",
+    recommendedAction:
+      "Monitor the outcome and collect follow-up evidence in the next assessment.",
   };
 };
 
@@ -1200,6 +1484,11 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
           const key = `${analysisExam._id}|||${outcomeType}|||${bucket.code}`;
 
           if (!planKeys.has(key)) {
+            const recommendation = buildAutomaticCqiRecommendation(
+              bucket,
+              outcomeType,
+            );
+
             neededPlans.push({
               analysisExamId: analysisExam._id,
               examTitle: analysisExam.title,
@@ -1212,6 +1501,10 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
               targetRate: bucket.targetRate,
               attainmentRate: bucket.attainmentRate,
               gap: Math.max(0, bucket.targetRate - bucket.attainmentRate),
+              itemCount: bucket.itemCount,
+              responseCount: bucket.responseCount,
+              correctCount: bucket.correctCount,
+              ...recommendation,
             });
           }
         });
@@ -1237,6 +1530,8 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
     return targetDate >= today && targetDate <= dueSoonDate;
   });
 
+  const sortedNeededPlans = neededPlans.sort((a, b) => b.gap - a.gap);
+
   return {
     totalPlans: filteredPlans.length,
     openPlans: filteredPlans.filter(isOpenPlan).length,
@@ -1251,8 +1546,9 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
       completed: statusCounts.Completed || 0,
       verified: statusCounts.Verified || 0,
     },
-    neededPlanRows: neededPlans.sort((a, b) => b.gap - a.gap).slice(0, 10),
-    neededPlanRowsAll: neededPlans,
+    neededPlanRows: sortedNeededPlans.slice(0, 10),
+    neededPlanRowsAll: sortedNeededPlans,
+    recommendationRows: sortedNeededPlans.slice(0, 10),
     overduePlanRows: overduePlans.slice(0, 10),
     recentPlans: filteredPlans.slice(0, 10),
     allPlans: filteredPlans,
@@ -1909,6 +2205,11 @@ const buildAccreditationObeWorkbook = async (report) => {
       { header: "Target %", key: "targetRate", width: 14 },
       { header: "Attainment %", key: "attainmentRate", width: 16 },
       { header: "Gap %", key: "gap", width: 12 },
+      { header: "Recommendation Priority", key: "recommendationPriority", width: 24 },
+      { header: "Probable Root Cause", key: "recommendedRootCause", width: 42 },
+      { header: "Recommended Action", key: "recommendedAction", width: 44 },
+      { header: "Recommended Intervention", key: "recommendedIntervention", width: 58 },
+      { header: "Evidence to Collect", key: "recommendedEvidence", width: 52 },
     ],
     cqiReport.neededPlanRowsAll || cqiReport.neededPlanRows || [],
   );
@@ -2022,6 +2323,7 @@ const calculateReportsPayload = async (rawFilters = {}) => {
     obeReport,
     cqiReport,
     assessmentMethodReport,
+    teacherSubmissionStatus,
     recentActivity,
   ] = await Promise.all([
     User.countDocuments(),
@@ -2034,6 +2336,7 @@ const calculateReportsPayload = async (rawFilters = {}) => {
     calculateObeReport(filters),
     calculateCqiMonitoringReport(filters),
     calculateAssessmentMethodReport(filters),
+    calculateTeacherObeSubmissionStatus(filters),
     ActivityLog.find()
       .populate("user", "name email role")
       .sort({ createdAt: -1 })
@@ -2077,6 +2380,7 @@ const calculateReportsPayload = async (rawFilters = {}) => {
     obeReport,
     cqiReport,
     assessmentMethodReport,
+    teacherSubmissionStatus,
     outcomeCoverageAlerts,
     loginCount: activityCounts.find((item) => item._id === "login")?.count || 0,
     generatedExamCount:
@@ -2183,7 +2487,7 @@ exports.getMyObeDashboard = async (req, res) => {
         .populate({
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight",
+            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         })
         .lean(),
       ItemAnalysisExam.find({
@@ -2198,7 +2502,7 @@ exports.getMyObeDashboard = async (req, res) => {
           populate: {
             path: "questions",
             select:
-              "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight",
+              "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
           },
         })
         .lean(),
@@ -2223,6 +2527,7 @@ exports.getMyObeDashboard = async (req, res) => {
     const submissionMap = new Map();
     const courseOutcomes = new Map();
     const studentOutcomes = new Map();
+    const cepAttainment = createCepBuckets(settings.courseOutcomeTarget);
 
     analysisResults.forEach((result) => {
       const key = result.analysisExamId.toString();
@@ -2250,6 +2555,7 @@ exports.getMyObeDashboard = async (req, res) => {
         const itemNo = index + 1;
         const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
         const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+        const cepLevel = getQuestionCepLevel(question);
         const weight = Math.max(0, Number(question.outcomeWeight || 1));
 
         if (!courseOutcomes.has(courseOutcome)) {
@@ -2266,7 +2572,9 @@ exports.getMyObeDashboard = async (req, res) => {
         }
         if (question.engineeringProgram) {
           courseOutcomes.get(courseOutcome).programs.add(question.engineeringProgram);
+          cepAttainment.get(cepLevel)?.programs.add(question.engineeringProgram);
         }
+        cepAttainment.get(cepLevel).questionCount++;
 
         examResults.forEach((result) => {
           const itemResult =
@@ -2282,6 +2590,12 @@ exports.getMyObeDashboard = async (req, res) => {
           );
           recordOutcomeResponse(
             studentOutcomes.get(programOutcome),
+            itemResult,
+            weight,
+            studentKey,
+          );
+          recordOutcomeResponse(
+            cepAttainment.get(cepLevel),
             itemResult,
             weight,
             studentKey,
@@ -2352,6 +2666,9 @@ exports.getMyObeDashboard = async (req, res) => {
 
     const courseOutcomeRows = finalizeTeacherBuckets(courseOutcomes, settings);
     const studentOutcomeRows = finalizeTeacherBuckets(studentOutcomes, settings);
+    const cepAttainmentRows = finalizeTeacherBuckets(cepAttainment, settings).sort(
+      (a, b) => CEP_LEVELS.indexOf(a.code) - CEP_LEVELS.indexOf(b.code),
+    );
     const notAttainedCodes = new Set(
       [...courseOutcomeRows, ...studentOutcomeRows]
         .filter((row) => row.status === "Not Attained")
@@ -2395,6 +2712,7 @@ exports.getMyObeDashboard = async (req, res) => {
         },
         courseOutcomes: courseOutcomeRows,
         studentOutcomes: studentOutcomeRows,
+        cepAttainment: cepAttainmentRows,
         submissionStatus: Array.from(submissionMap.values()).sort((a, b) =>
           a.subject.localeCompare(b.subject),
         ),

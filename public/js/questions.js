@@ -61,7 +61,11 @@ function renderQuestionsPage() {
 </td>
 
 <td>
-  <span class="badge ${q.courseOutcome && q.programOutcome ? "easy" : "average"}">
+  ${renderCepBadge(q)}
+</td>
+
+<td>
+  <span class="badge ${q.courseOutcome && q.programOutcome && q.studentLearningOutcome ? "easy" : "average"}">
     ${escapeHTML(formatObeTag(q))}
   </span>
 </td>
@@ -95,7 +99,7 @@ Delete
           },
         )
         .join("")
-    : `<tr><td colspan="8" class="muted-text">No questions found.</td></tr>`;
+    : `<tr><td colspan="9" class="muted-text">No questions found.</td></tr>`;
 
   renderQuestionsPagination();
 }
@@ -147,6 +151,20 @@ function getQuestionDifficultyClass(difficulty) {
   return String(getQuestionDifficultyLabel(difficulty)).toLowerCase();
 }
 
+function renderCepBadge(question) {
+  const isCep = Boolean(question.isComplexEngineeringProblem);
+  const score = Number(question.complexityScore || 0);
+  const level = question.complexityLevel || "Routine Engineering Problem";
+  const label = isCep ? "CEP" : "Not CEP";
+  const badgeClass = isCep ? "difficult" : score > 30 ? "average" : "easy";
+
+  return `
+    <span class="badge ${badgeClass}" title="${escapeAttribute(level)}">
+      ${label} ${score}%
+    </span>
+  `;
+}
+
 function renderSubjectEditControl(question) {
   if (isCeeCacCoordinatorRole(getUser())) {
     return `
@@ -166,8 +184,9 @@ function renderSubjectEditControl(question) {
 function formatObeTag(question) {
   const clo = question.courseOutcome || "No CLO";
   const so = question.programOutcome || "No SO";
+  const slo = question.studentLearningOutcome || "No SLO";
 
-  return `${clo} / ${so}`;
+  return `${clo} / ${so} / ${slo}`;
 }
 
 async function filterQuestions() {
@@ -176,6 +195,9 @@ async function filterQuestions() {
   const difficulty = document.getElementById("filterDifficulty").value;
   const courseOutcome = document.getElementById("filterCourseOutcome").value;
   const programOutcome = document.getElementById("filterProgramOutcome").value;
+  const studentLearningOutcome = document.getElementById(
+    "filterStudentLearningOutcome",
+  ).value;
   const bloomLevel = document.getElementById("filterBloomLevel").value;
 
   const query = new URLSearchParams({
@@ -184,6 +206,7 @@ async function filterQuestions() {
     difficulty,
     courseOutcome,
     programOutcome,
+    studentLearningOutcome,
     bloomLevel,
   }).toString();
 
@@ -239,6 +262,10 @@ async function viewQuestion(id) {
           <strong>${escapeHTML(question.programOutcome || "Not mapped")}</strong>
         </div>
         <div>
+          <span class="field-label">Student Learning Outcome</span>
+          <strong>${escapeHTML(question.studentLearningOutcome || "Not mapped")}</strong>
+        </div>
+        <div>
           <span class="field-label">Bloom Level</span>
           <strong>${escapeHTML(question.bloomLevel || "Not mapped")}</strong>
         </div>
@@ -246,7 +273,21 @@ async function viewQuestion(id) {
           <span class="field-label">Outcome Weight</span>
           <strong>${escapeHTML(question.outcomeWeight || 1)}</strong>
         </div>
+        <div>
+          <span class="field-label">Complex Engineering Problem</span>
+          <strong>${question.isComplexEngineeringProblem ? "Yes" : "No"} - ${escapeHTML(question.complexityLevel || "Routine Engineering Problem")} (${escapeHTML(question.complexityScore || 0)}%)</strong>
+        </div>
       </div>
+
+      ${
+        Array.isArray(question.complexityReasons) &&
+        question.complexityReasons.length
+          ? `<div class="question-detail-block">
+              <span class="field-label">Complexity Indicators</span>
+              <p>${question.complexityReasons.map(escapeHTML).join(" | ")}</p>
+            </div>`
+          : ""
+      }
 
       <div class="question-detail-block">
         <span class="field-label">Question</span>
@@ -416,10 +457,10 @@ async function editQuestion(id) {
           <label>
             <span class="field-label">Engineering Program</span>
             <select id="editEngineeringProgram" required>
-              ${["ECE", "CE", "EE", "ME", "CpE", "CHE"]
+              ${["GE", "ECE", "CE", "EE", "ME", "CpE", "CHE"]
                 .map(
                   (program) => `
-                    <option value="${program}" ${question.engineeringProgram === program ? "selected" : ""}>${program}</option>
+                    <option value="${program}" ${question.engineeringProgram === program ? "selected" : ""}>${program === "GE" ? "General Engineering" : program}</option>
                   `,
                 )
                 .join("")}
@@ -490,6 +531,11 @@ async function editQuestion(id) {
           </label>
         </div>
 
+        <label>
+          <span class="field-label">Student Learning Outcome</span>
+          <input id="editStudentLearningOutcome" value="${escapeAttribute(question.studentLearningOutcome || "")}" placeholder="SLO1" required />
+        </label>
+
         <div class="field-grid two">
           <label>
             <span class="field-label">Bloom Level</span>
@@ -508,6 +554,11 @@ async function editQuestion(id) {
             <input id="editOutcomeWeight" type="number" min="0.1" step="0.1" value="${escapeAttribute(question.outcomeWeight || 1)}" required />
           </label>
         </div>
+
+        <label class="checkbox-row">
+          <input id="editIsComplexEngineeringProblem" type="checkbox" ${question.isComplexEngineeringProblem ? "checked" : ""} />
+          <span>Complex engineering problem</span>
+        </label>
 
         <label>
           <span class="field-label">Optional Table Data</span>
@@ -580,10 +631,18 @@ async function saveQuestionEdits(event, id) {
     "programOutcome",
     document.getElementById("editProgramOutcome").value,
   );
+  form.append(
+    "studentLearningOutcome",
+    document.getElementById("editStudentLearningOutcome").value,
+  );
   form.append("bloomLevel", document.getElementById("editBloomLevel").value);
   form.append(
     "outcomeWeight",
     document.getElementById("editOutcomeWeight").value,
+  );
+  form.append(
+    "isComplexEngineeringProblem",
+    document.getElementById("editIsComplexEngineeringProblem").checked,
   );
   form.append("tableData", document.getElementById("editTableData").value);
   form.append("explanation", document.getElementById("editExplanation").value);
