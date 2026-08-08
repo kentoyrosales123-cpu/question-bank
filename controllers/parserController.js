@@ -306,6 +306,21 @@ function detectDifficulty(text) {
   return "Difficult";
 }
 
+const BLOOM_LEVELS = [
+  "Remember",
+  "Understand",
+  "Apply",
+  "Analyze",
+  "Evaluate",
+  "Create",
+];
+
+function normalizeBloomLevel(value = "") {
+  const cleaned = String(value || "").trim().toLowerCase();
+
+  return BLOOM_LEVELS.find((level) => level.toLowerCase() === cleaned) || "";
+}
+
 function extractDocxImages(filePath) {
   const zip = new AdmZip(filePath);
   const entries = zip.getEntries();
@@ -630,6 +645,12 @@ function parseQuestionsFromText(text) {
     const answer = joined.match(
       /(?:Answer|Ans\.|Correct Answer)[:\s]+([A-D])/i,
     );
+    const bloomLevel = joined.match(
+      /(?:Bloom'?s?\s*(?:Level)?|Bloom\s*Level)[:\s-]+([A-Za-z]+)/i,
+    );
+    const studentLearningOutcome = joined.match(
+      /(?:SLO|Student\s+Learning\s+Outcome)[:\s-]+(.+?)(?=\n(?:QUESTION\s*)?\d+[:).\s]|\n(?:Bloom'?s?\s*(?:Level)?|Bloom\s*Level)[:\s-]|$)/is,
+    );
 
     const questionOnly = joined
       .replace(/A[\).][\s\S]*/i, "")
@@ -650,6 +671,10 @@ function parseQuestionsFromText(text) {
       },
       correctAnswer: answer ? answer[1].toUpperCase() : "",
       difficulty: detectDifficulty(questionOnly),
+      studentLearningOutcome: studentLearningOutcome
+        ? studentLearningOutcome[1].trim()
+        : "",
+      bloomLevel: bloomLevel ? normalizeBloomLevel(bloomLevel[1]) : "",
       explanation: "",
       tables: [],
     });
@@ -714,6 +739,8 @@ function parseDocxQuestions(filePath) {
         },
         correctAnswer: "",
         difficulty: detectDifficulty(questionMatch[1].trim()),
+        studentLearningOutcome: "",
+        bloomLevel: "",
         explanation: "",
         tables: [],
         image: block.image,
@@ -735,6 +762,25 @@ function parseDocxQuestions(filePath) {
 
     if (answerMatch && currentQuestion) {
       currentQuestion.correctAnswer = answerMatch[1].toUpperCase();
+      return;
+    }
+
+    const bloomLevelMatch = block.text.match(
+      /^(?:Bloom'?s?\s*(?:Level)?|Bloom\s*Level)[:\s-]+(.+)/i,
+    );
+
+    if (bloomLevelMatch && currentQuestion) {
+      currentQuestion.bloomLevel = normalizeBloomLevel(bloomLevelMatch[1]);
+      return;
+    }
+
+    const studentLearningOutcomeMatch = block.text.match(
+      /^(?:SLO|Student\s+Learning\s+Outcome)[:\s-]+(.+)/i,
+    );
+
+    if (studentLearningOutcomeMatch && currentQuestion) {
+      currentQuestion.studentLearningOutcome =
+        studentLearningOutcomeMatch[1].trim();
       return;
     }
 
