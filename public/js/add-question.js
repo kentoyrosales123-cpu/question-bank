@@ -2,6 +2,71 @@ protectPage();
 contentManagerPage();
 
 const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
+let studentOutcomeRows = [];
+
+const normalizeSoCode = (value = "") =>
+  String(value || "")
+    .replace(/^SO[-\s]*/i, "")
+    .trim()
+    .toLowerCase();
+
+function updatePerformanceIndicatorOptions() {
+  const soInput = document.getElementById("programOutcome");
+  const piSelect = document.getElementById("performanceIndicator");
+
+  if (!soInput || !piSelect) return;
+
+  const soCode = normalizeSoCode(soInput.value);
+  const outcome = studentOutcomeRows.find(
+    (row) => normalizeSoCode(row.code) === soCode,
+  );
+  const indicators = outcome?.performanceIndicatorRows || [];
+
+  piSelect.innerHTML = `<option value="">Performance Indicator</option>`;
+  indicators.forEach((indicator) => {
+    const option = document.createElement("option");
+    option.value = indicator.label;
+    option.textContent = `${indicator.label} - ${indicator.description}`;
+    piSelect.appendChild(option);
+  });
+}
+
+function updateQuestionTypeFields() {
+  const isProblemSolving =
+    document.getElementById("questionType")?.value === "Problem Solving";
+  const multipleChoiceFields = document.getElementById("multipleChoiceFields");
+  const solutionAnswer = document.getElementById("solutionAnswer");
+  const mcqInputs = [
+    "choiceA",
+    "choiceB",
+    "choiceC",
+    "choiceD",
+    "correctAnswer",
+  ].map((id) => document.getElementById(id));
+
+  if (multipleChoiceFields) {
+    multipleChoiceFields.hidden = isProblemSolving;
+  }
+
+  if (solutionAnswer) {
+    solutionAnswer.hidden = !isProblemSolving;
+    solutionAnswer.required = isProblemSolving;
+  }
+
+  mcqInputs.forEach((input) => {
+    if (input) input.required = !isProblemSolving;
+  });
+}
+
+async function loadStudentOutcomePis() {
+  try {
+    const data = await apiRequest("/obe/student-outcomes");
+    studentOutcomeRows = data.studentOutcomes || [];
+    updatePerformanceIndicatorOptions();
+  } catch (error) {
+    studentOutcomeRows = [];
+  }
+}
 
 function canUseSubject(subject) {
   const user = getUser();
@@ -33,6 +98,14 @@ function restrictSubjectForCoordinator() {
 }
 
 restrictSubjectForCoordinator();
+loadStudentOutcomePis();
+document
+  .getElementById("programOutcome")
+  ?.addEventListener("input", updatePerformanceIndicatorOptions);
+document
+  .getElementById("questionType")
+  ?.addEventListener("change", updateQuestionTypeFields);
+updateQuestionTypeFields();
 
 document
   .getElementById("questionForm")
@@ -55,6 +128,7 @@ document
       document.getElementById("engineeringProgram").value,
     );
     form.append("topic", document.getElementById("topic").value);
+    form.append("questionType", document.getElementById("questionType").value);
     form.append("questionText", document.getElementById("questionText").value);
     form.append("choiceA", document.getElementById("choiceA").value);
     form.append("choiceB", document.getElementById("choiceB").value);
@@ -64,6 +138,10 @@ document
       "correctAnswer",
       document.getElementById("correctAnswer").value,
     );
+    form.append(
+      "solutionAnswer",
+      document.getElementById("solutionAnswer").value,
+    );
     form.append("difficulty", document.getElementById("difficulty").value);
     form.append(
       "courseOutcome",
@@ -72,6 +150,10 @@ document
     form.append(
       "programOutcome",
       document.getElementById("programOutcome").value,
+    );
+    form.append(
+      "performanceIndicator",
+      document.getElementById("performanceIndicator").value,
     );
     form.append(
       "studentLearningOutcome",
@@ -96,6 +178,8 @@ document
       document.getElementById("message").textContent =
         "Question saved successfully.";
       document.getElementById("questionForm").reset();
+      updateQuestionTypeFields();
+      updatePerformanceIndicatorOptions();
     } catch (error) {
       document.getElementById("message").textContent = error.message;
     }

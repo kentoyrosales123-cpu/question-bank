@@ -6,7 +6,26 @@ let currentQuestions = [];
 let currentQuestionsPage = 1;
 let currentQuestionsTotal = 0;
 let currentQuestionsTotalPages = 1;
+let studentOutcomeRows = [];
 const questionsPerPage = 20;
+
+const normalizeSoCode = (value = "") =>
+  String(value || "")
+    .replace(/^SO[-\s]*/i, "")
+    .trim()
+    .toLowerCase();
+
+const isProblemSolvingQuestion = (question) =>
+  question?.questionType === "Problem Solving";
+
+async function loadStudentOutcomePis() {
+  try {
+    const data = await apiRequest("/obe/student-outcomes");
+    studentOutcomeRows = data.studentOutcomes || [];
+  } catch (error) {
+    studentOutcomeRows = [];
+  }
+}
 
 async function loadQuestions(endpoint = "/questions", page = 1) {
   try {
@@ -70,7 +89,7 @@ function renderQuestionsPage() {
   </span>
 </td>
 
-<td>${escapeHTML(q.correctAnswer)}</td>
+<td>${escapeHTML(isProblemSolvingQuestion(q) ? q.solutionAnswer || "Problem Solving" : q.correctAnswer)}</td>
 
 <td>
           <div class="action-row">
@@ -184,9 +203,26 @@ function renderSubjectEditControl(question) {
 function formatObeTag(question) {
   const clo = question.courseOutcome || "No CLO";
   const so = question.programOutcome || "No SO";
+  const pi = question.performanceIndicator || "No PI";
   const slo = question.studentLearningOutcome || "No SLO";
 
-  return `${clo} / ${so} / ${slo}`;
+  return `${clo} / ${so} / ${pi} / ${slo}`;
+}
+
+function renderPerformanceIndicatorOptions(soCode, selected = "") {
+  const normalizedSo = normalizeSoCode(soCode);
+  const outcome = studentOutcomeRows.find(
+    (row) => normalizeSoCode(row.code) === normalizedSo,
+  );
+  const indicators = outcome?.performanceIndicatorRows || [];
+
+  return [
+    `<option value="">Performance Indicator</option>`,
+    ...indicators.map(
+      (indicator) =>
+        `<option value="${escapeAttribute(indicator.label)}" ${selected === indicator.label ? "selected" : ""}>${escapeHTML(indicator.label)} - ${escapeHTML(indicator.description)}</option>`,
+    ),
+  ].join("");
 }
 
 async function filterQuestions() {
@@ -250,8 +286,12 @@ async function viewQuestion(id) {
           <span class="badge ${escapeHTML(difficultyClass)}">${escapeHTML(difficultyLabel)}</span>
         </div>
         <div>
-          <span class="field-label">Correct Answer</span>
-          <strong>${escapeHTML(question.correctAnswer)}</strong>
+          <span class="field-label">Question Type</span>
+          <strong>${escapeHTML(question.questionType || "Multiple Choice")}</strong>
+        </div>
+        <div>
+          <span class="field-label">${isProblemSolvingQuestion(question) ? "Final Answer" : "Correct Answer"}</span>
+          <strong>${escapeHTML(isProblemSolvingQuestion(question) ? question.solutionAnswer || "Not set" : question.correctAnswer)}</strong>
         </div>
         <div>
           <span class="field-label">Course Outcome</span>
@@ -303,17 +343,21 @@ async function viewQuestion(id) {
       ${renderQuestionTables(question.tables)}
       ${question.tableData ? `<pre>${escapeHTML(question.tableData)}</pre>` : ""}
 
-      <div class="choice-grid">
-        ${["A", "B", "C", "D"]
-          .map(
-            (letter) => `
-              <div class="choice readonly-choice">
-                <strong>${letter}.</strong> ${escapeHTML(question.choices?.[letter] || "")}
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
+      ${
+        isProblemSolvingQuestion(question)
+          ? ""
+          : `<div class="choice-grid">
+              ${["A", "B", "C", "D"]
+                .map(
+                  (letter) => `
+                    <div class="choice readonly-choice">
+                      <strong>${letter}.</strong> ${escapeHTML(question.choices?.[letter] || "")}
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>`
+      }
 
       <div class="question-detail-block">
         <span class="field-label">Explanation</span>
@@ -473,6 +517,13 @@ async function editQuestion(id) {
             <span class="field-label">Topic</span>
             <input id="editTopic" value="${escapeAttribute(question.topic)}" required />
           </label>
+          <label>
+            <span class="field-label">Question Type</span>
+            <select id="editQuestionType" required>
+              <option value="Multiple Choice" ${(question.questionType || "Multiple Choice") === "Multiple Choice" ? "selected" : ""}>Multiple Choice</option>
+              <option value="Problem Solving" ${question.questionType === "Problem Solving" ? "selected" : ""}>Problem Solving</option>
+            </select>
+          </label>
         </div>
 
         <label>
@@ -480,7 +531,7 @@ async function editQuestion(id) {
           <textarea id="editQuestionText" required>${escapeHTML(question.questionText)}</textarea>
         </label>
 
-        <div class="field-grid two">
+        <div class="field-grid two" id="editMcqChoices">
           ${["A", "B", "C", "D"]
             .map(
               (letter) => `
@@ -494,7 +545,7 @@ async function editQuestion(id) {
         </div>
 
         <div class="field-grid two">
-          <label>
+          <label id="editMcqAnswer">
             <span class="field-label">Correct Answer</span>
             <select id="editCorrectAnswer" required>
               ${["A", "B", "C", "D"]
@@ -520,6 +571,11 @@ async function editQuestion(id) {
           </label>
         </div>
 
+        <label id="editSolutionAnswerWrap">
+          <span class="field-label">Final Answer</span>
+          <textarea id="editSolutionAnswer">${escapeHTML(question.solutionAnswer || "")}</textarea>
+        </label>
+
         <div class="field-grid two">
           <label>
             <span class="field-label">Course Outcome</span>
@@ -534,6 +590,13 @@ async function editQuestion(id) {
         <label>
           <span class="field-label">Student Learning Outcome</span>
           <input id="editStudentLearningOutcome" value="${escapeAttribute(question.studentLearningOutcome || "")}" placeholder="SLO1" required />
+        </label>
+
+        <label>
+          <span class="field-label">Performance Indicator</span>
+          <select id="editPerformanceIndicator">
+            ${renderPerformanceIndicatorOptions(question.programOutcome, question.performanceIndicator)}
+          </select>
         </label>
 
         <div class="field-grid two">
@@ -592,11 +655,50 @@ async function editQuestion(id) {
     document
       .getElementById("editQuestionForm")
       .addEventListener("submit", (event) => saveQuestionEdits(event, id));
+    document
+      .getElementById("editQuestionType")
+      ?.addEventListener("change", updateEditQuestionTypeFields);
+    document
+      .getElementById("editProgramOutcome")
+      ?.addEventListener("input", () => {
+        document.getElementById("editPerformanceIndicator").innerHTML =
+          renderPerformanceIndicatorOptions(
+            document.getElementById("editProgramOutcome").value,
+            document.getElementById("editPerformanceIndicator").value,
+          );
+      });
 
+    updateEditQuestionTypeFields();
     document.getElementById("questionModal").classList.remove("hidden");
   } catch (error) {
     alert(error.message);
   }
+}
+
+function updateEditQuestionTypeFields() {
+  const isProblemSolving =
+    document.getElementById("editQuestionType")?.value === "Problem Solving";
+  const mcqChoices = document.getElementById("editMcqChoices");
+  const mcqAnswer = document.getElementById("editMcqAnswer");
+  const solutionAnswer = document.getElementById("editSolutionAnswerWrap");
+  const mcqInputs = [
+    "editChoiceA",
+    "editChoiceB",
+    "editChoiceC",
+    "editChoiceD",
+    "editCorrectAnswer",
+  ].map((id) => document.getElementById(id));
+
+  if (mcqChoices) mcqChoices.hidden = isProblemSolving;
+  if (mcqAnswer) mcqAnswer.hidden = isProblemSolving;
+  if (solutionAnswer) solutionAnswer.hidden = !isProblemSolving;
+
+  mcqInputs.forEach((input) => {
+    if (input) input.required = !isProblemSolving;
+  });
+
+  const solutionInput = document.getElementById("editSolutionAnswer");
+  if (solutionInput) solutionInput.required = isProblemSolving;
 }
 
 async function saveQuestionEdits(event, id) {
@@ -611,6 +713,10 @@ async function saveQuestionEdits(event, id) {
   );
   form.append("topic", document.getElementById("editTopic").value);
   form.append(
+    "questionType",
+    document.getElementById("editQuestionType").value,
+  );
+  form.append(
     "questionText",
     document.getElementById("editQuestionText").value,
   );
@@ -622,6 +728,10 @@ async function saveQuestionEdits(event, id) {
     "correctAnswer",
     document.getElementById("editCorrectAnswer").value,
   );
+  form.append(
+    "solutionAnswer",
+    document.getElementById("editSolutionAnswer").value,
+  );
   form.append("difficulty", document.getElementById("editDifficulty").value);
   form.append(
     "courseOutcome",
@@ -630,6 +740,10 @@ async function saveQuestionEdits(event, id) {
   form.append(
     "programOutcome",
     document.getElementById("editProgramOutcome").value,
+  );
+  form.append(
+    "performanceIndicator",
+    document.getElementById("editPerformanceIndicator").value,
   );
   form.append(
     "studentLearningOutcome",
@@ -714,5 +828,5 @@ function renderQuestionTables(tables) {
 }
 
 if (canLoadQuestionsPage) {
-  loadQuestions();
+  loadStudentOutcomePis().finally(() => loadQuestions());
 }

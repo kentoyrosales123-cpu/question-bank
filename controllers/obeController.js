@@ -4,7 +4,9 @@ const CourseOutcome = require("../models/CourseOutcome");
 const StudentOutcome = require("../models/StudentOutcome");
 const ProgramEducationalObjective = require("../models/ProgramEducationalObjective");
 const Question = require("../models/Question");
+const Exam = require("../models/Exam");
 const RubricAssessment = require("../models/RubricAssessment");
+const RubricTemplate = require("../models/RubricTemplate");
 const ObeEvidence = require("../models/ObeEvidence");
 const ObeAttainmentSnapshot = require("../models/ObeAttainmentSnapshot");
 const { getObeSettings, saveObeSettings } = require("../services/obeSettingsService");
@@ -12,6 +14,16 @@ const { calculateReportsPayload } = require("./dashboardController");
 const {
   normalizeAssessmentMethod,
 } = require("../utils/assessmentMethods");
+const {
+  normalizeAssessmentPhase,
+} = require("../utils/assessmentPhases");
+const {
+  attachStudentOutcomeIndicators,
+  parsePerformanceIndicators,
+} = require("../utils/studentOutcomeIndicators");
+const {
+  weightedPhaseAttainment,
+} = require("../utils/phaseAttainment");
 const { isSuperAdmin } = require("../utils/roles");
 
 const BLOOM_LEVELS = [
@@ -62,6 +74,27 @@ const normalizeStudentOutcomeLink = (value = "") =>
 
 const toTrimmedString = (value = "") => String(value || "").trim();
 
+const formatSubjectScopedCourseOutcome = (subject = "", courseOutcome = "") => {
+  const code = toTrimmedString(courseOutcome);
+  const subjectName = toTrimmedString(subject);
+
+  if (!code) return "Unmapped CLO";
+  if (!subjectName || /^unmapped/i.test(code)) return code;
+
+  const normalizedCode = code.toLowerCase();
+  const normalizedSubject = subjectName.toLowerCase();
+  if (
+    normalizedCode === normalizedSubject ||
+    normalizedCode.startsWith(`${normalizedSubject} - `) ||
+    normalizedCode.startsWith(`${normalizedSubject}:`) ||
+    normalizedCode.startsWith(`${normalizedSubject} | `)
+  ) {
+    return code;
+  }
+
+  return `${subjectName} - ${code}`;
+};
+
 const toNumber = (value, fallback = 0) => {
   const number = Number(value);
 
@@ -109,7 +142,118 @@ const readWorkbook = async (file) => {
   return workbook;
 };
 
-const calculateRubricAttainment = (assessment, settings) => {
+const parseRubricItemNo = (label = "") => {
+  const match = String(label || "").match(/(?:item|problem)\s*(\d+)/i);
+  return match ? Math.max(0, toNumber(match[1])) : 0;
+};
+
+const RUBRIC_TEMPLATE_PRESETS = {
+  "problem-solving": {
+    name: "General Problem Solving",
+    title: "Problem-Solving Rubric",
+    assessmentMethod: "Major Exam",
+    label: (itemNo) => `Item ${itemNo}`,
+    studentOutcome: "a",
+    bloomLevel: "Apply",
+  },
+  "engineering-calculation": {
+    name: "Engineering Calculation",
+    title: "Engineering Calculation Rubric",
+    assessmentMethod: "Major Exam",
+    label: (itemNo) => `Item ${itemNo} Calculation`,
+    studentOutcome: "a",
+    bloomLevel: "Analyze",
+  },
+  "design-solution": {
+    name: "Design Solution",
+    title: "Design Solution Rubric",
+    assessmentMethod: "Project",
+    label: (itemNo) => `Item ${itemNo} Design Solution`,
+    studentOutcome: "c",
+    bloomLevel: "Create",
+  },
+  "laboratory-analysis": {
+    name: "Laboratory Analysis",
+    title: "Laboratory Analysis Rubric",
+    assessmentMethod: "Laboratory",
+    label: (itemNo) => `Item ${itemNo} Laboratory Analysis`,
+    studentOutcome: "b",
+    bloomLevel: "Evaluate",
+  },
+};
+
+const getRubricTemplatePreset = (value) =>
+  RUBRIC_TEMPLATE_PRESETS[value] || RUBRIC_TEMPLATE_PRESETS["problem-solving"];
+
+const DEFAULT_PROBLEM_SOLVING_RUBRIC = {
+  key: "problem-solving-standard",
+  name: "Standard Problem-Solving Rubric",
+  description: "Four-criterion, 10-point rubric for problem-solving exam items.",
+  isSystem: true,
+  criteria: [
+    {
+      criterion: "Understanding of the Problem",
+      excellent:
+        "Clearly identifies all given information, requirements, and what is being asked.",
+      good: "Identifies most relevant information with minor omissions.",
+      fair: "Shows partial understanding of the problem.",
+      needsImprovement:
+        "Misinterprets or fails to identify key information.",
+      maxPoints: 2,
+    },
+    {
+      criterion: "Approach / Method",
+      excellent:
+        "Selects the correct principle, formula, or method and applies it logically.",
+      good: "Uses an appropriate method with minor errors in procedure.",
+      fair: "Uses a partially correct method but with significant procedural errors.",
+      needsImprovement: "Uses an incorrect or irrelevant method.",
+      maxPoints: 3,
+    },
+    {
+      criterion: "Solution / Computation",
+      excellent: "Computations are complete, accurate, and logically organized.",
+      good: "Minor computational error but the overall process is correct.",
+      fair: "Several computational errors are present.",
+      needsImprovement: "Computation is largely incorrect or incomplete.",
+      maxPoints: 3,
+    },
+    {
+      criterion: "Final Answer and Interpretation",
+      excellent:
+        "Final answer is correct, clearly stated, with appropriate units or interpretation.",
+      good:
+        "Final answer is mostly correct with minor omission in units or interpretation.",
+      fair: "Final answer is partially correct or poorly stated.",
+      needsImprovement: "Final answer is incorrect, missing, or unsupported.",
+      maxPoints: 2,
+    },
+  ],
+};
+
+const ensureDefaultRubricTemplates = async () => {
+  await RubricTemplate.findOneAndUpdate(
+    { key: DEFAULT_PROBLEM_SOLVING_RUBRIC.key },
+    { $setOnInsert: DEFAULT_PROBLEM_SOLVING_RUBRIC },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+};
+
+const normalizeRubricTemplateCriteria = (criteria = []) =>
+  parseJsonArray(criteria)
+    .map((criterion) => ({
+      criterion: toTrimmedString(criterion.criterion || criterion.label),
+      excellent: toTrimmedString(criterion.excellent),
+      good: toTrimmedString(criterion.good),
+      fair: toTrimmedString(criterion.fair),
+      needsImprovement: toTrimmedString(
+        criterion.needsImprovement || criterion.needs_improvement,
+      ),
+      maxPoints: Math.max(0, toNumber(criterion.maxPoints)),
+    }))
+    .filter((criterion) => criterion.criterion && criterion.maxPoints > 0);
+
+const calculateRubricAttainment = async (assessment, settings) => {
   const courseOutcomes = new Map();
   const studentOutcomes = new Map();
   const criteria = assessment.criteria || [];
@@ -129,6 +273,8 @@ const calculateRubricAttainment = (assessment, settings) => {
         targetRate,
         attainmentRate: 0,
         status: "Not assessed",
+        piBuckets: new Map(),
+        phaseBuckets: new Map(),
       });
     }
 
@@ -136,16 +282,29 @@ const calculateRubricAttainment = (assessment, settings) => {
   };
 
   criteria.forEach((criterion) => {
+    const courseOutcomeCode = formatSubjectScopedCourseOutcome(
+      assessment.subject,
+      criterion.courseOutcome,
+    );
+    const studentOutcomeCode = criterion.programOutcome || "Unmapped SO";
+
     ensureBucket(
       courseOutcomes,
-      criterion.courseOutcome || "Unmapped CLO",
+      courseOutcomeCode,
       settings.courseOutcomeTarget,
     ).criteriaCount += 1;
     ensureBucket(
       studentOutcomes,
-      criterion.programOutcome || "Unmapped SO",
+      studentOutcomeCode,
       settings.studentOutcomeTarget,
     ).criteriaCount += 1;
+    if (criterion.performanceIndicator) {
+      ensureBucket(
+        studentOutcomes.get(studentOutcomeCode).piBuckets,
+        criterion.performanceIndicator,
+        settings.studentOutcomeTarget,
+      ).criteriaCount += 1;
+    }
   });
 
   const scoreByCriterion = (student, criterion, index) => {
@@ -158,15 +317,29 @@ const calculateRubricAttainment = (assessment, settings) => {
     return Math.max(0, Math.min(toNumber(match?.score), toNumber(criterion.maxScore)));
   };
 
-  const recordScore = (bucket, score, maxScore, studentPassed) => {
+  const recordScore = (bucket, score, maxScore, studentPassed, phase = "") => {
     bucket.totalScore += maxScore;
     bucket.earnedScore += score;
     bucket.assessedStudents += 1;
     if (studentPassed) bucket.attainedStudents += 1;
+
+    if (phase) {
+      recordScore(
+        ensureBucket(bucket.phaseBuckets, phase, bucket.targetRate),
+        score,
+        maxScore,
+        studentPassed,
+      );
+    }
   };
 
   scores.forEach((student) => {
     criteria.forEach((criterion, index) => {
+      const courseOutcomeCode = formatSubjectScopedCourseOutcome(
+        assessment.subject,
+        criterion.courseOutcome,
+      );
+      const studentOutcomeCode = criterion.programOutcome || "Unmapped SO";
       const maxScore = Math.max(0, toNumber(criterion.maxScore));
       if (maxScore <= 0) return;
 
@@ -180,7 +353,7 @@ const calculateRubricAttainment = (assessment, settings) => {
       recordScore(
         ensureBucket(
           courseOutcomes,
-          criterion.courseOutcome || "Unmapped CLO",
+          courseOutcomeCode,
           settings.courseOutcomeTarget,
         ),
         score,
@@ -190,13 +363,27 @@ const calculateRubricAttainment = (assessment, settings) => {
       recordScore(
         ensureBucket(
           studentOutcomes,
-          criterion.programOutcome || "Unmapped SO",
+          studentOutcomeCode,
           settings.studentOutcomeTarget,
         ),
         score,
         maxScore,
         studentPassed,
+        assessment.assessmentPhase || "Summative",
       );
+      if (criterion.performanceIndicator) {
+        recordScore(
+          ensureBucket(
+            studentOutcomes.get(studentOutcomeCode).piBuckets,
+            criterion.performanceIndicator,
+            settings.studentOutcomeTarget,
+          ),
+          score,
+          maxScore,
+          studentPassed,
+          assessment.assessmentPhase || "Summative",
+        );
+      }
     });
   });
 
@@ -206,7 +393,7 @@ const calculateRubricAttainment = (assessment, settings) => {
         ? Math.round((bucket.earnedScore / bucket.totalScore) * 1000) / 10
         : 0;
 
-    return {
+    const finalized = {
       ...bucket,
       totalScore: Math.round(bucket.totalScore * 100) / 100,
       earnedScore: Math.round(bucket.earnedScore * 100) / 100,
@@ -218,11 +405,66 @@ const calculateRubricAttainment = (assessment, settings) => {
             ? "Attained"
             : "Not attained",
     };
+
+    delete finalized.piBuckets;
+    delete finalized.phaseBuckets;
+
+    return finalized;
   };
+
+  const finalizeStudentOutcomeBucket = (bucket) => {
+    const finalized = finalize(bucket);
+    const piBreakdown = Array.from(bucket.piBuckets?.values?.() || [])
+      .map(finalize)
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+    const phaseBreakdown = Array.from(bucket.phaseBuckets?.values?.() || [])
+      .map((phaseBucket) => ({
+        ...finalize(phaseBucket),
+        phase: phaseBucket.code,
+      }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+    const phaseWeightedRate = weightedPhaseAttainment(phaseBreakdown, {
+      evidenceKey: "totalScore",
+    });
+    const assessedPis = piBreakdown.filter((pi) => Number(pi.totalScore || 0) > 0);
+
+    if (phaseWeightedRate !== null) {
+      finalized.attainmentRate = phaseWeightedRate;
+      finalized.status =
+        phaseWeightedRate >= Number(finalized.targetRate ?? 75)
+          ? "Attained"
+          : "Not attained";
+    } else if (assessedPis.length > 0) {
+      const attainmentRate =
+        Math.round(
+          (assessedPis.reduce(
+            (sum, pi) => sum + Number(pi.attainmentRate || 0),
+            0,
+          ) /
+            assessedPis.length) *
+            10,
+        ) / 10;
+
+      finalized.attainmentRate = attainmentRate;
+      finalized.status =
+        attainmentRate >= Number(finalized.targetRate ?? 75)
+          ? "Attained"
+          : "Not attained";
+    }
+
+    finalized.piBreakdown = piBreakdown;
+    finalized.phaseBreakdown = phaseBreakdown;
+
+    return finalized;
+  };
+
+  const studentOutcomeRows = await attachStudentOutcomeIndicators(
+    Array.from(studentOutcomes.values()).map(finalizeStudentOutcomeBucket),
+  );
 
   return {
     courseOutcomes: Array.from(courseOutcomes.values()).map(finalize),
-    studentOutcomes: Array.from(studentOutcomes.values()).map(finalize),
+    studentOutcomes: studentOutcomeRows,
   };
 };
 
@@ -245,13 +487,22 @@ const parseBulkStudentOutcomeLine = (line) => {
   const parts = line
     .split("|")
     .map((part) => part.trim())
-    .filter((part, index) => index < 4 || part);
+    .filter((part, index) => index < 5 || part);
+
+  const performanceIndicators = parts[4] || "";
 
   return {
     code: parts[0] || "",
     description: parts[1] || "",
     graduateAttributes: parts[2] || "",
     peoLinks: normalizePeoLinks(parts[3]),
+    performanceIndicators,
+    performanceIndicatorDetails:
+      parsePerformanceIndicators(performanceIndicators).map((item) => ({
+        piNumber: item.piNumber,
+        description: item.description,
+        weight: 1,
+      })),
   };
 };
 
@@ -426,11 +677,14 @@ exports.getStudentOutcomes = async (req, res) => {
 
     const studentOutcomes = await StudentOutcome.find(filter)
       .populate("createdBy", "name email")
-      .sort({ department: 1, code: 1 });
+      .sort({ department: 1, code: 1 })
+      .lean();
+    const studentOutcomesWithIndicators =
+      await attachStudentOutcomeIndicators(studentOutcomes);
 
     res.json({
       success: true,
-      studentOutcomes,
+      studentOutcomes: studentOutcomesWithIndicators,
     });
   } catch (error) {
     res.status(500).json({
@@ -442,8 +696,33 @@ exports.getStudentOutcomes = async (req, res) => {
 
 exports.createStudentOutcome = async (req, res) => {
   try {
-    const { department, code, description, graduateAttributes, peoLinks } =
-      req.body;
+    const {
+      department,
+      code,
+      description,
+      graduateAttributes,
+      performanceIndicators,
+      performanceIndicatorDetails,
+      peoLinks,
+    } = req.body;
+    const parsedIndicatorDetails = parseJsonArray(
+      performanceIndicatorDetails,
+      [],
+    )
+      .map((item, index) => ({
+        piNumber: Math.max(1, toNumber(item.piNumber, index + 1)),
+        description: toTrimmedString(item.description),
+        weight: Math.max(0, toNumber(item.weight, 1)),
+      }))
+      .filter((item) => item.description);
+    const fallbackIndicatorDetails =
+      parsedIndicatorDetails.length > 0
+        ? parsedIndicatorDetails
+        : parsePerformanceIndicators(performanceIndicators).map((item) => ({
+            piNumber: item.piNumber,
+            description: item.description,
+            weight: 1,
+          }));
 
     if (!department || !code || !description) {
       return res.status(400).json({
@@ -459,6 +738,8 @@ exports.createStudentOutcome = async (req, res) => {
         code,
         description,
         graduateAttributes,
+        performanceIndicators,
+        performanceIndicatorDetails: fallbackIndicatorDetails,
         peoLinks: normalizePeoLinks(peoLinks),
         createdBy: req.user._id,
       },
@@ -501,7 +782,7 @@ exports.importStudentOutcomes = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "No valid rows found. Use: SO a | Description | GA links | PEO links",
+          "No valid rows found. Use: SO a | Description | GA links | PEO links | Performance indicators",
       });
     }
 
@@ -985,8 +1266,13 @@ exports.createRubricAssessment = async (req, res) => {
     const subject = toTrimmedString(req.body.subject);
     const criteria = parseJsonArray(req.body.criteria).map((criterion) => ({
       label: toTrimmedString(criterion.label),
+      itemNo: Math.max(
+        0,
+        toNumber(criterion.itemNo || parseRubricItemNo(criterion.label)),
+      ),
       courseOutcome: toTrimmedString(criterion.courseOutcome),
       programOutcome: normalizeStudentOutcomeLink(criterion.programOutcome),
+      performanceIndicator: toTrimmedString(criterion.performanceIndicator),
       bloomLevel: normalizeBloomLevel(criterion.bloomLevel),
       maxScore: Math.max(0, toNumber(criterion.maxScore)),
       targetScore: Math.max(0, toNumber(criterion.targetScore)),
@@ -1024,6 +1310,7 @@ exports.createRubricAssessment = async (req, res) => {
       semester: toTrimmedString(req.body.semester),
       schoolYear: toTrimmedString(req.body.schoolYear),
       assessmentMethod: normalizeAssessmentMethod(req.body.assessmentMethod),
+      assessmentPhase: normalizeAssessmentPhase(req.body.assessmentPhase),
       criteria,
       studentScores: studentScores.filter((student) => student.studentName),
       createdBy: req.user._id,
@@ -1057,12 +1344,16 @@ exports.listRubricAssessments = async (req, res) => {
       .lean();
     const settings = await getObeSettings();
 
+    const assessmentsWithAttainment = await Promise.all(
+      assessments.map(async (assessment) => ({
+        ...assessment,
+        attainment: await calculateRubricAttainment(assessment, settings),
+      })),
+    );
+
     res.json({
       success: true,
-      assessments: assessments.map((assessment) => ({
-        ...assessment,
-        attainment: calculateRubricAttainment(assessment, settings),
-      })),
+      assessments: assessmentsWithAttainment,
     });
   } catch (error) {
     res.status(500).json({
@@ -1101,11 +1392,169 @@ exports.deleteRubricAssessment = async (req, res) => {
   }
 };
 
+exports.listRubricTemplates = async (req, res) => {
+  try {
+    await ensureDefaultRubricTemplates();
+    const templates = await RubricTemplate.find()
+      .sort({ isSystem: -1, name: 1 })
+      .lean();
+
+    res.json({
+      success: true,
+      templates,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateRubricTemplate = async (req, res) => {
+  try {
+    await ensureDefaultRubricTemplates();
+    const criteria = normalizeRubricTemplateCriteria(req.body.criteria);
+
+    if (!criteria.length) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one rubric criterion with max points is required.",
+      });
+    }
+
+    const template = await RubricTemplate.findByIdAndUpdate(
+      req.params.id,
+      {
+        name: toTrimmedString(req.body.name),
+        description: toTrimmedString(req.body.description),
+        criteria,
+        updatedBy: req.user._id,
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Rubric template not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Rubric template saved.",
+      template,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 exports.downloadRubricTemplate = async (req, res) => {
   try {
+    await ensureDefaultRubricTemplates();
+    let itemCount = Math.min(
+      50,
+      Math.max(1, Number(req.query.items || req.query.itemCount || 3)),
+    );
+    const maxScore = Math.max(1, toNumber(req.query.maxScore || 10));
+    const targetScore = Math.max(
+      0,
+      toNumber(req.query.targetScore || maxScore * 0.75),
+    );
+    const rubricType = toTrimmedString(req.query.rubricType || "problem-solving");
+    const rubricPreset = getRubricTemplatePreset(rubricType);
+    const rubricTemplate =
+      (await RubricTemplate.findById(req.query.rubricTemplateId).lean().catch(
+        () => null,
+      )) ||
+      (await RubricTemplate.findOne({
+        key: DEFAULT_PROBLEM_SOLVING_RUBRIC.key,
+      }).lean());
+    const rubricCriteria = rubricTemplate?.criteria?.length
+      ? rubricTemplate.criteria
+      : DEFAULT_PROBLEM_SOLVING_RUBRIC.criteria;
+    const rubricMaxScore = rubricCriteria.reduce(
+      (sum, criterion) => sum + Number(criterion.maxPoints || 0),
+      0,
+    );
+    const generatedExamId = toTrimmedString(req.query.generatedExamId);
+    let linkedExam = null;
+
+    if (generatedExamId) {
+      if (!/^[a-f\d]{24}$/i.test(generatedExamId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Choose a valid generated exam for the rubric template.",
+        });
+      }
+
+      const examQuery = { _id: generatedExamId };
+      if (!isSuperAdmin(req.user)) {
+        examQuery.user = req.user._id;
+      }
+
+      linkedExam = await Exam.findOne(examQuery)
+        .populate({
+          path: "questions",
+          select:
+            "questionText courseOutcome programOutcome performanceIndicator bloomLevel questionType",
+        })
+        .lean();
+
+      if (!linkedExam) {
+        return res.status(404).json({
+          success: false,
+          message: "Linked generated exam not found.",
+        });
+      }
+
+      if (linkedExam.examType !== "Problem Solving") {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Choose a generated Problem Solving exam before downloading a mapped rubric template.",
+        });
+      }
+
+      itemCount = Math.min(
+        50,
+        Math.max(
+          1,
+          Number(linkedExam.questions?.length || linkedExam.totalItems || itemCount),
+        ),
+      );
+    }
+
+    const itemMappings = Array.from({ length: itemCount }, (_, itemIndex) => {
+      const itemNo = itemIndex + 1;
+      const question = linkedExam?.questions?.[itemIndex] || {};
+      const programOutcome =
+        normalizeStudentOutcomeLink(question.programOutcome) ||
+        rubricPreset.studentOutcome;
+
+      return {
+        itemNo,
+        subject: linkedExam?.subject || "Circuits 1",
+        questionText: toTrimmedString(question.questionText),
+        courseOutcome: toTrimmedString(question.courseOutcome) || `CO${itemNo}`,
+        programOutcome,
+        performanceIndicator:
+          toTrimmedString(question.performanceIndicator) || `PI ${itemNo}`,
+        bloomLevel:
+          normalizeBloomLevel(question.bloomLevel) || rubricPreset.bloomLevel,
+      };
+    });
+
     const workbook = new ExcelJS.Workbook();
     const infoSheet = workbook.addWorksheet("Assessment Info");
+    const mappingSheet = workbook.addWorksheet("Item Mapping");
     const scoreSheet = workbook.addWorksheet("Rubric Scores");
+    const scaleSheet = workbook.addWorksheet("Rubric Scale");
     const instructionSheet = workbook.addWorksheet("Instructions");
 
     infoSheet.columns = [
@@ -1113,48 +1562,104 @@ exports.downloadRubricTemplate = async (req, res) => {
       { header: "Value", key: "value", width: 36 },
     ];
     infoSheet.addRows([
-      { field: "Title", value: "Design Project Rubric" },
-      { field: "Subject", value: "Circuits 1" },
-      { field: "Program", value: "ECE" },
-      { field: "Section", value: "BSECE 3A" },
-      { field: "Term", value: "1st Sem 1st Term" },
-      { field: "School Year", value: "2025-2026" },
-      { field: "Assessment Method", value: "Project" },
+      { field: "Title", value: linkedExam?.title || rubricTemplate?.name || rubricPreset.title },
+      { field: "Subject", value: linkedExam?.subject || "Circuits 1" },
+      { field: "Program", value: linkedExam?.engineeringProgram || "ECE" },
+      { field: "Section", value: linkedExam?.section || "BSECE 3A" },
+      { field: "Term", value: linkedExam?.semester || "1st Sem 1st Term" },
+      { field: "School Year", value: linkedExam?.schoolYear || "2025-2026" },
+      { field: "Assessment Method", value: linkedExam?.assessmentMethod || rubricPreset.assessmentMethod },
+      { field: "Assessment Phase", value: linkedExam?.assessmentPhase || "Summative" },
+      { field: "Rubric Type", value: rubricTemplate?.name || rubricPreset.name },
+      { field: "Linked Generated Exam", value: linkedExam?.title || "Manual mapping" },
+      { field: "Problem-Solving Items", value: itemCount },
+      { field: "Default Max Score", value: rubricMaxScore || maxScore },
     ]);
+
+    mappingSheet.columns = [
+      { header: "Item No", key: "itemNo", width: 10 },
+      { header: "Subject", key: "subject", width: 24 },
+      { header: "Question Text", key: "questionText", width: 70 },
+      { header: "CO/CLO", key: "courseOutcome", width: 14 },
+      { header: "SO", key: "programOutcome", width: 10 },
+      { header: "PI", key: "performanceIndicator", width: 20 },
+      { header: "Bloom", key: "bloomLevel", width: 16 },
+    ];
+    mappingSheet.addRows(
+      itemMappings.map((mapping) => ({
+        ...mapping,
+        questionText:
+          mapping.questionText ||
+          "Manual item. Edit this row and the matching Rubric Scores headers if needed.",
+      })),
+    );
 
     scoreSheet.columns = [
       { header: "Student Name", key: "studentName", width: 24 },
       { header: "Student ID", key: "studentId", width: 18 },
-      {
-        header: "Analysis | CO1 | a | Apply | 20 | 15",
-        key: "criterion1",
-        width: 34,
-      },
-      {
-        header: "Prototype Output | CO2 | b | Create | 30 | 22.5",
-        key: "criterion2",
-        width: 42,
-      },
-      {
-        header: "Documentation | CO3 | d | Evaluate | 10 | 7.5",
-        key: "criterion3",
-        width: 42,
-      },
+      { header: "Section", key: "section", width: 16 },
+      ...Array.from({ length: itemCount }, (_, itemIndex) =>
+        rubricCriteria.map((criterion, criterionIndex) => {
+          const itemNo = itemIndex + 1;
+          const criterionNo = criterionIndex + 1;
+          const mapping = itemMappings[itemIndex] || {};
+          const criterionMax = Math.max(0, Number(criterion.maxPoints || 0));
+          const criterionTarget = Math.round(criterionMax * 0.75 * 100) / 100;
+
+          return {
+            header: `${rubricPreset.label(itemNo)} - ${criterion.criterion} | ${
+              mapping.courseOutcome || `CO${itemNo}`
+            } | ${mapping.programOutcome || rubricPreset.studentOutcome} | ${
+              mapping.performanceIndicator || `PI ${itemNo}.${criterionNo}`
+            } | ${mapping.bloomLevel || rubricPreset.bloomLevel} | ${criterionMax} | ${criterionTarget}`,
+            key: `item${itemNo}Criterion${criterionNo}`,
+            width: 58,
+          };
+        }),
+      ).flat(),
     ];
     scoreSheet.addRows([
       {
         studentName: "Juan Dela Cruz",
         studentId: "2025-001",
-        criterion1: 18,
-        criterion2: 25,
-        criterion3: 9,
+        section: "BSECE 3A",
+        ...Object.fromEntries(
+          Array.from({ length: itemCount }, (_, itemIndex) =>
+            rubricCriteria.map((criterion, criterionIndex) => [
+              `item${itemIndex + 1}Criterion${criterionIndex + 1}`,
+              Math.max(0, Number(criterion.maxPoints || 0) - (criterionIndex % 2)),
+            ]),
+          ).flat(),
+        ),
       },
       {
         studentName: "Maria Santos",
         studentId: "2025-002",
-        criterion1: 15,
-        criterion2: 28,
-        criterion3: 8,
+        section: "BSECE 3A",
+        ...Object.fromEntries(
+          Array.from({ length: itemCount }, (_, itemIndex) =>
+            rubricCriteria.map((criterion, criterionIndex) => [
+              `item${itemIndex + 1}Criterion${criterionIndex + 1}`,
+              Math.max(0, Number(criterion.maxPoints || 0) - 1 - (criterionIndex % 2)),
+            ]),
+          ).flat(),
+        ),
+      },
+    ]);
+
+    scaleSheet.columns = [
+      { header: "Criterion", key: "criterion", width: 32 },
+      { header: "Excellent", key: "excellent", width: 58 },
+      { header: "Good", key: "good", width: 52 },
+      { header: "Fair", key: "fair", width: 52 },
+      { header: "Needs Improvement", key: "needsImprovement", width: 52 },
+      { header: "Max Points", key: "maxPoints", width: 14 },
+    ];
+    scaleSheet.addRows([
+      ...rubricCriteria,
+      {
+        needsImprovement: "Total",
+        maxPoints: rubricMaxScore,
       },
     ]);
 
@@ -1168,11 +1673,31 @@ exports.downloadRubricTemplate = async (req, res) => {
       },
       {
         instruction:
-          "Criterion headers must use: Criterion | CO/CLO | SO | Bloom | Max Score | Target Score",
+          "Choose the saved rubric before download. Its criteria and max points become the scoring columns for every problem-solving item.",
       },
       {
         instruction:
-          "Scores under each criterion are the student's raw score for that criterion.",
+          "Choose a generated Problem Solving exam before download to automatically copy each item's CO/CLO, SO, PI, and Bloom level into the template.",
+      },
+      {
+        instruction:
+          "Use the Item Mapping sheet to review which subject, CO/CLO, SO, PI, and Bloom level belong to each problem-solving item.",
+      },
+      {
+        instruction:
+          "CO/CLO attainment is subject-scoped during import and reporting. For example, Circuits 1 - CO1 is treated differently from Electronics 1 - CO1.",
+      },
+      {
+        instruction:
+          "For problem-solving item analysis, keep each scored problem header beginning with Item 1, Item 2, etc. The same Rubric Scores sheet can be uploaded as a Problem Solving item-analysis result file.",
+      },
+      {
+        instruction:
+          "Criterion headers must use: Item N or Criterion | CO/CLO | SO | PI | Bloom | Max Score | Target Score.",
+      },
+      {
+        instruction:
+          "Scores under each item/criterion are the student's raw earned score for that problem.",
       },
       {
         instruction:
@@ -1180,7 +1705,7 @@ exports.downloadRubricTemplate = async (req, res) => {
       },
     ]);
 
-    [infoSheet, scoreSheet, instructionSheet].forEach((sheet) => {
+    [infoSheet, mappingSheet, scoreSheet, scaleSheet, instructionSheet].forEach((sheet) => {
       sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
       sheet.getRow(1).fill = {
         type: "pattern",
@@ -1198,7 +1723,7 @@ exports.downloadRubricTemplate = async (req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="rubric-assessment-template.xlsx"',
+      `attachment; filename="rubric-${rubricType}-${itemCount}-items-template.xlsx"`,
     );
     res.send(Buffer.from(buffer));
   } catch (error) {
@@ -1248,15 +1773,19 @@ exports.importRubricAssessment = async (req, res) => {
     for (let column = 3; column <= scoreSheet.columnCount; column += 1) {
       const header = getCellText(headerRow, column);
       if (!header) continue;
+      if (normalizeHeader(header) === "section") continue;
 
       const parts = header.split("|").map((part) => part.trim());
+      const hasPiColumn = parts.length >= 7;
       const criterion = {
         label: parts[0] || "",
+        itemNo: parseRubricItemNo(parts[0] || ""),
         courseOutcome: parts[1] || "",
         programOutcome: normalizeStudentOutcomeLink(parts[2] || ""),
-        bloomLevel: normalizeBloomLevel(parts[3] || ""),
-        maxScore: Math.max(0, toNumber(parts[4])),
-        targetScore: Math.max(0, toNumber(parts[5])),
+        performanceIndicator: hasPiColumn ? parts[3] || "" : "",
+        bloomLevel: normalizeBloomLevel(parts[hasPiColumn ? 4 : 3] || ""),
+        maxScore: Math.max(0, toNumber(parts[hasPiColumn ? 5 : 4])),
+        targetScore: Math.max(0, toNumber(parts[hasPiColumn ? 6 : 5])),
         weight: 1,
       };
 
@@ -1270,7 +1799,7 @@ exports.importRubricAssessment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "No rubric criteria found. Use headers like: Analysis | CO1 | a | Apply | 20 | 15",
+          "No rubric criteria found. Use headers like: Analysis | CO1 | a | PI 1 | Apply | 20 | 15",
       });
     }
 
@@ -1314,6 +1843,9 @@ exports.importRubricAssessment = async (req, res) => {
       assessmentMethod: normalizeAssessmentMethod(
         req.body.assessmentMethod || info["assessment method"],
       ),
+      assessmentPhase: normalizeAssessmentPhase(
+        req.body.assessmentPhase || info["assessment phase"],
+      ),
       criteria,
       studentScores,
       createdBy: req.user._id,
@@ -1351,6 +1883,7 @@ exports.createEvidence = async (req, res) => {
       section: toTrimmedString(req.body.section),
       semester: toTrimmedString(req.body.semester),
       schoolYear: toTrimmedString(req.body.schoolYear),
+      assessmentPhase: normalizeAssessmentPhase(req.body.assessmentPhase),
       courseOutcome: toTrimmedString(req.body.courseOutcome),
       programOutcome: normalizeStudentOutcomeLink(req.body.programOutcome),
       description: toTrimmedString(req.body.description),

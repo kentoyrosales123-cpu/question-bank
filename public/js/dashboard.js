@@ -358,10 +358,12 @@ function renderActivityRow(activity) {
   const user = activity.user || {};
   const isTosDownload =
     activity.action === "download_tos" || activity.metadata?.documentType === "tos";
+  const isExamGeneration =
+    activity.action === "generate_exam" || activity.action === "created_exam";
   const actionLabel =
     isTosDownload
       ? "Downloaded TOS"
-      : activity.action === "generate_exam"
+      : isExamGeneration
       ? "Generated Exam"
       : activity.action === "approve_exam"
       ? "Approved Exam"
@@ -369,11 +371,15 @@ function renderActivityRow(activity) {
       ? "Rejected Exam"
       : activity.action === "download_exam"
       ? "Downloaded Exam"
-      : "Logged In";
+      : activity.action === "login"
+      ? "Logged In"
+      : String(activity.action || "Activity")
+          .replace(/[_-]+/g, " ")
+          .replace(/\b\w/g, (letter) => letter.toUpperCase());
   const badgeClass =
     isTosDownload
       ? "average"
-      : activity.action === "generate_exam"
+      : isExamGeneration
       ? "average"
       : activity.action === "approve_exam"
       ? "easy"

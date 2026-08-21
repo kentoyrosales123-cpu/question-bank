@@ -26,6 +26,15 @@ const { getObeSettings } = require("../services/obeSettingsService");
 const {
   normalizeAssessmentMethod,
 } = require("../utils/assessmentMethods");
+const {
+  normalizeAssessmentPhase,
+} = require("../utils/assessmentPhases");
+const {
+  attachStudentOutcomeIndicators,
+} = require("../utils/studentOutcomeIndicators");
+const {
+  weightedPhaseAttainment,
+} = require("../utils/phaseAttainment");
 const { isAdmin } = require("../utils/roles");
 
 const normalizeHeader = (value) =>
@@ -35,6 +44,48 @@ const normalizeHeader = (value) =>
     .replace(/\s+/g, " ");
 
 const normalizeValue = (value) => String(value ?? "").trim();
+
+const normalizeStudentOutcomeLink = (value = "") =>
+  String(value || "")
+    .split(/[,\s]+/)
+    .map((item) =>
+      item
+        .replace(/^SO[-\s]*/i, "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter((item) => /^[a-z]$/.test(item))
+    .filter(Boolean)
+    .join(", ");
+
+const formatSubjectScopedCourseOutcome = (subject = "", courseOutcome = "") => {
+  const code = normalizeValue(courseOutcome);
+  const subjectName = normalizeValue(subject);
+
+  if (!code) return "Unmapped CLO";
+  if (!subjectName || /^unmapped/i.test(code)) return code;
+
+  const normalizedCode = code.toLowerCase();
+  const normalizedSubject = subjectName.toLowerCase();
+  if (
+    normalizedCode === normalizedSubject ||
+    normalizedCode.startsWith(`${normalizedSubject} - `) ||
+    normalizedCode.startsWith(`${normalizedSubject}:`) ||
+    normalizedCode.startsWith(`${normalizedSubject} | `)
+  ) {
+    return code;
+  }
+
+  return `${subjectName} - ${code}`;
+};
+
+const ANALYSIS_TYPES = ["Multiple Choice", "Problem Solving"];
+
+const normalizeAnalysisType = (value) =>
+  ANALYSIS_TYPES.includes(value) ? value : "Multiple Choice";
+
+const isProblemSolvingAnalysis = (value) =>
+  normalizeAnalysisType(value) === "Problem Solving";
 
 const isCorrectValue = (value) => {
   const normalized = normalizeValue(value).toUpperCase();
@@ -702,9 +753,17 @@ const buildOmrTemplateBuffer = async ({
   return Packer.toBuffer(doc);
 };
 
-const parseResultRows = async (file, numberOfItems) => {
+const parseResultRows = async (
+  file,
+  numberOfItems,
+  analysisType = "Multiple Choice",
+  maxScores = [],
+) => {
   const workbook = await readWorkbook(file);
-  const sheet = workbook.worksheets[0];
+  const sheet =
+    workbook.getWorksheet("Student Results") ||
+    workbook.getWorksheet("Rubric Scores") ||
+    workbook.worksheets[0];
 
   if (!sheet) {
     throw new Error("The uploaded file does not contain a worksheet.");
@@ -712,9 +771,18 @@ const parseResultRows = async (file, numberOfItems) => {
 
   const headerRow = sheet.getRow(1);
   const headers = {};
+  const headerEntries = [];
 
   headerRow.eachCell((cell, colNumber) => {
-    headers[normalizeHeader(cell.value)] = colNumber;
+    const originalHeader = normalizeValue(cell.value);
+    const normalizedHeader = normalizeHeader(originalHeader);
+
+    headers[normalizedHeader] = colNumber;
+    headerEntries.push({
+      header: normalizedHeader,
+      originalHeader,
+      column: colNumber,
+    });
   });
 
   const requiredHeaders = ["student name", "student id", "section"];
@@ -725,15 +793,59 @@ const parseResultRows = async (file, numberOfItems) => {
   }
 
   const itemColumns = [];
+  const itemMappings = [];
 
   for (let itemNo = 1; itemNo <= numberOfItems; itemNo++) {
-    const column = headers[`item ${itemNo}`];
+    const itemHeaderPrefix = `item ${itemNo}`;
+    const matchingColumns = headerEntries
+      .filter(
+        ({ header }) =>
+          header === itemHeaderPrefix ||
+          header.startsWith(`${itemHeaderPrefix} `) ||
+          header.startsWith(`${itemHeaderPrefix} |`),
+      )
+      .map(({ originalHeader, column }) => {
+        const parts = originalHeader.split("|").map((part) => part.trim());
+        const headerMaxScore = Number(parts[parts.length - 2]);
 
-    if (!column) {
+        return {
+          column,
+          parts,
+          maxScore:
+            Number.isFinite(headerMaxScore) && headerMaxScore > 0
+              ? headerMaxScore
+              : null,
+        };
+      });
+    const column = headers[itemHeaderPrefix] || matchingColumns[0]?.column;
+    const mappedParts = matchingColumns.find((item) => item.parts.length >= 6)
+      ?.parts;
+    const hasPiColumn = mappedParts?.length >= 7;
+
+    itemMappings.push({
+      itemNo,
+      courseOutcome: mappedParts?.[1] || "",
+      programOutcome: normalizeStudentOutcomeLink(mappedParts?.[2] || ""),
+      performanceIndicator: hasPiColumn ? mappedParts?.[3] || "" : "",
+      bloomLevel: mappedParts?.[hasPiColumn ? 4 : 3] || "",
+      maxScore: Math.max(
+        0,
+        matchingColumns.reduce(
+          (sum, item) => sum + Number(item.maxScore || 0),
+          0,
+        ),
+      ),
+    });
+
+    if (!column && matchingColumns.length === 0) {
       throw new Error(`Missing item column: Item ${itemNo}.`);
     }
 
-    itemColumns.push(column);
+    itemColumns.push(
+      isProblemSolvingAnalysis(analysisType)
+        ? matchingColumns
+        : [{ column, maxScore: 1 }],
+    );
   }
 
   const totalScoreColumn = headers["total score"];
@@ -760,23 +872,82 @@ const parseResultRows = async (file, numberOfItems) => {
       return;
     }
 
-    const itemResults = itemColumns.map((column, index) => {
-      const rawValue = normalizeValue(getCellValue(row, column)).toUpperCase();
+    const itemResults = itemColumns.map((columns, index) => {
+      const itemScoreParts = columns.map((itemColumn) => ({
+        rawValue: normalizeValue(getCellValue(row, itemColumn.column)),
+        maxScore: Math.max(0, Number(itemColumn.maxScore || 0)),
+      }));
+      const rawValue = itemScoreParts[0]?.rawValue || "";
+      const maxScore = isProblemSolvingAnalysis(analysisType)
+        ? Math.max(
+            0,
+            itemScoreParts.reduce(
+              (sum, item) => sum + Number(item.maxScore || 0),
+              0,
+            ) || Number(maxScores[index] || 1),
+          )
+        : Math.max(0, Number(maxScores[index] || 1));
 
-      if (!isValidItemValue(rawValue)) {
+      if (isProblemSolvingAnalysis(analysisType)) {
+        const score = itemScoreParts.reduce((sum, item) => {
+          const scorePart = item.rawValue === "" ? 0 : Number(item.rawValue);
+          return sum + (Number.isFinite(scorePart) ? scorePart : 0);
+        }, 0);
+
+        if (!Number.isFinite(score) || score < 0 || score > maxScore) {
+          validationErrors.push(
+            `Row ${rowNumber}, Item ${index + 1}: score must be a number from 0 to ${maxScore}.`,
+          );
+        }
+
+        itemScoreParts.forEach((item, partIndex) => {
+          const scorePart = item.rawValue === "" ? 0 : Number(item.rawValue);
+          const partMaxScore = item.maxScore || maxScore;
+
+          if (
+            !Number.isFinite(scorePart) ||
+            scorePart < 0 ||
+            scorePart > partMaxScore
+          ) {
+            validationErrors.push(
+              `Row ${rowNumber}, Item ${index + 1} rubric score ${partIndex + 1}: score must be from 0 to ${partMaxScore}.`,
+            );
+          }
+        });
+
+        return {
+          itemNo: index + 1,
+          value:
+            itemScoreParts.length > 1
+              ? itemScoreParts.map((item) => item.rawValue || "0").join(" + ")
+              : rawValue,
+          score: Number.isFinite(score) ? score : 0,
+          maxScore,
+          isCorrect: maxScore > 0 && score / maxScore >= 0.75,
+        };
+      }
+
+      const normalizedValue = rawValue.toUpperCase();
+
+      if (!isValidItemValue(normalizedValue)) {
         validationErrors.push(
-          `Row ${rowNumber}, Item ${index + 1}: invalid value "${rawValue}".`,
+          `Row ${rowNumber}, Item ${index + 1}: invalid value "${normalizedValue}".`,
         );
       }
 
       return {
         itemNo: index + 1,
-        value: rawValue,
-        isCorrect: isCorrectValue(rawValue),
+        value: normalizedValue,
+        score: isCorrectValue(normalizedValue) ? 1 : 0,
+        maxScore: 1,
+        isCorrect: isCorrectValue(normalizedValue),
       };
     });
 
-    const computedTotal = itemResults.filter((item) => item.isCorrect).length;
+    const computedTotal = itemResults.reduce(
+      (sum, item) => sum + Number(item.score || 0),
+      0,
+    );
     const rawTotal = totalScoreColumn
       ? normalizeValue(getCellValue(row, totalScoreColumn))
       : "";
@@ -784,7 +955,7 @@ const parseResultRows = async (file, numberOfItems) => {
 
     if (!Number.isFinite(totalScore)) {
       validationErrors.push(`Row ${rowNumber}: Total Score must be numeric.`);
-    } else if (totalScore !== computedTotal) {
+    } else if (Math.abs(totalScore - computedTotal) > 0.001) {
       validationErrors.push(
         `Row ${rowNumber}: Total Score ${totalScore} does not match computed score ${computedTotal}.`,
       );
@@ -795,7 +966,7 @@ const parseResultRows = async (file, numberOfItems) => {
       studentId,
       section,
       itemResults,
-      totalScore: computedTotal,
+      totalScore: Math.round(computedTotal * 100) / 100,
     });
   });
 
@@ -807,7 +978,7 @@ const parseResultRows = async (file, numberOfItems) => {
     throw new Error("No student rows found in the uploaded file.");
   }
 
-  return rows;
+  return { rows, itemMappings };
 };
 
 const buildStudentResultFromAnswers = (exam, student, answers) => {
@@ -830,6 +1001,8 @@ const buildStudentResultFromAnswers = (exam, student, answers) => {
       itemNo,
       value,
       isCorrect: Boolean(value && correctAnswer && value === correctAnswer),
+      score: Boolean(value && correctAnswer && value === correctAnswer) ? 1 : 0,
+      maxScore: 1,
     };
   });
 
@@ -843,8 +1016,23 @@ const buildStudentResultFromAnswers = (exam, student, answers) => {
   };
 };
 
+const getExamMaxScores = (exam) => {
+  const keyByItem = new Map(
+    (exam.answerKey || []).map((item) => [
+      Number(item.itemNo),
+      Math.max(0, Number(item.maxScore || 1)),
+    ]),
+  );
+
+  return Array.from({ length: exam.numberOfItems }, (_, index) =>
+    keyByItem.get(index + 1) || 1,
+  );
+};
+
 const computeAnalysis = (exam, results) => {
   const totalStudents = results.length;
+  const maxScores = getExamMaxScores(exam);
+  const possibleScore = maxScores.reduce((sum, score) => sum + score, 0);
   const scores = results.map((result) => result.totalScore);
   const averageScore =
     totalStudents > 0
@@ -861,21 +1049,42 @@ const computeAnalysis = (exam, results) => {
 
   const items = Array.from({ length: exam.numberOfItems }, (_, index) => {
     const itemNo = index + 1;
+    const maxScore = maxScores[index] || 1;
+    const itemScores = results.map((result) =>
+      Math.max(0, Number(result.itemResults[index]?.score || 0)),
+    );
     const correctCount = results.filter(
-      (result) => result.itemResults[index]?.isCorrect,
+      (result) => {
+        const item = result.itemResults[index];
+        const score = Math.max(0, Number(item?.score || 0));
+        const itemMax = Math.max(0, Number(item?.maxScore || maxScore));
+
+        return item?.isCorrect || (itemMax > 0 && score / itemMax >= 0.75);
+      },
     ).length;
     const incorrectCount = totalStudents - correctCount;
     const difficultyIndex =
-      totalStudents > 0 ? correctCount / totalStudents : 0;
+      totalStudents > 0 && maxScore > 0
+        ? itemScores.reduce((sum, score) => sum + score, 0) /
+          (totalStudents * maxScore)
+        : 0;
     const upperCorrectRate =
-      upperGroup.length > 0
-        ? upperGroup.filter((result) => result.itemResults[index]?.isCorrect)
-            .length / upperGroup.length
+      upperGroup.length > 0 && maxScore > 0
+        ? upperGroup.reduce(
+            (sum, result) =>
+              sum + Math.max(0, Number(result.itemResults[index]?.score || 0)),
+            0,
+          ) /
+          (upperGroup.length * maxScore)
         : 0;
     const lowerCorrectRate =
-      lowerGroup.length > 0
-        ? lowerGroup.filter((result) => result.itemResults[index]?.isCorrect)
-            .length / lowerGroup.length
+      lowerGroup.length > 0 && maxScore > 0
+        ? lowerGroup.reduce(
+            (sum, result) =>
+              sum + Math.max(0, Number(result.itemResults[index]?.score || 0)),
+            0,
+          ) /
+          (lowerGroup.length * maxScore)
         : 0;
     const discriminationIndex = upperCorrectRate - lowerCorrectRate;
     const difficultyLabel = difficultyInterpretation(difficultyIndex);
@@ -886,6 +1095,12 @@ const computeAnalysis = (exam, results) => {
 
     return {
       itemNo,
+      maxScore,
+      averageScore: roundMetric(
+        totalStudents > 0
+          ? itemScores.reduce((sum, score) => sum + score, 0) / totalStudents
+          : 0,
+      ),
       correctCount,
       incorrectCount,
       difficultyIndex: roundMetric(difficultyIndex),
@@ -908,6 +1123,7 @@ const computeAnalysis = (exam, results) => {
     summary: {
       totalStudents,
       numberOfItems: exam.numberOfItems,
+      possibleScore: roundMetric(possibleScore),
       averageScore: roundMetric(averageScore),
       highestScore,
       lowestScore,
@@ -932,6 +1148,23 @@ const computeAnalysis = (exam, results) => {
   };
 };
 
+const parseMaxScoreKey = (input = "", numberOfItems, defaultMaxScore = 1) => {
+  const values = normalizeValue(input)
+    .split(/[\s,;|]+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (values.length === 0) {
+    return Array.from({ length: numberOfItems }, () => defaultMaxScore);
+  }
+
+  if (values.length !== numberOfItems) {
+    throw new Error(`Max score key must contain exactly ${numberOfItems} scores.`);
+  }
+
+  return values;
+};
+
 const createObeBucket = (code, targetRate) => ({
   code,
   targetRate,
@@ -942,6 +1175,8 @@ const createObeBucket = (code, targetRate) => ({
   earnedWeight: 0,
   attainmentRate: 0,
   status: "Not assessed",
+  piBuckets: new Map(),
+  phaseBuckets: new Map(),
 });
 
 const finalizeObeBucket = (bucket) => {
@@ -950,7 +1185,7 @@ const finalizeObeBucket = (bucket) => {
   const attainmentRate =
     totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 0;
 
-  return {
+  const finalized = {
     ...bucket,
     totalWeight: Math.round(totalWeight * 100) / 100,
     earnedWeight: Math.round(earnedWeight * 100) / 100,
@@ -962,7 +1197,20 @@ const finalizeObeBucket = (bucket) => {
           ? "Attained"
           : "Not attained",
   };
+
+  delete finalized.piBuckets;
+  delete finalized.phaseBuckets;
+
+  return finalized;
 };
+
+const finalizePhaseBuckets = (bucket) =>
+  Array.from(bucket.phaseBuckets?.values?.() || [])
+    .map((phaseBucket) => ({
+      ...finalizeObeBucket(phaseBucket),
+      phase: phaseBucket.code,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
 
 const ensureObeBucket = (map, code, targetRate) => {
   if (!map.has(code)) {
@@ -972,16 +1220,96 @@ const ensureObeBucket = (map, code, targetRate) => {
   return map.get(code);
 };
 
-const addOutcomeResponse = (map, code, itemResult, weight, targetRate) => {
+const finalizePiBuckets = (bucket) =>
+  Array.from(bucket.piBuckets?.values?.() || [])
+    .map(finalizeObeBucket)
+    .map((pi) => {
+      delete pi.piBuckets;
+      return pi;
+    })
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+
+const finalizeStudentOutcomeBucket = (bucket) => {
+  const finalized = finalizeObeBucket(bucket);
+  const piBreakdown = finalizePiBuckets(bucket);
+  const phaseBreakdown = finalizePhaseBuckets(bucket);
+  const phaseWeightedRate = weightedPhaseAttainment(phaseBreakdown);
+  const assessedPis = piBreakdown.filter((pi) => Number(pi.totalWeight || 0) > 0);
+
+  if (phaseWeightedRate !== null) {
+    finalized.attainmentRate = phaseWeightedRate;
+    finalized.status =
+      phaseWeightedRate >= Number(finalized.targetRate ?? 75)
+        ? "Attained"
+        : "Not attained";
+  } else if (assessedPis.length > 0) {
+    const attainmentRate =
+      Math.round(
+        (assessedPis.reduce(
+          (sum, pi) => sum + Number(pi.attainmentRate || 0),
+          0,
+        ) /
+          assessedPis.length) *
+          10,
+      ) / 10;
+
+    finalized.attainmentRate = attainmentRate;
+    finalized.status =
+      attainmentRate >= Number(finalized.targetRate ?? 75)
+        ? "Attained"
+        : "Not attained";
+  }
+
+  finalized.piBreakdown = piBreakdown;
+  finalized.phaseBreakdown = phaseBreakdown;
+  delete finalized.piBuckets;
+  delete finalized.phaseBuckets;
+
+  return finalized;
+};
+
+const getItemResultCreditRatio = (itemResult) => {
+  if (!itemResult) return 0;
+
+  const maxScore = Math.max(0, Number(itemResult.maxScore || 1));
+
+  if (maxScore > 0 && itemResult.score !== undefined) {
+    return Math.max(0, Math.min(1, Number(itemResult.score || 0) / maxScore));
+  }
+
+  return itemResult.isCorrect ? 1 : 0;
+};
+
+const isItemResultAttained = (itemResult, targetRate) =>
+  getItemResultCreditRatio(itemResult) >= Number(targetRate ?? 75) / 100;
+
+const addOutcomeResponse = (map, code, itemResult, weight, targetRate, phase = "") => {
   const bucket = ensureObeBucket(map, code, targetRate);
+  const creditRatio = getItemResultCreditRatio(itemResult);
 
   bucket.responseCount += 1;
   bucket.totalWeight += weight;
+  bucket.earnedWeight += weight * creditRatio;
 
-  if (itemResult?.isCorrect) {
+  if (isItemResultAttained(itemResult, targetRate)) {
     bucket.correctCount += 1;
-    bucket.earnedWeight += weight;
   }
+
+  if (phase) {
+    addOutcomeResponse(
+      bucket.phaseBuckets,
+      phase,
+      itemResult,
+      weight,
+      targetRate,
+    );
+  }
+};
+
+const addPiResponse = (bucket, code, itemResult, weight, targetRate, phase = "") => {
+  if (!bucket || !code) return;
+
+  addOutcomeResponse(bucket.piBuckets, code, itemResult, weight, targetRate, phase);
 };
 
 const formatCqiPlan = (plan) =>
@@ -1023,26 +1351,31 @@ const attachCqiPlans = (rows, plans, outcomeType) => {
 
 const buildObeAttainment = async (exam, results) => {
   const settings = await getObeSettings();
+  const savedItemMappings = Array.isArray(exam?.itemMappings)
+    ? exam.itemMappings
+    : [];
 
-  if (!exam?.generatedExamId) {
+  if (!exam?.generatedExamId && savedItemMappings.length === 0) {
     return {
       available: false,
       settings,
       message:
-        "CO/SO attainment is available only when item analysis is linked to a generated exam.",
+        "CO/SO attainment is available only when item analysis is linked to a generated exam or uploaded with rubric headers containing CO/SO/PI mappings.",
       courseOutcomes: [],
       studentOutcomes: [],
       bloomLevels: [],
     };
   }
 
-  const generatedExam = await Exam.findById(exam.generatedExamId).populate({
-    path: "questions",
-    select:
-      "courseOutcome programOutcome bloomLevel outcomeWeight questionText",
-  });
+  const generatedExam = exam.generatedExamId
+    ? await Exam.findById(exam.generatedExamId).populate({
+        path: "questions",
+        select:
+          "courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight questionText questionType",
+      })
+    : null;
 
-  if (!generatedExam || !Array.isArray(generatedExam.questions)) {
+  if (exam.generatedExamId && (!generatedExam || !Array.isArray(generatedExam.questions))) {
     return {
       available: false,
       settings,
@@ -1053,15 +1386,32 @@ const buildObeAttainment = async (exam, results) => {
     };
   }
 
+  const mappedItems = generatedExam
+    ? (generatedExam.questions || []).map((question, index) => ({
+        itemNo: index + 1,
+        courseOutcome: question.courseOutcome,
+        programOutcome: question.programOutcome,
+        performanceIndicator: question.performanceIndicator,
+        bloomLevel: question.bloomLevel,
+        outcomeWeight: question.outcomeWeight,
+      }))
+    : savedItemMappings;
+
   const courseOutcomes = new Map();
   const studentOutcomes = new Map();
   const bloomLevels = new Map();
-  (generatedExam.questions || []).forEach((question, index) => {
-    const itemNo = index + 1;
-    const weight = Math.max(0, Number(question.outcomeWeight || 1));
-    const courseOutcome = question.courseOutcome || "Unmapped CLO";
-    const studentOutcome = question.programOutcome || "Unmapped SO";
-    const bloomLevel = question.bloomLevel || "Unmapped Bloom";
+  const assessmentPhase = exam.assessmentPhase || "Summative";
+  mappedItems.forEach((mapping, index) => {
+    const itemNo = Number(mapping.itemNo || index + 1);
+    const weight = Math.max(0, Number(mapping.outcomeWeight || 1));
+    const courseOutcome = formatSubjectScopedCourseOutcome(
+      generatedExam?.subject || exam.subject,
+      mapping.courseOutcome,
+    );
+    const studentOutcome =
+      normalizeStudentOutcomeLink(mapping.programOutcome) || "Unmapped SO";
+    const performanceIndicator = mapping.performanceIndicator || "";
+    const bloomLevel = mapping.bloomLevel || "Unmapped Bloom";
 
     ensureObeBucket(
       courseOutcomes,
@@ -1073,6 +1423,13 @@ const buildObeAttainment = async (exam, results) => {
       studentOutcome,
       settings.studentOutcomeTarget,
     ).itemCount += 1;
+    if (performanceIndicator) {
+      ensureObeBucket(
+        studentOutcomes.get(studentOutcome).piBuckets,
+        performanceIndicator,
+        settings.studentOutcomeTarget,
+      ).itemCount += 1;
+    }
     ensureObeBucket(
       bloomLevels,
       bloomLevel,
@@ -1097,6 +1454,15 @@ const buildObeAttainment = async (exam, results) => {
         itemResult,
         weight,
         settings.studentOutcomeTarget,
+        assessmentPhase,
+      );
+      addPiResponse(
+        studentOutcomes.get(studentOutcome),
+        performanceIndicator,
+        itemResult,
+        weight,
+        settings.studentOutcomeTarget,
+        assessmentPhase,
       );
       addOutcomeResponse(
         bloomLevels,
@@ -1112,6 +1478,14 @@ const buildObeAttainment = async (exam, results) => {
     analysisExamId: exam._id,
   }).lean();
 
+  const studentOutcomeRows = await attachStudentOutcomeIndicators(
+    attachCqiPlans(
+      Array.from(studentOutcomes.values()).map(finalizeStudentOutcomeBucket),
+      cqiPlans,
+      "SO",
+    ),
+  );
+
   return {
     available: true,
     settings,
@@ -1121,11 +1495,7 @@ const buildObeAttainment = async (exam, results) => {
       cqiPlans,
       "CO",
     ),
-    studentOutcomes: attachCqiPlans(
-      Array.from(studentOutcomes.values()).map(finalizeObeBucket),
-      cqiPlans,
-      "SO",
-    ),
+    studentOutcomes: studentOutcomeRows,
     bloomLevels: Array.from(bloomLevels.values()).map(finalizeObeBucket),
   };
 };
@@ -1227,7 +1597,7 @@ exports.listItemAnalysisExams = async (req, res) => {
 
     const exams = await ItemAnalysisExam.find(query)
       .select(
-        "title subject section semester schoolYear assessmentMethod numberOfItems answerKey uploadedAt createdAt",
+        "title subject section semester schoolYear assessmentMethod assessmentPhase analysisType numberOfItems answerKey uploadedAt createdAt",
       )
       .sort({ createdAt: -1 });
 
@@ -1252,12 +1622,16 @@ exports.createItemAnalysisExam = async (req, res) => {
       semester,
       schoolYear,
       assessmentMethod,
+      assessmentPhase,
+      analysisType,
       numberOfItems,
       answerKey,
+      maxScoreKey,
       generatedExamId,
       includeInObe,
     } = req.body;
     const itemCount = Number(numberOfItems);
+    const selectedAnalysisType = normalizeAnalysisType(analysisType);
 
     if (!title || !subject || !section || !itemCount) {
       return res.status(400).json({
@@ -1274,9 +1648,26 @@ exports.createItemAnalysisExam = async (req, res) => {
       });
     }
 
-    const parsedAnswerKey = await parseAnswerKey(answerKey);
+    const maxScores = parseMaxScoreKey(
+      maxScoreKey,
+      itemCount,
+      isProblemSolvingAnalysis(selectedAnalysisType) ? 10 : 1,
+    );
+    const parsedAnswerKey = isProblemSolvingAnalysis(selectedAnalysisType)
+      ? maxScores.map((maxScore, index) => ({
+          itemNo: index + 1,
+          answer: "",
+          maxScore,
+        }))
+      : (await parseAnswerKey(answerKey)).map((item) => ({
+          ...item,
+          maxScore: 1,
+        }));
 
-    if (parsedAnswerKey.length !== itemCount) {
+    if (
+      !isProblemSolvingAnalysis(selectedAnalysisType) &&
+      parsedAnswerKey.length !== itemCount
+    ) {
       return res.status(400).json({
         success: false,
         message: `Answer key must contain exactly ${itemCount} answers.`,
@@ -1290,6 +1681,8 @@ exports.createItemAnalysisExam = async (req, res) => {
       semester,
       schoolYear,
       assessmentMethod: normalizeAssessmentMethod(assessmentMethod),
+      assessmentPhase: normalizeAssessmentPhase(assessmentPhase),
+      analysisType: selectedAnalysisType,
       numberOfItems: itemCount,
       answerKey: parsedAnswerKey,
       uploadedBy: req.user._id,
@@ -1312,6 +1705,8 @@ exports.createItemAnalysisExam = async (req, res) => {
 exports.downloadTemplate = async (req, res) => {
   try {
     const items = Math.max(1, Number(req.query.items || 50));
+    const analysisType = normalizeAnalysisType(req.query.analysisType);
+    const isProblemSolving = isProblemSolvingAnalysis(analysisType);
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Student Results");
     const instructionSheet = workbook.addWorksheet("Instructions");
@@ -1329,11 +1724,31 @@ exports.downloadTemplate = async (req, res) => {
     ];
 
     sheet.getRow(1).font = { bold: true };
+    sheet.addRow({
+      studentName: "Sample Student",
+      studentId: "2026-0001",
+      section: "A",
+      ...Object.fromEntries(
+        Array.from({ length: items }, (_, index) => [
+          `item${index + 1}`,
+          isProblemSolving ? 8 : index % 2 === 0 ? "1" : "0",
+        ]),
+      ),
+      totalScore: isProblemSolving ? items * 8 : Math.ceil(items / 2),
+    });
     instructionSheet.addRows([
       ["Item Analysis Upload Instructions"],
-      ["Enter 1 for correct"],
-      ["Enter 0 for wrong"],
-      ["C and W are also accepted"],
+      [
+        isProblemSolving
+          ? "For Problem Solving, enter the earned numeric score for each item."
+          : "For Multiple Choice, enter 1 for correct.",
+      ],
+      [
+        isProblemSolving
+          ? "Provide max scores in the upload form, for example: 10 10 15 15."
+          : "Enter 0 for wrong.",
+      ],
+      [isProblemSolving ? "Blank item scores are treated as 0." : "C and W are also accepted."],
       ["Leave Total Score blank if you want the system to compute it"],
     ]);
     instructionSheet.getColumn(1).width = 72;
@@ -1347,7 +1762,7 @@ exports.downloadTemplate = async (req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="item-analysis-template-${items}-items.xlsx"`,
+      `attachment; filename="item-analysis-${analysisType.toLowerCase().replace(/\s+/g, "-")}-template-${items}-items.xlsx"`,
     );
     res.send(Buffer.from(buffer));
   } catch (error) {
@@ -1368,7 +1783,7 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
 
     const generatedExam = await Exam.findOne(generatedExamQuery).populate(
       "questions",
-      "correctAnswer",
+      "correctAnswer solutionAnswer questionType courseOutcome programOutcome performanceIndicator bloomLevel",
     );
 
     if (!generatedExam) {
@@ -1396,11 +1811,17 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
       });
     }
 
+    const selectedAnalysisType = normalizeAnalysisType(generatedExam.examType);
     const answerKey = questions.map((question, index) => ({
       itemNo: index + 1,
-      answer: normalizeValue(question.correctAnswer).toUpperCase(),
+      answer: isProblemSolvingAnalysis(selectedAnalysisType)
+        ? ""
+        : normalizeValue(question.correctAnswer).toUpperCase(),
+      maxScore: isProblemSolvingAnalysis(selectedAnalysisType) ? 10 : 1,
     }));
-    const missingAnswer = answerKey.find((item) => !item.answer);
+    const missingAnswer = isProblemSolvingAnalysis(selectedAnalysisType)
+      ? null
+      : answerKey.find((item) => !item.answer);
 
     if (missingAnswer) {
       return res.status(400).json({
@@ -1424,6 +1845,17 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
     const assessmentMethod = normalizeAssessmentMethod(
       req.body.assessmentMethod || generatedExam.assessmentMethod,
     );
+    const assessmentPhase = normalizeAssessmentPhase(
+      req.body.assessmentPhase || generatedExam.assessmentPhase,
+    );
+    const itemMappings = questions.map((question, index) => ({
+      itemNo: index + 1,
+      courseOutcome: normalizeValue(question.courseOutcome),
+      programOutcome: normalizeStudentOutcomeLink(question.programOutcome),
+      performanceIndicator: normalizeValue(question.performanceIndicator),
+      bloomLevel: normalizeValue(question.bloomLevel),
+      maxScore: answerKey[index]?.maxScore || 0,
+    }));
 
     const exam = await ItemAnalysisExam.findOneAndUpdate(
       {
@@ -1437,12 +1869,15 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
         semester,
         schoolYear,
         assessmentMethod,
+        assessmentPhase,
+        analysisType: selectedAnalysisType,
         numberOfItems: itemCount,
-      answerKey,
-      generatedExamId: generatedExam._id,
-      includeInObe: true,
-      uploadedBy: req.user._id,
-      uploadedAt: new Date(),
+        answerKey,
+        itemMappings,
+        generatedExamId: generatedExam._id,
+        includeInObe: true,
+        uploadedBy: req.user._id,
+        uploadedAt: new Date(),
       },
       {
         new: true,
@@ -1526,6 +1961,13 @@ exports.saveScannedResult = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Item analysis exam not found.",
+      });
+    }
+
+    if (isProblemSolvingAnalysis(data.exam.analysisType)) {
+      return res.status(400).json({
+        success: false,
+        message: "OMR scanning is only available for multiple-choice item analysis.",
       });
     }
 
@@ -1615,12 +2057,16 @@ exports.uploadItemAnalysis = async (req, res) => {
       semester,
       schoolYear,
       assessmentMethod,
+      assessmentPhase,
+      analysisType,
       numberOfItems,
       answerKey,
+      maxScoreKey,
       generatedExamId,
       includeInObe,
     } = req.body;
     const itemCount = Number(numberOfItems);
+    const selectedAnalysisType = normalizeAnalysisType(analysisType);
     const resultFile = req.files?.resultFile?.[0];
     const answerKeyFile = req.files?.answerKeyFile?.[0];
 
@@ -1639,10 +2085,15 @@ exports.uploadItemAnalysis = async (req, res) => {
       });
     }
 
-    const [rows, parsedAnswerKey] = await Promise.all([
-      parseResultRows(resultFile, itemCount),
-      parseAnswerKey(answerKey, answerKeyFile),
-    ]);
+    let maxScores = parseMaxScoreKey(
+      maxScoreKey,
+      itemCount,
+      isProblemSolvingAnalysis(selectedAnalysisType) ? 10 : 1,
+    );
+    const parsedAnswerKey = isProblemSolvingAnalysis(selectedAnalysisType)
+      ? []
+      : await parseAnswerKey(answerKey, answerKeyFile);
+    let rows = [];
     const linkedGeneratedExamId = normalizeValue(generatedExamId);
     const requiresObeLink =
       includeInObe === true ||
@@ -1667,7 +2118,7 @@ exports.uploadItemAnalysis = async (req, res) => {
 
       linkedGeneratedExam = await Exam.findOne(generatedExamQuery).populate(
         "questions",
-        "correctAnswer",
+        "correctAnswer solutionAnswer questionType outcomeWeight courseOutcome programOutcome performanceIndicator bloomLevel",
       );
 
       if (!linkedGeneratedExam) {
@@ -1686,14 +2137,81 @@ exports.uploadItemAnalysis = async (req, res) => {
       }
 
       if (finalAnswerKey.length === 0) {
-        finalAnswerKey = (linkedGeneratedExam.questions || []).map(
-          (question, index) => ({
-            itemNo: index + 1,
-            answer: normalizeValue(question.correctAnswer).toUpperCase(),
-          }),
-        );
+        finalAnswerKey = (linkedGeneratedExam.questions || []).map((question, index) => ({
+          itemNo: index + 1,
+          answer: isProblemSolvingAnalysis(selectedAnalysisType)
+            ? ""
+            : normalizeValue(question.correctAnswer).toUpperCase(),
+          maxScore: isProblemSolvingAnalysis(selectedAnalysisType)
+            ? maxScores[index] || 10
+            : 1,
+        }));
       }
     }
+
+    if (isProblemSolvingAnalysis(selectedAnalysisType)) {
+      finalAnswerKey = Array.from({ length: itemCount }, (_, index) => ({
+        itemNo: index + 1,
+        answer: "",
+        maxScore: maxScores[index] || 10,
+      }));
+    } else {
+      finalAnswerKey = finalAnswerKey.map((item) => ({
+        ...item,
+        maxScore: 1,
+      }));
+    }
+
+    if (
+      !isProblemSolvingAnalysis(selectedAnalysisType) &&
+      finalAnswerKey.length !== itemCount
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Answer key must contain exactly ${itemCount} answers.`,
+      });
+    }
+
+    const parsedResults = await parseResultRows(
+      resultFile,
+      itemCount,
+      selectedAnalysisType,
+      finalAnswerKey.map((item) => item.maxScore || 1),
+    );
+    rows = parsedResults.rows;
+    const parsedItemMappings = parsedResults.itemMappings || [];
+
+    if (isProblemSolvingAnalysis(selectedAnalysisType) && rows[0]?.itemResults) {
+      finalAnswerKey = rows[0].itemResults.map((item) => ({
+        itemNo: item.itemNo,
+        answer: "",
+        maxScore: item.maxScore || 10,
+      }));
+    }
+    const generatedItemMappings = linkedGeneratedExam
+      ? (linkedGeneratedExam.questions || []).map((question, index) => ({
+          itemNo: index + 1,
+          courseOutcome: normalizeValue(question.courseOutcome),
+          programOutcome: normalizeStudentOutcomeLink(question.programOutcome),
+          performanceIndicator: normalizeValue(question.performanceIndicator),
+          bloomLevel: normalizeValue(question.bloomLevel),
+          maxScore: finalAnswerKey[index]?.maxScore || 0,
+        }))
+      : [];
+    const itemMappings = generatedItemMappings.length
+      ? generatedItemMappings
+      : parsedItemMappings
+          .map((mapping, index) => ({
+            ...mapping,
+            maxScore: mapping.maxScore || finalAnswerKey[index]?.maxScore || 0,
+          }))
+          .filter(
+            (mapping) =>
+              mapping.courseOutcome ||
+              mapping.programOutcome ||
+              mapping.performanceIndicator ||
+              mapping.bloomLevel,
+          );
 
     const exam = linkedGeneratedExam
       ? await ItemAnalysisExam.findOneAndUpdate(
@@ -1715,8 +2233,13 @@ exports.uploadItemAnalysis = async (req, res) => {
             assessmentMethod: normalizeAssessmentMethod(
               assessmentMethod || linkedGeneratedExam.assessmentMethod,
             ),
+            assessmentPhase: normalizeAssessmentPhase(
+              assessmentPhase || linkedGeneratedExam.assessmentPhase,
+            ),
+            analysisType: selectedAnalysisType,
             numberOfItems: itemCount,
             answerKey: finalAnswerKey,
+            itemMappings,
             generatedExamId: linkedGeneratedExam._id,
             includeInObe: true,
             uploadedBy: req.user._id,
@@ -1736,9 +2259,12 @@ exports.uploadItemAnalysis = async (req, res) => {
           semester,
           schoolYear,
           assessmentMethod: normalizeAssessmentMethod(assessmentMethod),
+          assessmentPhase: normalizeAssessmentPhase(assessmentPhase),
+          analysisType: selectedAnalysisType,
           numberOfItems: itemCount,
           answerKey: finalAnswerKey,
-          includeInObe: false,
+          itemMappings,
+          includeInObe: itemMappings.length > 0,
           uploadedBy: req.user._id,
           uploadedAt: new Date(),
         });
@@ -1863,10 +2389,10 @@ exports.upsertCqiInterventionPlan = async (req, res) => {
     const intervention = String(req.body.intervention || "").trim();
     const responsiblePerson = String(req.body.responsiblePerson || "").trim();
 
-    if (!["CO", "SO"].includes(outcomeType)) {
+    if (!["CO", "SO", "PI"].includes(outcomeType)) {
       return res.status(400).json({
         success: false,
-        message: "CQI plan outcome type must be CO or SO.",
+        message: "CQI plan outcome type must be CO, SO, or PI.",
       });
     }
 
@@ -1998,7 +2524,7 @@ exports.updateCqiPlanStatus = async (req, res) => {
     const allowedStatuses = ["Planned", "In Progress", "Completed"];
     const status = String(req.body.status || "").trim();
 
-    if (!["CO", "SO"].includes(outcomeType) || !outcomeCode) {
+    if (!["CO", "SO", "PI"].includes(outcomeType) || !outcomeCode) {
       return res.status(400).json({
         success: false,
         message: "Outcome type and outcome code are required.",
@@ -2076,9 +2602,12 @@ exports.exportItemAnalysis = async (req, res) => {
       ["Exam title", analysis.exam.title],
       ["Subject", analysis.exam.subject],
       ["Assessment Method", analysis.exam.assessmentMethod || "Major Exam"],
+      ["Assessment Phase", analysis.exam.assessmentPhase || "Summative"],
       ["Section", analysis.exam.section],
       ["Total students", analysis.summary.totalStudents],
       ["Number of items", analysis.summary.numberOfItems],
+      ["Analysis type", analysis.exam.analysisType || "Multiple Choice"],
+      ["Possible score", analysis.summary.possibleScore || analysis.summary.numberOfItems],
       ["Average score", analysis.summary.averageScore],
       ["Highest score", analysis.summary.highestScore],
       ["Lowest score", analysis.summary.lowestScore],
@@ -2086,6 +2615,8 @@ exports.exportItemAnalysis = async (req, res) => {
 
     itemSheet.columns = [
       { header: "Item No.", key: "itemNo", width: 12 },
+      { header: "Average Score", key: "averageScore", width: 16 },
+      { header: "Max Score", key: "maxScore", width: 14 },
       { header: "Correct Count", key: "correctCount", width: 16 },
       { header: "Incorrect Count", key: "incorrectCount", width: 18 },
       { header: "Difficulty Index", key: "difficultyIndex", width: 18 },
@@ -2123,7 +2654,9 @@ exports.exportItemAnalysis = async (req, res) => {
         section: result.section,
         totalScore: result.totalScore,
         percentage: roundMetric(
-          (result.totalScore / analysis.exam.numberOfItems) * 100,
+          (result.totalScore /
+            (analysis.summary.possibleScore || analysis.exam.numberOfItems)) *
+            100,
         ),
       })),
     );
@@ -2139,7 +2672,10 @@ exports.exportItemAnalysis = async (req, res) => {
 
         return [
           {
-            header: `Item ${itemNo} Answer`,
+            header:
+              analysis.exam.analysisType === "Problem Solving"
+                ? `Item ${itemNo} Score`
+                : `Item ${itemNo} Answer`,
             key: `item${itemNo}Answer`,
             width: 16,
           },
@@ -2159,7 +2695,9 @@ exports.exportItemAnalysis = async (req, res) => {
           section: result.section,
           totalScore: result.totalScore,
           percentage: roundMetric(
-            (result.totalScore / analysis.exam.numberOfItems) * 100,
+            (result.totalScore /
+              (analysis.summary.possibleScore || analysis.exam.numberOfItems)) *
+              100,
           ),
         };
 
@@ -2168,9 +2706,12 @@ exports.exportItemAnalysis = async (req, res) => {
           const itemResult = result.itemResults[index] || {};
 
           row[`item${itemNo}Answer`] = itemResult.value || "";
-          row[`item${itemNo}Result`] = itemResult.isCorrect
-            ? "Correct"
-            : "Wrong";
+          row[`item${itemNo}Result`] =
+            analysis.exam.analysisType === "Problem Solving"
+              ? `${itemResult.score || 0}/${itemResult.maxScore || 1}`
+              : itemResult.isCorrect
+                ? "Correct"
+                : "Wrong";
         });
 
         return row;
@@ -2200,15 +2741,34 @@ exports.exportItemAnalysis = async (req, res) => {
       { header: "Follow-up Decision", key: "cqiFollowUpDecision", width: 22 },
       { header: "Verified Date", key: "cqiVerifiedAt", width: 18 },
     ];
+    const soAttainmentColumns = [
+      attainmentColumns[0],
+      { header: "Performance Indicators", key: "performanceIndicators", width: 46 },
+      { header: "Phase Breakdown", key: "phaseBreakdownText", width: 34 },
+      { header: "PI Attainment Breakdown", key: "piBreakdownText", width: 46 },
+      ...attainmentColumns.slice(1),
+    ];
     [
       [coSheet, analysis.obeAttainment.courseOutcomes],
       [soSheet, analysis.obeAttainment.studentOutcomes],
       [bloomSheet, analysis.obeAttainment.bloomLevels],
     ].forEach(([sheet, rows]) => {
-      sheet.columns = attainmentColumns;
+      sheet.columns = sheet === soSheet ? soAttainmentColumns : attainmentColumns;
       sheet.addRows(
         (rows || []).map((row) => ({
           ...row,
+          piBreakdownText: (row.piBreakdown || [])
+            .map(
+              (pi) =>
+                `${pi.code}: ${pi.attainmentRate || 0}% (${pi.status || "Not assessed"})`,
+            )
+            .join("\n"),
+          phaseBreakdownText: (row.phaseBreakdown || [])
+            .map(
+              (phase) =>
+                `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`,
+            )
+            .join("\n"),
           cqiStatus: row.cqiPlan?.status || "",
           cqiRootCause: row.cqiPlan?.rootCause || "",
           cqiIntervention: row.cqiPlan?.intervention || "",

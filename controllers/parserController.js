@@ -78,10 +78,13 @@ const getParsedQuestionUpdates = (body = {}) => {
     "engineeringProgram",
     "topic",
     "questionText",
+    "questionType",
     "correctAnswer",
+    "solutionAnswer",
     "difficulty",
     "courseOutcome",
     "programOutcome",
+    "performanceIndicator",
     "studentLearningOutcome",
     "bloomLevel",
     "isComplexEngineeringProblem",
@@ -121,6 +124,14 @@ const getParsedQuestionUpdates = (body = {}) => {
 
   return updates;
 };
+
+const QUESTION_TYPES = ["Multiple Choice", "Problem Solving"];
+
+const normalizeQuestionType = (value) =>
+  QUESTION_TYPES.includes(value) ? value : "Multiple Choice";
+
+const isProblemSolvingQuestion = (value) =>
+  normalizeQuestionType(value) === "Problem Solving";
 
 const parseBooleanBodyValue = (value, fallback = false) => {
   if (value === undefined) return fallback;
@@ -622,7 +633,9 @@ function parseQuestionsFromText(text) {
     .replace(/\t/g, " ")
     .replace(/[ ]{2,}/g, " ");
 
-  const blocks = cleaned.split(/\n(?=(?:QUESTION\s*)?\d+[:).\s])/gi);
+  const blocks = cleaned.split(
+    /\n(?=(?:(?:QUESTION|PROBLEM|PS)\s*)?\d+[:).\s])/gi,
+  );
 
   const parsed = [];
 
@@ -645,6 +658,12 @@ function parseQuestionsFromText(text) {
     const answer = joined.match(
       /(?:Answer|Ans\.|Correct Answer)[:\s]+([A-D])/i,
     );
+    const problemAnswer = joined.match(
+      /(?:Final\s+Answer|Solution\s+Answer|Answer|Ans\.)[:\s]+(.+?)(?=\n(?:Solution|Explanation|Bloom'?s?\s*(?:Level)?|Bloom\s*Level|SLO|Student\s+Learning\s+Outcome)[:\s-]|\n(?:QUESTION\s*)?\d+[:).\s]|$)/is,
+    );
+    const solution = joined.match(
+      /(?:Solution|Explanation)[:\s-]+(.+?)(?=\n(?:Final\s+Answer|Solution\s+Answer|Answer|Ans\.|Bloom'?s?\s*(?:Level)?|Bloom\s*Level|SLO|Student\s+Learning\s+Outcome)[:\s-]|\n(?:QUESTION\s*)?\d+[:).\s]|$)/is,
+    );
     const bloomLevel = joined.match(
       /(?:Bloom'?s?\s*(?:Level)?|Bloom\s*Level)[:\s-]+([A-Za-z]+)/i,
     );
@@ -654,28 +673,46 @@ function parseQuestionsFromText(text) {
 
     const questionOnly = joined
       .replace(/A[\).][\s\S]*/i, "")
-      .replace(/^(?:QUESTION\s*)?\d+[:).\s]*/i, "")
+      .replace(
+        /(?:Final\s+Answer|Solution\s+Answer|Answer|Ans\.|Solution|Explanation|Bloom'?s?\s*(?:Level)?|Bloom\s*Level|SLO|Student\s+Learning\s+Outcome)[:\s-][\s\S]*/i,
+        "",
+      )
+      .replace(/^(?:(?:QUESTION|PROBLEM|PS)\s*)?\d+[:).\s]*/i, "")
+      .replace(/^(?:Problem\s*Solving|Problem|PS)[:).\s-]*/i, "")
       .trim();
 
-    if (!questionOnly || (!choiceA && !choiceB)) {
+    const hasMcqChoices = Boolean(choiceA && choiceB);
+    const isProblemSolving =
+      !hasMcqChoices &&
+      Boolean(questionOnly && (problemAnswer || solution || /problem/i.test(lines[0])));
+
+    if (!questionOnly || (!hasMcqChoices && !isProblemSolving)) {
       continue;
     }
 
     parsed.push({
       questionText: questionOnly,
+      questionType: isProblemSolving ? "Problem Solving" : "Multiple Choice",
       choices: {
-        A: choiceA ? choiceA[1].trim() : "",
-        B: choiceB ? choiceB[1].trim() : "",
-        C: choiceC ? choiceC[1].trim() : "",
-        D: choiceD ? choiceD[1].trim() : "",
+        A: isProblemSolving ? "" : choiceA ? choiceA[1].trim() : "",
+        B: isProblemSolving ? "" : choiceB ? choiceB[1].trim() : "",
+        C: isProblemSolving ? "" : choiceC ? choiceC[1].trim() : "",
+        D: isProblemSolving ? "" : choiceD ? choiceD[1].trim() : "",
       },
-      correctAnswer: answer ? answer[1].toUpperCase() : "",
+      correctAnswer: isProblemSolving
+        ? ""
+        : answer
+          ? answer[1].toUpperCase()
+          : "",
+      solutionAnswer: isProblemSolving && problemAnswer
+        ? problemAnswer[1].trim()
+        : "",
       difficulty: detectDifficulty(questionOnly),
       studentLearningOutcome: studentLearningOutcome
         ? studentLearningOutcome[1].trim()
         : "",
       bloomLevel: bloomLevel ? normalizeBloomLevel(bloomLevel[1]) : "",
-      explanation: "",
+      explanation: solution ? solution[1].trim() : "",
       tables: [],
     });
   }
@@ -688,6 +725,10 @@ function choiceCount(question) {
 }
 
 function shouldSaveParsedQuestion(question) {
+  if (isProblemSolvingQuestion(question?.questionType)) {
+    return Boolean(question && question.questionText);
+  }
+
   return Boolean(
     question && question.questionText && choiceCount(question) >= 2,
   );
@@ -725,12 +766,15 @@ function parseDocxQuestions(filePath) {
       return;
     }
 
-    const questionMatch = block.text.match(/^(?:QUESTION\s*)?\d+[:).\s]+(.+)/i);
+    const questionMatch = block.text.match(
+      /^(?:(?:QUESTION|PROBLEM|PS)\s*)?\d+[:).\s]+(.+)/i,
+    );
 
     if (questionMatch) {
       saveCurrentQuestion();
       currentQuestion = {
         questionText: questionMatch[1].trim(),
+        questionType: "Multiple Choice",
         choices: {
           A: "",
           B: "",
@@ -738,6 +782,7 @@ function parseDocxQuestions(filePath) {
           D: "",
         },
         correctAnswer: "",
+        solutionAnswer: "",
         difficulty: detectDifficulty(questionMatch[1].trim()),
         studentLearningOutcome: "",
         bloomLevel: "",
@@ -751,6 +796,7 @@ function parseDocxQuestions(filePath) {
     const choiceMatch = block.text.match(/^([a-d])[\).]\s*(.+)/i);
 
     if (choiceMatch && currentQuestion) {
+      currentQuestion.questionType = "Multiple Choice";
       currentQuestion.choices[choiceMatch[1].toUpperCase()] =
         choiceMatch[2].trim();
       return;
@@ -762,6 +808,30 @@ function parseDocxQuestions(filePath) {
 
     if (answerMatch && currentQuestion) {
       currentQuestion.correctAnswer = answerMatch[1].toUpperCase();
+      return;
+    }
+
+    const problemAnswerMatch = block.text.match(
+      /^(?:Final\s+Answer|Solution\s+Answer|Answer|Ans\.)[:\s-]+(.+)/i,
+    );
+
+    if (problemAnswerMatch && currentQuestion) {
+      if (choiceCount(currentQuestion) === 0) {
+        currentQuestion.questionType = "Problem Solving";
+        currentQuestion.solutionAnswer = problemAnswerMatch[1].trim();
+        return;
+      }
+    }
+
+    const solutionMatch = block.text.match(/^(?:Solution|Explanation)[:\s-]+(.+)/i);
+
+    if (solutionMatch && currentQuestion) {
+      if (choiceCount(currentQuestion) === 0) {
+        currentQuestion.questionType = "Problem Solving";
+      }
+      currentQuestion.explanation = currentQuestion.explanation
+        ? `${currentQuestion.explanation}\n${solutionMatch[1].trim()}`
+        : solutionMatch[1].trim();
       return;
     }
 
@@ -902,7 +972,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "No valid multiple-choice questions detected. Make sure the file uses A. B. C. D. format.",
+          "No valid questions detected. Use A. B. C. D. format for MCQ, or Answer/Solution lines for problem-solving items.",
       });
     }
 
@@ -945,11 +1015,14 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           subject,
           topic,
           questionText: q.questionText,
+          questionType: normalizeQuestionType(q.questionType),
           choices: q.choices,
           correctAnswer: q.correctAnswer,
+          solutionAnswer: q.solutionAnswer || "",
           difficulty: q.difficulty,
           courseOutcome: q.courseOutcome || "",
           programOutcome: q.programOutcome || "",
+          performanceIndicator: q.performanceIndicator || "",
           studentLearningOutcome: q.studentLearningOutcome || "",
           bloomLevel: q.bloomLevel || "",
           outcomeWeight: Number(q.outcomeWeight || 1),
@@ -1090,10 +1163,23 @@ exports.approveParsedQuestion = async (req, res) => {
       });
     }
 
-    if (!parsed.correctAnswer) {
+    if (
+      !isProblemSolvingQuestion(parsed.questionType) &&
+      !parsed.correctAnswer
+    ) {
       return res.status(400).json({
         success: false,
         message: "Please set the correct answer before approving.",
+      });
+    }
+
+    if (
+      isProblemSolvingQuestion(parsed.questionType) &&
+      !String(parsed.solutionAnswer || "").trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please set the final answer before approving.",
       });
     }
 
@@ -1138,11 +1224,20 @@ exports.approveParsedQuestion = async (req, res) => {
       engineeringProgram: parsed.engineeringProgram,
       topic: parsed.topic,
       questionText: parsed.questionText,
-      choices: parsed.choices,
-      correctAnswer: parsed.correctAnswer,
+      questionType: normalizeQuestionType(parsed.questionType),
+      choices: isProblemSolvingQuestion(parsed.questionType)
+        ? { A: "", B: "", C: "", D: "" }
+        : parsed.choices,
+      correctAnswer: isProblemSolvingQuestion(parsed.questionType)
+        ? ""
+        : parsed.correctAnswer,
+      solutionAnswer: isProblemSolvingQuestion(parsed.questionType)
+        ? parsed.solutionAnswer
+        : "",
       difficulty: parsed.difficulty,
       courseOutcome: parsed.courseOutcome,
       programOutcome: parsed.programOutcome,
+      performanceIndicator: parsed.performanceIndicator,
       studentLearningOutcome: parsed.studentLearningOutcome,
       bloomLevel: parsed.bloomLevel,
       outcomeWeight: Number(parsed.outcomeWeight || 1),
@@ -1197,6 +1292,15 @@ exports.updateParsedQuestion = async (req, res) => {
 
     const updates = getParsedQuestionUpdates(req.body);
     Object.assign(parsed, updates);
+    parsed.questionType = normalizeQuestionType(parsed.questionType);
+
+    if (isProblemSolvingQuestion(parsed.questionType)) {
+      parsed.choices = { A: "", B: "", C: "", D: "" };
+      parsed.correctAnswer = "";
+    } else {
+      parsed.solutionAnswer = "";
+    }
+
     const complexity = classifyComplexEngineeringProblem(parsed);
 
     parsed.isComplexEngineeringProblem = parseBooleanBodyValue(

@@ -21,7 +21,7 @@ async function loadAnalysis() {
       `${analysis.exam.subject} - ${analysis.exam.section}`;
     document.getElementById("totalStudents").textContent = summary.totalStudents;
     document.getElementById("averageScore").textContent =
-      `${summary.averageScore} / ${summary.numberOfItems}`;
+      `${summary.averageScore} / ${summary.possibleScore || summary.numberOfItems}`;
     document.getElementById("itemsForRevision").textContent =
       summary.itemsForRevision;
     document.getElementById("weakItems").textContent = summary.weakItems;
@@ -76,9 +76,11 @@ function renderAttainmentTable(bodyId, rows, label, outcomeType) {
 
   if (!body) return;
 
+  const emptyColspan = outcomeType === "Bloom" ? 8 : outcomeType === "SO" ? 10 : 9;
+
   body.innerHTML = rows.length
     ? rows.map((row) => renderAttainmentRow(row, outcomeType)).join("")
-    : `<tr><td colspan="${outcomeType === "Bloom" ? 8 : 9}" class="empty-table-cell">No ${escapeHTML(label)} attainment data.</td></tr>`;
+    : `<tr><td colspan="${emptyColspan}" class="empty-table-cell">No ${escapeHTML(label)} attainment data.</td></tr>`;
 }
 
 function getAttainmentClass(rate, targetRate = 75) {
@@ -100,6 +102,7 @@ function renderAttainmentRow(row, outcomeType) {
   return `
     <tr>
       <td><strong>${escapeHTML(row.code)}</strong></td>
+      ${outcomeType === "SO" ? `<td>${renderPerformanceIndicators(row)}</td>` : ""}
       <td>${row.itemCount || 0}</td>
       <td>${row.responseCount || 0}</td>
       <td>${row.correctCount || 0}</td>
@@ -114,6 +117,45 @@ function renderAttainmentRow(row, outcomeType) {
       }
     </tr>
   `;
+}
+
+function renderPerformanceIndicators(row = {}) {
+  const breakdown = Array.isArray(row.piBreakdown) ? row.piBreakdown : [];
+
+  if (breakdown.length > 0) {
+    const phaseText = renderPhaseBreakdown(row.phaseBreakdown);
+    const rows = breakdown
+      .map(
+        (pi) =>
+          `<small class="muted-text"><strong>${escapeHTML(pi.code)}:</strong> ${escapeHTML(pi.attainmentRate || 0)}% (${escapeHTML(pi.status || "Not assessed")})</small>`,
+      )
+      .join("");
+    return `<details><summary>${escapeHTML(breakdown.length)} PI result${breakdown.length === 1 ? "" : "s"}${phaseText ? ` | ${phaseText}` : ""}</summary>${rows}</details>`;
+  }
+
+  const indicators = Array.isArray(row.performanceIndicatorRows)
+    ? row.performanceIndicatorRows
+    : [];
+
+  if (indicators.length > 0) {
+    return indicators
+      .map(
+        (indicator) =>
+          `<small class="muted-text"><strong>${escapeHTML(indicator.label)}:</strong> ${escapeHTML(indicator.description)}</small>`,
+      )
+      .join("");
+  }
+
+  return escapeHTML(row.performanceIndicators || "Not set");
+}
+
+function renderPhaseBreakdown(phases = []) {
+  return Array.isArray(phases) && phases.length
+    ? phases
+        .filter((phase) => Number(phase.totalWeight || phase.possibleWeight || phase.totalScore || 0) > 0)
+        .map((phase) => `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`)
+        .join(", ")
+    : "";
 }
 
 function renderCqiAction(row, outcomeType) {
@@ -403,6 +445,7 @@ function renderAnalysisRow(item) {
   return `
     <tr>
       <td>${item.itemNo}</td>
+      <td>${item.averageScore || 0} / ${item.maxScore || 1}</td>
       <td>${item.correctCount}</td>
       <td>${item.incorrectCount}</td>
       <td>${item.difficultyIndex}</td>

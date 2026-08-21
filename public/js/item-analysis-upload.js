@@ -59,6 +59,20 @@ function getSelectedGeneratedExam() {
   return generatedExams.find((exam) => exam._id === select.value);
 }
 
+function updateAnalysisTypeFields() {
+  const isProblemSolving =
+    document.getElementById("analysisType").value === "Problem Solving";
+  const answerKeyFields = document.getElementById("answerKeyFields");
+  const maxScoreKeyWrap = document.getElementById("maxScoreKeyWrap");
+  const omrButton = document.querySelector(
+    'button[onclick="downloadOmrTemplate()"]',
+  );
+
+  if (answerKeyFields) answerKeyFields.hidden = isProblemSolving;
+  if (maxScoreKeyWrap) maxScoreKeyWrap.hidden = !isProblemSolving;
+  if (omrButton) omrButton.disabled = isProblemSolving;
+}
+
 function updateLinkedReportButton(analysisExamId = "") {
   const button = document.getElementById("openLinkedItemAnalysisButton");
 
@@ -97,6 +111,14 @@ function getItemAnalysisExamPayload(exam) {
       document.getElementById("analysisAssessmentMethod").value ||
       exam?.assessmentMethod ||
       "Major Exam",
+    assessmentPhase:
+      document.getElementById("analysisAssessmentPhase").value ||
+      exam?.assessmentPhase ||
+      "Summative",
+    analysisType:
+      document.getElementById("analysisType").value ||
+      exam?.examType ||
+      "Multiple Choice",
   };
 }
 
@@ -108,11 +130,13 @@ function formMatchesGeneratedExam(exam) {
   const title = document.getElementById("analysisTitle").value.trim();
   const subject = document.getElementById("analysisSubject").value.trim();
   const items = Number(document.getElementById("analysisItems").value || 0);
+  const analysisType = document.getElementById("analysisType").value;
 
   return (
     title === String(exam.title || "").trim() &&
     subject === String(exam.subject || "").trim() &&
-    items === Number(exam.totalItems || 0)
+    items === Number(exam.totalItems || 0) &&
+    analysisType === (exam.examType || "Multiple Choice")
   );
 }
 
@@ -163,6 +187,8 @@ function renderGeneratedExamMeta() {
     <span>${escapeHTML(exam.semester || "No term")}</span>
     <span>${escapeHTML(exam.schoolYear || "No school year")}</span>
     <span>${escapeHTML(exam.assessmentMethod || "Major Exam")}</span>
+    <span>${escapeHTML(exam.assessmentPhase || "Summative")}</span>
+    <span>${escapeHTML(exam.examType || "Multiple Choice")}</span>
     <span>${escapeHTML(exam.totalItems)} items</span>
     <span>${formatExamDate(exam.createdAt)}</span>
   `;
@@ -229,7 +255,12 @@ async function useGeneratedExamDetails() {
   document.getElementById("analysisSchoolYear").value = exam.schoolYear || "";
   document.getElementById("analysisAssessmentMethod").value =
     exam.assessmentMethod || "Major Exam";
+  document.getElementById("analysisAssessmentPhase").value =
+    exam.assessmentPhase || "Summative";
+  document.getElementById("analysisType").value =
+    exam.examType || "Multiple Choice";
   document.getElementById("analysisItems").value = exam.totalItems || "";
+  updateAnalysisTypeFields();
 
   try {
     setMessage(
@@ -240,7 +271,9 @@ async function useGeneratedExamDetails() {
     await ensureItemAnalysisExamFromGeneratedExam();
     setMessage(
       "generatedExamMessage",
-      "Exam details linked to item analysis. The report shortcut and OMR QR are ready.",
+      (exam.examType || "Multiple Choice") === "Problem Solving"
+        ? "Problem-solving exam linked. Upload numeric item scores to compute analysis."
+        : "Exam details linked to item analysis. The report shortcut and OMR QR are ready.",
       false,
     );
   } catch (error) {
@@ -293,6 +326,9 @@ async function downloadGeneratedAnswerKey() {
 
 async function downloadTemplate(messageId = "itemAnalysisMessage") {
   const items = Number(document.getElementById("analysisItems").value || 50);
+  const analysisType = encodeURIComponent(
+    document.getElementById("analysisType").value || "Multiple Choice",
+  );
 
   try {
     setMessage(
@@ -301,11 +337,14 @@ async function downloadTemplate(messageId = "itemAnalysisMessage") {
       false,
     );
 
-    const res = await fetch(`/api/item-analysis/template?items=${items}`, {
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
+    const res = await fetch(
+      `/api/item-analysis/template?items=${items}&analysisType=${analysisType}`,
+      {
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+        },
       },
-    });
+    );
 
     if (!res.ok) {
       const error = await res.json();
@@ -329,6 +368,14 @@ async function downloadTemplate(messageId = "itemAnalysisMessage") {
 }
 
 async function downloadOmrTemplate() {
+  if (document.getElementById("analysisType").value === "Problem Solving") {
+    setMessage(
+      "itemAnalysisMessage",
+      "OMR sheets are only available for multiple-choice item analysis.",
+    );
+    return;
+  }
+
   let linkedExam = null;
 
   try {
@@ -404,4 +451,9 @@ document
   .getElementById("downloadRequiredFormatTemplateButton")
   .addEventListener("click", () => downloadTemplate("requiredFormatMessage"));
 
+document
+  .getElementById("analysisType")
+  .addEventListener("change", updateAnalysisTypeFields);
+
+updateAnalysisTypeFields();
 loadGeneratedExamChoices();

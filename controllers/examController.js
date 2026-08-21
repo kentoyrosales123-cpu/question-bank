@@ -9,6 +9,9 @@ const {
   normalizeAssessmentMethod,
 } = require("../utils/assessmentMethods");
 const {
+  normalizeAssessmentPhase,
+} = require("../utils/assessmentPhases");
+const {
   canAccessSubject,
   canGenerateExam,
   getSubjectAccessFilter,
@@ -21,6 +24,28 @@ const {
   getQuestionProgramMatch,
   SPECIFIC_ENGINEERING_PROGRAMS,
 } = require("../utils/engineeringPrograms");
+const {
+  attachStudentOutcomeIndicators,
+} = require("../utils/studentOutcomeIndicators");
+const {
+  weightedPhaseAttainment,
+} = require("../utils/phaseAttainment");
+
+const EXAM_TYPES = ["Multiple Choice", "Problem Solving"];
+
+const normalizeExamType = (value) =>
+  EXAM_TYPES.includes(value) ? value : "Multiple Choice";
+
+const getQuestionTypeFilter = (examType) =>
+  normalizeExamType(examType) === "Problem Solving"
+    ? { questionType: "Problem Solving" }
+    : {
+        $or: [
+          { questionType: "Multiple Choice" },
+          { questionType: { $exists: false } },
+          { questionType: "" },
+        ],
+      };
 
 const {
   Document,
@@ -80,6 +105,8 @@ const createAttainmentBucket = (code, targetRate) => ({
   earnedWeight: 0,
   attainmentRate: 0,
   status: "Not assessed",
+  piBuckets: new Map(),
+  phaseBuckets: new Map(),
 });
 
 const finalizeAttainmentBucket = (bucket) => {
@@ -89,7 +116,7 @@ const finalizeAttainmentBucket = (bucket) => {
       ? Math.round((Number(bucket.earnedWeight || 0) / totalWeight) * 100)
       : 0;
 
-  return {
+  const finalized = {
     ...bucket,
     totalWeight: Math.round(totalWeight * 100) / 100,
     earnedWeight: Math.round(Number(bucket.earnedWeight || 0) * 100) / 100,
@@ -101,6 +128,64 @@ const finalizeAttainmentBucket = (bucket) => {
           ? "Attained"
           : "Not attained",
   };
+
+  delete finalized.piBuckets;
+  delete finalized.phaseBuckets;
+
+  return finalized;
+};
+
+const ensureAttainmentBucket = (map, code, targetRate) => {
+  if (!map.has(code)) {
+    map.set(code, createAttainmentBucket(code, targetRate));
+  }
+
+  return map.get(code);
+};
+
+const finalizeStudentOutcomeBucket = (bucket) => {
+  const finalized = finalizeAttainmentBucket(bucket);
+  const piBreakdown = Array.from(bucket.piBuckets?.values?.() || [])
+    .map(finalizeAttainmentBucket)
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const phaseBreakdown = Array.from(bucket.phaseBuckets?.values?.() || [])
+    .map((phaseBucket) => ({
+      ...finalizeAttainmentBucket(phaseBucket),
+      phase: phaseBucket.code,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  const phaseWeightedRate = weightedPhaseAttainment(phaseBreakdown, {
+    evidenceKey: "totalWeight",
+  });
+  const assessedPis = piBreakdown.filter((pi) => Number(pi.totalWeight || 0) > 0);
+
+  if (phaseWeightedRate !== null) {
+    finalized.attainmentRate = phaseWeightedRate;
+    finalized.status =
+      phaseWeightedRate >= Number(finalized.targetRate ?? 75)
+        ? "Attained"
+        : "Not attained";
+  } else if (assessedPis.length > 0) {
+    const attainmentRate =
+      Math.round(
+        (assessedPis.reduce(
+          (sum, pi) => sum + Number(pi.attainmentRate || 0),
+          0,
+        ) /
+          assessedPis.length) *
+          10,
+      ) / 10;
+
+    finalized.attainmentRate = attainmentRate;
+    finalized.status =
+      attainmentRate >= Number(finalized.targetRate ?? 75)
+        ? "Attained"
+        : "Not attained";
+  }
+
+  finalized.piBreakdown = piBreakdown;
+  finalized.phaseBreakdown = phaseBreakdown;
+  return finalized;
 };
 
 const buildExamAttainmentReport = async (exam) => {
@@ -112,11 +197,14 @@ const buildExamAttainmentReport = async (exam) => {
       .filter((answer) => answer.question)
       .map((answer) => [answer.question._id?.toString?.() || answer.question.toString(), answer]),
   );
+  const assessmentPhase = exam.assessmentPhase || "Summative";
 
   (exam.questions || []).forEach((question) => {
     const questionId = question._id.toString();
     const answer = answerByQuestionId.get(questionId);
     const weight = Math.max(0, Number(question.outcomeWeight || 1));
+    const studentOutcomeCode = question.programOutcome || "Unmapped SO";
+    const performanceIndicator = question.performanceIndicator || "";
     const outcomePairs = [
       {
         map: courseOutcomes,
@@ -125,17 +213,13 @@ const buildExamAttainmentReport = async (exam) => {
       },
       {
         map: studentOutcomes,
-        code: question.programOutcome || "Unmapped SO",
+        code: studentOutcomeCode,
         targetRate: settings.studentOutcomeTarget,
       },
     ];
 
     outcomePairs.forEach(({ map, code, targetRate }) => {
-      if (!map.has(code)) {
-        map.set(code, createAttainmentBucket(code, targetRate));
-      }
-
-      const bucket = map.get(code);
+      const bucket = ensureAttainmentBucket(map, code, targetRate);
       bucket.questionCount += 1;
 
       if (answer) {
@@ -148,12 +232,74 @@ const buildExamAttainmentReport = async (exam) => {
         }
       }
     });
+
+    if (answer) {
+      const soBucket = ensureAttainmentBucket(
+        studentOutcomes,
+        studentOutcomeCode,
+        settings.studentOutcomeTarget,
+      );
+      const phaseBucket = ensureAttainmentBucket(
+        soBucket.phaseBuckets,
+        assessmentPhase,
+        settings.studentOutcomeTarget,
+      );
+
+      phaseBucket.assessedItems += 1;
+      phaseBucket.totalWeight += weight;
+
+      if (answer.isCorrect) {
+        phaseBucket.correctItems += 1;
+        phaseBucket.earnedWeight += weight;
+      }
+    }
+
+    if (performanceIndicator) {
+      const soBucket = ensureAttainmentBucket(
+        studentOutcomes,
+        studentOutcomeCode,
+        settings.studentOutcomeTarget,
+      );
+      const piBucket = ensureAttainmentBucket(
+        soBucket.piBuckets,
+        performanceIndicator,
+        settings.studentOutcomeTarget,
+      );
+
+      piBucket.questionCount += 1;
+
+      if (answer) {
+        piBucket.assessedItems += 1;
+        piBucket.totalWeight += weight;
+
+        if (answer.isCorrect) {
+          piBucket.correctItems += 1;
+          piBucket.earnedWeight += weight;
+        }
+        const phaseBucket = ensureAttainmentBucket(
+          piBucket.phaseBuckets,
+          assessmentPhase,
+          settings.studentOutcomeTarget,
+        );
+
+        phaseBucket.assessedItems += 1;
+        phaseBucket.totalWeight += weight;
+        if (answer.isCorrect) {
+          phaseBucket.correctItems += 1;
+          phaseBucket.earnedWeight += weight;
+        }
+      }
+    }
   });
+
+  const studentOutcomeRows = await attachStudentOutcomeIndicators(
+    Array.from(studentOutcomes.values()).map(finalizeStudentOutcomeBucket),
+  );
 
   return {
     settings,
     courseOutcomes: Array.from(courseOutcomes.values()).map(finalizeAttainmentBucket),
-    studentOutcomes: Array.from(studentOutcomes.values()).map(finalizeAttainmentBucket),
+    studentOutcomes: studentOutcomeRows,
   };
 };
 
@@ -176,12 +322,14 @@ const getRandomQuestions = async (
   difficulty,
   count,
   obeFilters = {},
+  examType = "Multiple Choice",
 ) => {
   if (Number(count) <= 0) {
     return [];
   }
 
   const match = {
+    ...getQuestionTypeFilter(examType),
     difficulty,
     engineeringProgram: getQuestionProgramMatch(engineeringProgram),
     courseOutcome: { $ne: "" },
@@ -232,7 +380,7 @@ const normalizeBlueprint = (blueprint = []) =>
         row.easyCount + row.averageCount + row.difficultCount > 0,
     );
 
-const getBlueprintQuestions = async (engineeringProgram, blueprint) => {
+const getBlueprintQuestions = async (engineeringProgram, blueprint, examType) => {
   const selected = [];
 
   for (const row of blueprint) {
@@ -243,6 +391,8 @@ const getBlueprintQuestions = async (engineeringProgram, blueprint) => {
         [row.topic],
         "Easy",
         row.easyCount,
+        {},
+        examType,
       )),
       ...(await getRandomQuestions(
         engineeringProgram,
@@ -250,6 +400,8 @@ const getBlueprintQuestions = async (engineeringProgram, blueprint) => {
         [row.topic],
         "Average",
         row.averageCount,
+        {},
+        examType,
       )),
       ...(await getRandomQuestions(
         engineeringProgram,
@@ -257,6 +409,8 @@ const getBlueprintQuestions = async (engineeringProgram, blueprint) => {
         [row.topic],
         "Difficult",
         row.difficultCount,
+        {},
+        examType,
       )),
     ];
     const expected = row.easyCount + row.averageCount + row.difficultCount;
@@ -408,7 +562,9 @@ const enqueueGenerationJob = (req) => {
 exports.getExamOptions = async (req, res) => {
   try {
     const subjectAccessFilter = getSubjectAccessFilter(req.user);
+    const questionTypeFilter = getQuestionTypeFilter(req.query.examType);
     const options = await Question.aggregate([
+      { $match: questionTypeFilter },
       ...(Object.keys(subjectAccessFilter).length > 0
         ? [{ $match: subjectAccessFilter }]
         : []),
@@ -428,17 +584,21 @@ exports.getExamOptions = async (req, res) => {
     ] = await Promise.all([
       Question.distinct("courseOutcome", {
         ...subjectAccessFilter,
+        ...questionTypeFilter,
         courseOutcome: { $ne: "" },
       }),
       Question.distinct("programOutcome", {
         ...subjectAccessFilter,
+        ...questionTypeFilter,
         programOutcome: { $ne: "" },
       }),
       Question.distinct("bloomLevel", {
         ...subjectAccessFilter,
+        ...questionTypeFilter,
         bloomLevel: { $ne: "" },
       }),
       Question.aggregate([
+        { $match: questionTypeFilter },
         ...(Object.keys(subjectAccessFilter).length > 0
           ? [{ $match: subjectAccessFilter }]
           : []),
@@ -512,6 +672,8 @@ const generateExamForQueue = async (req, res) => {
       semester,
       schoolYear,
       assessmentMethod,
+      assessmentPhase,
+      examType,
       totalItems,
       easyCount,
       averageCount,
@@ -524,6 +686,8 @@ const generateExamForQueue = async (req, res) => {
     const topics = normalizeSelection(req.body.topics || topic);
     const selectedAssessmentMethod =
       normalizeAssessmentMethod(assessmentMethod);
+    const selectedAssessmentPhase = normalizeAssessmentPhase(assessmentPhase);
+    const selectedExamType = normalizeExamType(examType);
     const selectedSection = String(section || "").trim();
     const selectedSemester = String(semester || "").trim();
     const selectedSchoolYear = String(schoolYear || "").trim();
@@ -626,7 +790,11 @@ const generateExamForQueue = async (req, res) => {
     if (useBlueprint) {
       try {
         allQuestions = (
-          await getBlueprintQuestions(selectedEngineeringProgram, blueprint)
+          await getBlueprintQuestions(
+            selectedEngineeringProgram,
+            blueprint,
+            selectedExamType,
+          )
         ).sort(
           () => Math.random() - 0.5,
         );
@@ -644,6 +812,7 @@ const generateExamForQueue = async (req, res) => {
         "Easy",
         easyCount,
         obeFilters,
+        selectedExamType,
       );
 
       const averageQuestions = await getRandomQuestions(
@@ -653,6 +822,7 @@ const generateExamForQueue = async (req, res) => {
         "Average",
         averageCount,
         obeFilters,
+        selectedExamType,
       );
 
       const difficultQuestions = await getRandomQuestions(
@@ -662,6 +832,7 @@ const generateExamForQueue = async (req, res) => {
         "Difficult",
         difficultCount,
         obeFilters,
+        selectedExamType,
       );
 
       if (
@@ -710,6 +881,8 @@ const generateExamForQueue = async (req, res) => {
       semester: selectedSemester,
       schoolYear: selectedSchoolYear,
       assessmentMethod: selectedAssessmentMethod,
+      assessmentPhase: selectedAssessmentPhase,
+      examType: selectedExamType,
       totalItems,
       easyCount,
       averageCount,
@@ -738,6 +911,7 @@ const generateExamForQueue = async (req, res) => {
         semester: selectedSemester,
         schoolYear: selectedSchoolYear,
         assessmentMethod: selectedAssessmentMethod,
+        examType: selectedExamType,
         subjects,
         topics,
         totalItems,
@@ -812,7 +986,13 @@ exports.submitExam = async (req, res) => {
 
       const selectedAnswer = userAnswer ? userAnswer.selectedAnswer : "";
 
-      const isCorrect = selectedAnswer === question.correctAnswer;
+      const isProblemSolving = question.questionType === "Problem Solving";
+      const expectedAnswer = isProblemSolving
+        ? question.solutionAnswer
+        : question.correctAnswer;
+      const isCorrect =
+        String(selectedAnswer || "").trim().toLowerCase() ===
+        String(expectedAnswer || "").trim().toLowerCase();
 
       if (isCorrect) score++;
 
@@ -951,7 +1131,7 @@ exports.getMyExamSummary = async (req, res) => {
       }),
       Exam.find({ user: req.user._id })
         .select(
-          "title engineeringProgram subject topic section semester schoolYear totalItems approvalStatus createdAt updatedAt",
+          "title engineeringProgram subject topic section semester schoolYear assessmentPhase examType totalItems approvalStatus createdAt updatedAt",
         )
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(10),
@@ -1191,7 +1371,10 @@ const buildTosRows = (exam) => {
           ? `${row.subject} - ${row.topic}`
           : row.topic,
       cogPr: Array.from(row.difficulties).filter(Boolean).join(", "),
-      assessmentTask: "Multiple-choice test item",
+      assessmentTask:
+        exam.examType === "Problem Solving"
+          ? "Problem-solving item"
+          : "Multiple-choice test item",
       percent: `${percent}%`,
       weight: itemCount,
       points: itemCount,
@@ -1958,6 +2141,8 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
   }
   children.push(
     new Paragraph(`Assessment Method: ${exam.assessmentMethod || "Major Exam"}`),
+    new Paragraph(`Assessment Phase: ${exam.assessmentPhase || "Summative"}`),
+    new Paragraph(`Exam Type: ${exam.examType || "Multiple Choice"}`),
   );
   children.push(new Paragraph(`Topic: ${exam.topic || "General"}`));
   children.push(new Paragraph(`Total Items: ${exam.totalItems}`));
@@ -2000,15 +2185,24 @@ const buildExamDocxBuffer = async (exam, options = {}) => {
       children.push(new Paragraph(""));
     });
 
-    children.push(new Paragraph(`A. ${q.choices.A}`));
-    children.push(new Paragraph(`B. ${q.choices.B}`));
-    children.push(new Paragraph(`C. ${q.choices.C}`));
-    children.push(new Paragraph(`D. ${q.choices.D}`));
+    if (q.questionType === "Problem Solving") {
+      children.push(new Paragraph("Answer: ______________________________"));
+      children.push(new Paragraph(""));
+      children.push(new Paragraph(""));
+    } else {
+      children.push(new Paragraph(`A. ${q.choices.A}`));
+      children.push(new Paragraph(`B. ${q.choices.B}`));
+      children.push(new Paragraph(`C. ${q.choices.C}`));
+      children.push(new Paragraph(`D. ${q.choices.D}`));
+    }
 
     if (includeAnswerKey) {
-      const answerText = q.correctAnswer
-        ? `${q.correctAnswer}. ${q.choices[q.correctAnswer] || ""}`
-        : "No answer set";
+      const answerText =
+        q.questionType === "Problem Solving"
+          ? q.solutionAnswer || "No answer set"
+          : q.correctAnswer
+            ? `${q.correctAnswer}. ${q.choices[q.correctAnswer] || ""}`
+            : "No answer set";
 
       children.push(
         new Paragraph({

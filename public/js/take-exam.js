@@ -36,15 +36,22 @@ async function loadExam() {
           ${renderQuestionTables(q.tables)}
           ${q.tableData ? `<pre>${escapeHTML(q.tableData)}</pre>` : ""}
 
-          ${["A", "B", "C", "D"]
-            .map(
-              (letter) => `
-            <label class="choice">
-              ${letter}. ${escapeHTML(q.choices[letter])}
-            </label>
-          `,
-            )
-            .join("")}
+          ${
+            q.questionType === "Problem Solving"
+              ? `<div class="question-detail-block">
+                  <span class="field-label">Answer</span>
+                  <div class="answer-space"></div>
+                </div>`
+              : ["A", "B", "C", "D"]
+                  .map(
+                    (letter) => `
+              <label class="choice">
+                ${letter}. ${escapeHTML(q.choices?.[letter] || "")}
+              </label>
+            `,
+                  )
+                  .join("")
+          }
         </div>
       `,
         )

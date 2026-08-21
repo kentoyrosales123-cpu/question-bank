@@ -54,7 +54,9 @@ function updateParsedReviewScope(data) {
 }
 
 function updateReviewStats(questions) {
-  const needsAnswer = questions.filter((q) => !q.correctAnswer).length;
+  const needsAnswer = questions.filter((q) =>
+    q.questionType === "Problem Solving" ? !q.solutionAnswer : !q.correctAnswer,
+  ).length;
   const withMedia = questions.filter(
     (q) =>
       (q.image && q.image.contentType) ||
@@ -163,14 +165,24 @@ function renderParsedCard(q, index) {
           <label class="field-label" for="questionText_${q._id}">Question Text</label>
           <textarea id="questionText_${q._id}" class="question-textarea">${escapeHTML(q.questionText)}</textarea>
 
-          <div class="choice-grid">
+          <div class="field-grid two">
+            <div>
+              <label class="field-label" for="questionType_${q._id}">Question Type</label>
+              <select id="questionType_${q._id}" onchange="toggleParsedQuestionType('${q._id}')">
+                <option value="Multiple Choice" ${(q.questionType || "Multiple Choice") === "Multiple Choice" ? "selected" : ""}>Multiple Choice</option>
+                <option value="Problem Solving" ${q.questionType === "Problem Solving" ? "selected" : ""}>Problem Solving</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="choice-grid" id="mcqFields_${q._id}" ${q.questionType === "Problem Solving" ? "hidden" : ""}>
             ${renderChoiceField("A", q)}
             ${renderChoiceField("B", q)}
             ${renderChoiceField("C", q)}
             ${renderChoiceField("D", q)}
           </div>
 
-          <div class="field-grid two">
+          <div class="field-grid two" id="mcqAnswer_${q._id}" ${q.questionType === "Problem Solving" ? "hidden" : ""}>
             <div>
               <label class="field-label" for="correctAnswer_${q._id}">Correct Answer</label>
               <select id="correctAnswer_${q._id}">
@@ -190,6 +202,11 @@ function renderParsedCard(q, index) {
               </select>
             </div>
           </div>
+
+          <label id="solutionAnswerWrap_${q._id}" ${q.questionType === "Problem Solving" ? "" : "hidden"}>
+            <span class="field-label" for="solutionAnswer_${q._id}">Final Answer</span>
+            <textarea id="solutionAnswer_${q._id}" class="explanation-textarea">${escapeHTML(q.solutionAnswer || "")}</textarea>
+          </label>
 
           <div class="obe-suggestion">
             <small>
@@ -221,6 +238,8 @@ function renderParsedCard(q, index) {
             ${renderField("Course Outcome", `courseOutcome_${q._id}`, appliedOutcome.courseOutcome)}
             ${renderField("Student Outcome", `programOutcome_${q._id}`, appliedOutcome.programOutcome)}
           </div>
+
+          ${renderField("Performance Indicator", `performanceIndicator_${q._id}`, appliedOutcome.performanceIndicator)}
 
           ${renderField("Student Learning Outcome", `studentLearningOutcome_${q._id}`, appliedOutcome.studentLearningOutcome)}
 
@@ -266,6 +285,8 @@ function getAutoAppliedOutcomeValues(q) {
   return {
     courseOutcome: q.courseOutcome || suggestion.code || "",
     programOutcome: q.programOutcome || suggestion.programOutcome || "",
+    performanceIndicator:
+      q.performanceIndicator || suggestion.performanceIndicator || "",
     studentLearningOutcome:
       q.studentLearningOutcome || suggestion.studentLearningOutcome || "",
     bloomLevel: q.bloomLevel || suggestion.bloomLevel || "",
@@ -430,20 +451,38 @@ function renderChoiceField(letter, q) {
   `;
 }
 
+function toggleParsedQuestionType(id) {
+  const isProblemSolving =
+    document.getElementById(`questionType_${id}`)?.value === "Problem Solving";
+  const mcqFields = document.getElementById(`mcqFields_${id}`);
+  const mcqAnswer = document.getElementById(`mcqAnswer_${id}`);
+  const solutionAnswer = document.getElementById(`solutionAnswerWrap_${id}`);
+
+  if (mcqFields) mcqFields.hidden = isProblemSolving;
+  if (mcqAnswer) mcqAnswer.hidden = isProblemSolving;
+  if (solutionAnswer) solutionAnswer.hidden = !isProblemSolving;
+}
+
 function getQuestionWarnings(q) {
   const warnings = [];
+  const isProblemSolving = q.questionType === "Problem Solving";
   const filledChoices = ["A", "B", "C", "D"].filter(
     (letter) => q.choices && q.choices[letter],
   );
 
   if (!q.questionText) warnings.push("Missing question text");
-  if (filledChoices.length < 4) warnings.push("Incomplete choices");
-  if (!q.correctAnswer) warnings.push("No answer selected");
+  if (isProblemSolving) {
+    if (!q.solutionAnswer) warnings.push("Missing final answer");
+  } else {
+    if (filledChoices.length < 4) warnings.push("Incomplete choices");
+    if (!q.correctAnswer) warnings.push("No answer selected");
+  }
   if (!q.subject) warnings.push("Missing subject");
   if (!q.engineeringProgram) warnings.push("Missing program");
   if (!q.topic) warnings.push("Missing topic");
   if (!q.courseOutcome) warnings.push("Missing CO/CLO");
   if (!q.programOutcome) warnings.push("Missing SO");
+  if (!q.performanceIndicator) warnings.push("Missing PI");
   if (!q.studentLearningOutcome) warnings.push("Missing SLO");
   if (!q.bloomLevel) warnings.push("Missing Bloom level");
   if (!Number.isFinite(Number(q.outcomeWeight)) || Number(q.outcomeWeight) <= 0) {
@@ -490,24 +529,33 @@ function getParsedQuestionApprovalError(body) {
   const missingChoices = ["A", "B", "C", "D"].filter(
     (letter) => !body.choices[letter],
   );
+  const isProblemSolving = body.questionType === "Problem Solving";
 
   if (!body.engineeringProgram) {
     return "This question has no saved engineering program. Re-parse it after selecting a program.";
   }
 
-  if (!body.correctAnswer || missingChoices.length > 0) {
+  if (
+    !isProblemSolving &&
+    (!body.correctAnswer || missingChoices.length > 0)
+  ) {
     return "Set the correct answer and complete all choices before approving.";
+  }
+
+  if (isProblemSolving && !body.solutionAnswer) {
+    return "Set the final answer before approving.";
   }
 
   if (
     !body.courseOutcome ||
     !body.programOutcome ||
+    !body.performanceIndicator ||
     !body.studentLearningOutcome ||
     !body.bloomLevel ||
     !Number.isFinite(Number(body.outcomeWeight)) ||
     Number(body.outcomeWeight) <= 0
   ) {
-    return "Complete CO/CLO, SO, SLO, Bloom level, and positive outcome weight before approving.";
+    return "Complete CO/CLO, SO, PI, SLO, Bloom level, and positive outcome weight before approving.";
   }
 
   return "";
@@ -799,6 +847,7 @@ function getParsedFormBody(id) {
     engineeringProgram: parsedQuestion?.engineeringProgram || "",
     topic: document.getElementById(`topic_${id}`).value.trim(),
     questionText: document.getElementById(`questionText_${id}`).value.trim(),
+    questionType: document.getElementById(`questionType_${id}`).value,
     choices: {
       A: document.getElementById(`choiceA_${id}`).value.trim(),
       B: document.getElementById(`choiceB_${id}`).value.trim(),
@@ -806,12 +855,16 @@ function getParsedFormBody(id) {
       D: document.getElementById(`choiceD_${id}`).value.trim(),
     },
     correctAnswer: document.getElementById(`correctAnswer_${id}`).value,
+    solutionAnswer: document.getElementById(`solutionAnswer_${id}`).value.trim(),
     difficulty: document.getElementById(`difficulty_${id}`).value,
     isComplexEngineeringProblem: document.getElementById(
       `isComplexEngineeringProblem_${id}`,
     ).checked,
     courseOutcome: document.getElementById(`courseOutcome_${id}`).value.trim(),
     programOutcome: document.getElementById(`programOutcome_${id}`).value.trim(),
+    performanceIndicator: document
+      .getElementById(`performanceIndicator_${id}`)
+      .value.trim(),
     studentLearningOutcome: document
       .getElementById(`studentLearningOutcome_${id}`)
       .value.trim(),

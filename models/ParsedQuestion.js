@@ -23,6 +23,11 @@ const parsedQuestionSchema = new mongoose.Schema(
     },
     topic: { type: String, default: "" },
     questionText: { type: String, required: true },
+    questionType: {
+      type: String,
+      enum: ["Multiple Choice", "Problem Solving"],
+      default: "Multiple Choice",
+    },
     choices: {
       A: { type: String, default: "" },
       B: { type: String, default: "" },
@@ -34,6 +39,7 @@ const parsedQuestionSchema = new mongoose.Schema(
       enum: ["A", "B", "C", "D", ""],
       default: "",
     },
+    solutionAnswer: { type: String, default: "", trim: true },
     difficulty: {
       type: String,
       enum: ["Easy", "Average", "Difficult"],
@@ -41,6 +47,7 @@ const parsedQuestionSchema = new mongoose.Schema(
     },
     courseOutcome: { type: String, default: "", trim: true },
     programOutcome: { type: String, default: "", trim: true },
+    performanceIndicator: { type: String, default: "", trim: true },
     studentLearningOutcome: { type: String, default: "", trim: true },
     bloomLevel: {
       type: String,

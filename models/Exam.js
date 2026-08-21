@@ -3,6 +3,10 @@ const {
   ASSESSMENT_METHODS,
   DEFAULT_ASSESSMENT_METHOD,
 } = require("../utils/assessmentMethods");
+const {
+  ASSESSMENT_PHASES,
+  DEFAULT_ASSESSMENT_PHASE,
+} = require("../utils/assessmentPhases");
 
 const examSchema = new mongoose.Schema(
   {
@@ -49,6 +53,19 @@ const examSchema = new mongoose.Schema(
       type: String,
       enum: ASSESSMENT_METHODS,
       default: DEFAULT_ASSESSMENT_METHOD,
+      trim: true,
+    },
+    assessmentPhase: {
+      type: String,
+      enum: ASSESSMENT_PHASES,
+      default: DEFAULT_ASSESSMENT_PHASE,
+      trim: true,
+    },
+
+    examType: {
+      type: String,
+      enum: ["Multiple Choice", "Problem Solving"],
+      default: "Multiple Choice",
       trim: true,
     },
 

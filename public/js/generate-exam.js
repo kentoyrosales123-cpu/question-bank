@@ -9,6 +9,7 @@ const summaryFields = [
   "title",
   "engineeringProgram",
   "assessmentMethod",
+  "examType",
   "section",
   "semester",
   "schoolYear",
@@ -83,6 +84,7 @@ function updateExamSummary() {
   const topics = getSelectedValues("topic");
   const engineeringProgram = document.getElementById("engineeringProgram").value;
   const assessmentMethod = document.getElementById("assessmentMethod").value;
+  const examType = document.getElementById("examType").value;
   const section = document.getElementById("section").value;
   const semester = document.getElementById("semester").value;
   const schoolYear = document.getElementById("schoolYear").value;
@@ -92,6 +94,8 @@ function updateExamSummary() {
     engineeringProgram || "Not selected";
   document.getElementById("summaryAssessmentMethod").textContent =
     assessmentMethod || "Major Exam";
+  document.getElementById("summaryExamType").textContent =
+    examType || "Multiple Choice";
   document.getElementById("summarySection").textContent = section || "Not set";
   document.getElementById("summaryTerm").textContent = semester || "Not set";
   document.getElementById("summarySchoolYear").textContent =
@@ -348,7 +352,10 @@ function updateTopicOptions() {
 
 async function loadExamOptions() {
   try {
-    const data = await apiRequest("/exams/options");
+    const examType = encodeURIComponent(
+      document.getElementById("examType")?.value || "Multiple Choice",
+    );
+    const data = await apiRequest(`/exams/options?examType=${examType}`);
     examOptionData = data.subjects || [];
     examOutcomeOptionData = data.outcomeOptions || [];
 
@@ -372,6 +379,12 @@ document
 document
   .getElementById("engineeringProgram")
   .addEventListener("change", updateOutcomeOptions);
+document.getElementById("examType").addEventListener("change", () => {
+  blueprintRows = [];
+  loadExamOptions();
+  renderBlueprintRows();
+  updateExamSummary();
+});
 document.getElementById("topic").addEventListener("change", updateExamSummary);
 document
   .getElementById("topicSearch")
@@ -400,6 +413,8 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
     title: document.getElementById("title").value,
     engineeringProgram,
     assessmentMethod: document.getElementById("assessmentMethod").value,
+    assessmentPhase: document.getElementById("assessmentPhase").value,
+    examType: document.getElementById("examType").value,
     section: document.getElementById("section").value,
     semester: document.getElementById("semester").value,
     schoolYear: document.getElementById("schoolYear").value,

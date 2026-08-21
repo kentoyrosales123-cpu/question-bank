@@ -26,6 +26,10 @@ const RESOURCE_LABELS = {
 
 const SPECIAL_ACTIONS = [
   {
+    pattern: /^\/api\/exams\/generate\b/,
+    skip: true,
+  },
+  {
     pattern: /^\/api\/obe\/peos\b/,
     action: "manage_peo",
     description: "Managed Program Educational Objective",
@@ -140,6 +144,9 @@ const activityAuditMiddleware = (req, res, next) => {
     }
 
     const activity = buildActivity(req);
+    if (activity.skip) {
+      return;
+    }
 
     logActivity(req, {
       user: req.user,

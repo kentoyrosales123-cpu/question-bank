@@ -3,12 +3,18 @@ const {
   ASSESSMENT_METHODS,
   DEFAULT_ASSESSMENT_METHOD,
 } = require("../utils/assessmentMethods");
+const {
+  ASSESSMENT_PHASES,
+  DEFAULT_ASSESSMENT_PHASE,
+} = require("../utils/assessmentPhases");
 
 const rubricCriterionSchema = new mongoose.Schema(
   {
     label: { type: String, required: true, trim: true },
+    itemNo: { type: Number, default: 0, min: 0 },
     courseOutcome: { type: String, default: "", trim: true },
     programOutcome: { type: String, default: "", trim: true },
+    performanceIndicator: { type: String, default: "", trim: true },
     bloomLevel: {
       type: String,
       enum: [
@@ -60,6 +66,12 @@ const rubricAssessmentSchema = new mongoose.Schema(
       type: String,
       enum: ASSESSMENT_METHODS,
       default: DEFAULT_ASSESSMENT_METHOD,
+      trim: true,
+    },
+    assessmentPhase: {
+      type: String,
+      enum: ASSESSMENT_PHASES,
+      default: DEFAULT_ASSESSMENT_PHASE,
       trim: true,
     },
     criteria: [rubricCriterionSchema],

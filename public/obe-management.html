@@ -270,6 +270,7 @@
                   <thead>
                     <tr>
                       <th>SO</th>
+                      <th>Performance Indicators</th>
                       <th>Assessed</th>
                       <th>Correct</th>
                       <th>Students</th>
@@ -437,6 +438,13 @@
                 placeholder="Apply knowledge of mathematics, natural science, engineering fundamentals..."
               ></textarea>
             </label>
+            <label>
+              <span class="field-label">Performance Indicators</span>
+              <textarea
+                id="soPerformanceIndicators"
+                placeholder="1. Identify the Engineering problem&#10;2. Select Science and Math knowledge relevant to the Engineering problem"
+              ></textarea>
+            </label>
             <div class="field-grid two">
               <div>
                 <span class="field-label">Graduate Attributes</span>
@@ -471,7 +479,7 @@
               <textarea
                 id="bulkSoText"
                 required
-                placeholder="SO a | Apply knowledge of mathematics, natural science, engineering fundamentals... | Galing | 1&#10;SO b | Conduct investigations of complex engineering problems... | Gawa | 2"
+                placeholder="SO a | Apply knowledge of mathematics, natural science, engineering fundamentals... | Galing | 1 | 1. Identify the Engineering problem; 2. Select relevant knowledge&#10;SO b | Conduct investigations of complex engineering problems... | Gawa | 2 | 1. Design experiments"
               ></textarea>
             </label>
             <button class="btn" type="submit">Import SO Rows</button>
@@ -494,6 +502,7 @@
                   <th>Department</th>
                   <th>SO</th>
                   <th>Description</th>
+                  <th>Performance Indicators</th>
                   <th>GA Links</th>
                   <th>PEO Links</th>
                   <th>Action</th>
@@ -663,6 +672,13 @@
                 </select>
               </label>
               <label>
+                <span class="field-label">Assessment Phase</span>
+                <select id="rubricAssessmentPhase">
+                  <option value="Formative">Formative</option>
+                  <option value="Summative" selected>Summative</option>
+                </select>
+              </label>
+              <label>
                 <span class="field-label">Section</span>
                 <input id="rubricSection" placeholder="BSECE 3A" />
               </label>
@@ -680,7 +696,7 @@
               <textarea
                 id="rubricCriteria"
                 required
-                placeholder="Analysis | CO1 | a | Apply | 20 | 15&#10;Prototype | CO2 | b | Create | 30 | 22.5"
+                placeholder="Analysis | CO1 | a | PI 1 | Apply | 20 | 15&#10;Prototype | CO2 | b | PI 2 | Create | 30 | 22.5"
               ></textarea>
             </label>
             <label>
@@ -696,6 +712,28 @@
 
           <form class="card" id="rubricImportForm">
             <h2>Excel Rubric Upload</h2>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Generated Problem-Solving Exam</span>
+                <select id="rubricTemplateExam">
+                  <option value="">Loading generated exams...</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Rubric to Use</span>
+                <select id="rubricTemplateType">
+                  <option value="">Loading rubrics...</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Problem-Solving Items</span>
+                <input id="rubricTemplateItems" type="number" min="1" max="50" value="3" />
+              </label>
+              <label>
+                <span class="field-label">Max Score per Item</span>
+                <input id="rubricTemplateMaxScore" type="number" min="1" step="0.5" value="10" />
+              </label>
+            </div>
             <div class="form-actions">
               <button
                 class="btn secondary"
@@ -703,6 +741,23 @@
                 onclick="downloadRubricTemplate()"
               >
                 Download Template
+              </button>
+            </div>
+            <label>
+              <span class="field-label">Editable Rubric Scoring</span>
+              <textarea
+                id="rubricTemplateCriteria"
+                rows="9"
+                placeholder="Criterion | Excellent | Good | Fair | Needs Improvement | Max Points"
+              ></textarea>
+            </label>
+            <div class="form-actions">
+              <button
+                class="btn secondary"
+                type="button"
+                onclick="saveSelectedRubricTemplate()"
+              >
+                Save Rubric Scoring
               </button>
             </div>
             <label>
@@ -763,6 +818,13 @@
                 <input id="evidenceSubject" placeholder="Circuits 1" />
               </label>
               <label>
+                <span class="field-label">Assessment Phase</span>
+                <select id="evidenceAssessmentPhase">
+                  <option value="Formative">Formative</option>
+                  <option value="Summative" selected>Summative</option>
+                </select>
+              </label>
+              <label>
                 <span class="field-label">Program</span>
                 <select id="evidenceProgram">
                   <option value="">Not set</option>
@@ -815,6 +877,7 @@
                   <tr>
                     <th>Evidence</th>
                     <th>Type</th>
+                    <th>Phase</th>
                     <th>Subject</th>
                     <th>Outcomes</th>
                     <th>File</th>

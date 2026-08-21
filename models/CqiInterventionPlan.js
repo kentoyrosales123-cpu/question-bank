@@ -9,7 +9,7 @@ const cqiInterventionPlanSchema = new mongoose.Schema(
     },
     outcomeType: {
       type: String,
-      enum: ["CO", "SO"],
+      enum: ["CO", "SO", "PI"],
       required: true,
     },
     outcomeCode: {

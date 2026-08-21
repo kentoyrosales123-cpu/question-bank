@@ -64,6 +64,8 @@ const runGenerationJob = async ({ job, user, body }) => {
     const saved = await ParsedQuestion.insertMany(
       generatedQuestions.map((question) => ({
         ...question,
+        questionType: "Multiple Choice",
+        solutionAnswer: "",
         source: "AI",
         generatedBy: user._id,
         status: "Pending",

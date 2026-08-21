@@ -17,6 +17,8 @@ let studentOutcomePage = 1;
 let courseOutcomePage = 1;
 let curriculumMapPage = 1;
 let rubricAssessments = [];
+let rubricTemplates = [];
+let rubricTemplateExams = [];
 let evidenceRecords = [];
 let attainmentSnapshots = [];
 let editingCourseOutcomeId = null;
@@ -337,7 +339,7 @@ function renderCqiRecommendationRows(rows = []) {
 
 function renderLiveOutcomeRows(rows = [], type = "CLO") {
   if (!rows.length) {
-    return `<tr><td colspan="${type === "CLO" ? 7 : 6}" class="empty-table-cell">No ${type} attainment evidence yet.</td></tr>`;
+    return `<tr><td colspan="${type === "CLO" ? 7 : 7}" class="empty-table-cell">No ${type} attainment evidence yet.</td></tr>`;
   }
 
   return rows
@@ -350,6 +352,7 @@ function renderLiveOutcomeRows(rows = [], type = "CLO") {
               ? `<td>${escapeHTML(row.programs || "Not set")}</td>`
               : ""
           }
+          ${type === "SO" ? `<td>${renderPerformanceIndicators(row)}</td>` : ""}
           <td>${row.assessedItems || 0}</td>
           <td>${row.correctItems || 0}</td>
           <td>${row.attainedStudents || 0} / ${row.assessedStudents || 0}</td>
@@ -363,6 +366,45 @@ function renderLiveOutcomeRows(rows = [], type = "CLO") {
       `,
     )
     .join("");
+}
+
+function renderPerformanceIndicators(row = {}) {
+  const breakdown = Array.isArray(row.piBreakdown) ? row.piBreakdown : [];
+
+  if (breakdown.length > 0) {
+    const phaseText = renderPhaseBreakdown(row.phaseBreakdown);
+    const rows = breakdown
+      .map(
+        (pi) =>
+          `<small class="muted-text"><strong>${escapeHTML(pi.code)}:</strong> ${escapeHTML(pi.attainmentRate || 0)}% (${escapeHTML(pi.status || "No Evidence")})</small>`,
+      )
+      .join("");
+    return `<details><summary>${escapeHTML(breakdown.length)} PI result${breakdown.length === 1 ? "" : "s"}${phaseText ? ` | ${phaseText}` : ""}</summary>${rows}</details>`;
+  }
+
+  const indicators = Array.isArray(row.performanceIndicatorRows)
+    ? row.performanceIndicatorRows
+    : [];
+
+  if (indicators.length > 0) {
+    return indicators
+      .map(
+        (indicator) =>
+          `<small class="muted-text"><strong>${escapeHTML(indicator.label)}:</strong> ${escapeHTML(indicator.description)}</small>`,
+      )
+      .join("");
+  }
+
+  return escapeHTML(row.performanceIndicators || "Not set");
+}
+
+function renderPhaseBreakdown(phases = []) {
+  return Array.isArray(phases) && phases.length
+    ? phases
+        .filter((phase) => Number(phase.totalWeight || phase.possibleWeight || phase.totalScore || 0) > 0)
+        .map((phase) => `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`)
+        .join(", ")
+    : "";
 }
 
 function renderLiveCepRows(rows = []) {
@@ -438,9 +480,10 @@ function parseRubricCriteriaInput() {
         label: parts[0] || "",
         courseOutcome: parts[1] || "",
         programOutcome: formatStudentOutcomeLink(parts[2] || ""),
-        bloomLevel: parts[3] || "",
-        maxScore: Number(parts[4] || 0),
-        targetScore: Number(parts[5] || 0),
+        performanceIndicator: parts.length >= 7 ? parts[3] || "" : "",
+        bloomLevel: parts[parts.length >= 7 ? 4 : 3] || "",
+        maxScore: Number(parts[parts.length >= 7 ? 5 : 4] || 0),
+        targetScore: Number(parts[parts.length >= 7 ? 6 : 5] || 0),
         weight: 1,
       };
     });
@@ -467,6 +510,158 @@ function parseRubricStudentScoresInput() {
         })),
       };
     });
+}
+
+function formatRubricTemplateCriteria(criteria = []) {
+  return criteria
+    .map(
+      (criterion) =>
+        [
+          criterion.criterion || "",
+          criterion.excellent || "",
+          criterion.good || "",
+          criterion.fair || "",
+          criterion.needsImprovement || "",
+          criterion.maxPoints || 0,
+        ].join(" | "),
+    )
+    .join("\n");
+}
+
+function parseRubricTemplateCriteriaInput() {
+  return String(document.getElementById("rubricTemplateCriteria")?.value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("|").map((part) => part.trim());
+
+      return {
+        criterion: parts[0] || "",
+        excellent: parts[1] || "",
+        good: parts[2] || "",
+        fair: parts[3] || "",
+        needsImprovement: parts[4] || "",
+        maxPoints: Number(parts[5] || 0),
+      };
+    });
+}
+
+function getSelectedRubricTemplate() {
+  const id = document.getElementById("rubricTemplateType")?.value || "";
+  return rubricTemplates.find((template) => template._id === id);
+}
+
+function renderRubricTemplateOptions() {
+  const select = document.getElementById("rubricTemplateType");
+  const criteriaInput = document.getElementById("rubricTemplateCriteria");
+
+  if (!select || !criteriaInput) return;
+
+  if (rubricTemplates.length === 0) {
+    select.innerHTML = `<option value="">No rubric templates found</option>`;
+    criteriaInput.value = "";
+    return;
+  }
+
+  const selected = select.value || rubricTemplates[0]._id;
+  select.innerHTML = rubricTemplates
+    .map(
+      (template) => `
+        <option value="${escapeHTML(template._id)}" ${template._id === selected ? "selected" : ""}>
+          ${escapeHTML(template.name)}
+        </option>
+      `,
+    )
+    .join("");
+
+  const template = getSelectedRubricTemplate() || rubricTemplates[0];
+  select.value = template._id;
+  criteriaInput.value = formatRubricTemplateCriteria(template.criteria || []);
+}
+
+async function loadRubricTemplates() {
+  try {
+    const data = await apiRequest("/obe/rubric-templates");
+    rubricTemplates = data.templates || [];
+    renderRubricTemplateOptions();
+  } catch (error) {
+    setMessage("rubricImportMessage", getObeRouteErrorMessage(error));
+  }
+}
+
+function getSelectedRubricTemplateExam() {
+  const id = document.getElementById("rubricTemplateExam")?.value || "";
+  return rubricTemplateExams.find((exam) => exam._id === id);
+}
+
+function renderRubricTemplateExamOptions() {
+  const select = document.getElementById("rubricTemplateExam");
+
+  if (!select) return;
+
+  const selected = select.value;
+  const options = [
+    `<option value="">No linked exam - manual item mapping</option>`,
+    ...rubricTemplateExams.map((exam) => {
+      const labelParts = [
+        exam.title || "Generated Exam",
+        exam.subject,
+        exam.section,
+        `${exam.totalItems || 0} items`,
+      ].filter(Boolean);
+
+      return `
+        <option value="${escapeHTML(exam._id)}" ${exam._id === selected ? "selected" : ""}>
+          ${escapeHTML(labelParts.join(" - "))}
+        </option>
+      `;
+    }),
+  ];
+
+  select.innerHTML = options.join("");
+}
+
+async function loadRubricTemplateExams() {
+  const select = document.getElementById("rubricTemplateExam");
+
+  if (!select) return;
+
+  try {
+    const data = await apiRequest("/users/me/activity");
+    rubricTemplateExams = (data.exams || []).filter(
+      (exam) =>
+        exam.examType === "Problem Solving" &&
+        (!exam.approvalStatus || exam.approvalStatus === "Approved"),
+    );
+    renderRubricTemplateExamOptions();
+  } catch (error) {
+    rubricTemplateExams = [];
+    renderRubricTemplateExamOptions();
+    setMessage("rubricImportMessage", getObeRouteErrorMessage(error));
+  }
+}
+
+async function saveSelectedRubricTemplate() {
+  const template = getSelectedRubricTemplate();
+
+  if (!template) {
+    setMessage("rubricImportMessage", "Choose a rubric template first.");
+    return;
+  }
+
+  try {
+    const data = await apiRequest(`/obe/rubric-templates/${template._id}`, "PUT", {
+      name: template.name,
+      description: template.description || "",
+      criteria: parseRubricTemplateCriteriaInput(),
+    });
+
+    setMessage("rubricImportMessage", data.message, false);
+    await loadRubricTemplates();
+  } catch (error) {
+    setMessage("rubricImportMessage", getObeRouteErrorMessage(error));
+  }
 }
 
 async function loadRubrics() {
@@ -507,7 +702,7 @@ function renderRubrics() {
             <tr>
               <td>
                 <strong>${escapeHTML(assessment.title)}</strong>
-                <small>${escapeHTML(assessment.assessmentMethod || "")} ${escapeHTML(assessment.semester || "")}</small>
+                <small>${escapeHTML(assessment.assessmentMethod || "")} ${escapeHTML(assessment.assessmentPhase || "Summative")} ${escapeHTML(assessment.semester || "")}</small>
               </td>
               <td>${escapeHTML(assessment.subject)}</td>
               <td>${assessment.criteria?.length || 0}</td>
@@ -534,6 +729,7 @@ document.getElementById("rubricForm")?.addEventListener("submit", async (event) 
     subject: document.getElementById("rubricSubject").value.trim(),
     engineeringProgram: document.getElementById("rubricProgram").value,
     assessmentMethod: document.getElementById("rubricAssessmentMethod").value,
+    assessmentPhase: document.getElementById("rubricAssessmentPhase").value,
     section: document.getElementById("rubricSection").value.trim(),
     semester: document.getElementById("rubricSemester").value.trim(),
     schoolYear: document.getElementById("rubricSchoolYear").value.trim(),
@@ -554,8 +750,36 @@ document.getElementById("rubricForm")?.addEventListener("submit", async (event) 
 async function downloadRubricTemplate() {
   try {
     setMessage("rubricImportMessage", "Preparing rubric template...", false);
+    const selectedExam = getSelectedRubricTemplateExam();
+    const items = selectedExam
+      ? Math.max(1, Math.min(50, Number(selectedExam.totalItems || 1)))
+      : Math.max(
+          1,
+          Math.min(
+            50,
+            Number(document.getElementById("rubricTemplateItems")?.value || 3),
+          ),
+        );
+    const maxScore = Math.max(
+      1,
+      Number(document.getElementById("rubricTemplateMaxScore")?.value || 10),
+    );
+    const selectedTemplate = getSelectedRubricTemplate();
+    const rubricType = selectedTemplate?.key || "problem-solving-standard";
+    const targetScore = Math.round(maxScore * 0.75 * 100) / 100;
+    const params = new URLSearchParams({
+      rubricType,
+      rubricTemplateId: selectedTemplate?._id || "",
+      items: String(items),
+      maxScore: String(maxScore),
+      targetScore: String(targetScore),
+    });
 
-    const res = await fetch("/api/obe/rubrics/template", {
+    if (selectedExam?._id) {
+      params.set("generatedExamId", selectedExam._id);
+    }
+
+    const res = await fetch(`/api/obe/rubrics/template?${params}`, {
       headers: {
         Authorization: `Bearer ${getToken()}`,
       },
@@ -571,7 +795,7 @@ async function downloadRubricTemplate() {
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = "rubric-assessment-template.xlsx";
+    link.download = `rubric-${rubricType}-${items}-items-template.xlsx`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -601,6 +825,21 @@ document
       await loadRubrics();
     } catch (error) {
       setMessage("rubricImportMessage", getObeRouteErrorMessage(error));
+    }
+  });
+
+document
+  .getElementById("rubricTemplateType")
+  ?.addEventListener("change", renderRubricTemplateOptions);
+
+document
+  .getElementById("rubricTemplateExam")
+  ?.addEventListener("change", () => {
+    const selectedExam = getSelectedRubricTemplateExam();
+    const itemInput = document.getElementById("rubricTemplateItems");
+
+    if (selectedExam && itemInput) {
+      itemInput.value = Math.max(1, Math.min(50, Number(selectedExam.totalItems || 1)));
     }
   });
 
@@ -642,6 +881,7 @@ function renderEvidence() {
                 <small>${escapeHTML(evidence.description || "")}</small>
               </td>
               <td>${escapeHTML(evidence.evidenceType)}</td>
+              <td>${escapeHTML(evidence.assessmentPhase || "Summative")}</td>
               <td>
                 ${escapeHTML(evidence.subject || "Not set")}
                 <small>${escapeHTML(evidence.engineeringProgram || "")} ${escapeHTML(evidence.schoolYear || "")}</small>
@@ -667,7 +907,7 @@ function renderEvidence() {
           `,
         )
         .join("")
-    : `<tr><td colspan="7" class="empty-table-cell">No OBE evidence saved yet.</td></tr>`;
+    : `<tr><td colspan="8" class="empty-table-cell">No OBE evidence saved yet.</td></tr>`;
 }
 
 document.getElementById("evidenceForm")?.addEventListener("submit", async (event) => {
@@ -677,6 +917,7 @@ document.getElementById("evidenceForm")?.addEventListener("submit", async (event
   [
     ["title", "evidenceTitle"],
     ["evidenceType", "evidenceType"],
+    ["assessmentPhase", "evidenceAssessmentPhase"],
     ["subject", "evidenceSubject"],
     ["engineeringProgram", "evidenceProgram"],
     ["courseOutcome", "evidenceCourseOutcome"],
@@ -1117,6 +1358,7 @@ function renderStudentOutcomes() {
       outcome.department,
       outcome.code,
       outcome.description,
+      outcome.performanceIndicators,
       outcome.graduateAttributes,
       outcome.peoLinks,
     ]
@@ -1148,6 +1390,7 @@ function renderStudentOutcomes() {
               <td>${escapeHTML(outcome.department)}</td>
               <td><strong>${escapeHTML(outcome.code)}</strong></td>
               <td>${escapeHTML(outcome.description)}</td>
+              <td>${escapeHTML(outcome.performanceIndicators || "")}</td>
               <td>${escapeHTML(outcome.graduateAttributes || "")}</td>
               <td>${escapeHTML(formatPeoLinks(outcome.peoLinks))}</td>
               <td>
@@ -1159,7 +1402,7 @@ function renderStudentOutcomes() {
           `,
         )
         .join("")
-    : `<tr><td colspan="6" class="empty-table-cell">No Student Outcomes saved yet.</td></tr>`;
+    : `<tr><td colspan="7" class="empty-table-cell">No Student Outcomes saved yet.</td></tr>`;
   renderStudentOutcomePagination(visible.length, totalPages);
 }
 
@@ -1344,6 +1587,9 @@ document
       department: document.getElementById("soDepartment").value.trim(),
       code: document.getElementById("soCode").value.trim(),
       description: document.getElementById("soDescription").value.trim(),
+      performanceIndicators: document
+        .getElementById("soPerformanceIndicators")
+        .value.trim(),
       graduateAttributes: getCheckedValues("soGraduateAttributes").join(", "),
       peoLinks: getCheckedValues("soPeoLinks").join(", "),
     };
@@ -1599,3 +1845,5 @@ applyObeRoleMode();
 loadObeSettings();
 showObeSubpage();
 loadOutcomes();
+loadRubricTemplates();
+loadRubricTemplateExams();

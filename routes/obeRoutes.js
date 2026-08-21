@@ -19,6 +19,7 @@ const {
   listAttainmentSnapshots,
   listEvidence,
   listRubricAssessments,
+  listRubricTemplates,
   getCourseOutcomes,
   getCurriculumMap,
   getProgramEducationalObjectives,
@@ -29,6 +30,7 @@ const {
   importStudentOutcomes,
   updateCourseOutcome,
   updateSettings,
+  updateRubricTemplate,
 } = require("../controllers/obeController");
 const { protect, superAdminOnly } = require("../middleware/authMiddleware");
 const { canUseTeacherObe } = require("../utils/roles");
@@ -86,7 +88,7 @@ router.delete(
   deleteCourseOutcome,
 );
 
-router.get("/student-outcomes", protect, superAdminOnly, getStudentOutcomes);
+router.get("/student-outcomes", protect, getStudentOutcomes);
 router.post("/student-outcomes", protect, superAdminOnly, createStudentOutcome);
 router.post(
   "/student-outcomes/import",
@@ -102,6 +104,13 @@ router.delete(
 );
 
 router.get("/rubrics", protect, teacherObeOnly, listRubricAssessments);
+router.get("/rubric-templates", protect, teacherObeOnly, listRubricTemplates);
+router.put(
+  "/rubric-templates/:id",
+  protect,
+  teacherObeOnly,
+  updateRubricTemplate,
+);
 router.get("/rubrics/template", protect, teacherObeOnly, downloadRubricTemplate);
 router.post("/rubrics", protect, teacherObeOnly, createRubricAssessment);
 router.post(

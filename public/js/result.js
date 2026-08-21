@@ -29,6 +29,10 @@ async function loadResult() {
     document.getElementById("resultList").innerHTML = exam.questions
       .map((q, index) => {
         const answer = exam.answers.find((a) => a.question._id === q._id);
+        const isProblemSolving = q.questionType === "Problem Solving";
+        const correctAnswer = isProblemSolving
+          ? q.solutionAnswer
+          : q.correctAnswer;
 
         return `
           <div class="card question-card">
@@ -47,7 +51,7 @@ async function loadResult() {
               </strong>
             </p>
 
-            <p>Correct Answer: <strong>${escapeHTML(q.correctAnswer)}</strong></p>
+            <p>Correct Answer: <strong>${escapeHTML(correctAnswer || "No answer set")}</strong></p>
 
             <p>
               <strong>CO/CLO:</strong> ${escapeHTML(q.courseOutcome || "Unmapped")}
@@ -74,9 +78,11 @@ function renderAttainmentTable(bodyId, rows, emptyLabel) {
 
   if (!body) return;
 
+  const isSo = emptyLabel === "SO";
+
   body.innerHTML = rows.length
-    ? rows.map(renderAttainmentRow).join("")
-    : `<tr><td colspan="7" class="empty-table-cell">No ${escapeHTML(emptyLabel)} attainment data.</td></tr>`;
+    ? rows.map((row) => renderAttainmentRow(row, isSo)).join("")
+    : `<tr><td colspan="${isSo ? 8 : 7}" class="empty-table-cell">No ${escapeHTML(emptyLabel)} attainment data.</td></tr>`;
 }
 
 function getAttainmentClass(rate, targetRate = 75) {
@@ -87,12 +93,13 @@ function getAttainmentClass(rate, targetRate = 75) {
   return "difficult";
 }
 
-function renderAttainmentRow(row) {
+function renderAttainmentRow(row, isSo = false) {
   const statusClass = row.status === "Attained" ? "easy" : "difficult";
 
   return `
     <tr>
       <td><strong>${escapeHTML(row.code)}</strong></td>
+      ${isSo ? `<td>${renderPerformanceIndicators(row)}</td>` : ""}
       <td>${escapeHTML(row.assessedItems || 0)} / ${escapeHTML(row.questionCount || 0)}</td>
       <td>${escapeHTML(row.correctItems || 0)}</td>
       <td>${escapeHTML(row.earnedWeight || 0)} / ${escapeHTML(row.totalWeight || 0)}</td>
@@ -105,6 +112,45 @@ function renderAttainmentRow(row) {
       <td><span class="badge ${statusClass}">${escapeHTML(row.status || "Not assessed")}</span></td>
     </tr>
   `;
+}
+
+function renderPerformanceIndicators(row = {}) {
+  const breakdown = Array.isArray(row.piBreakdown) ? row.piBreakdown : [];
+
+  if (breakdown.length > 0) {
+    const phaseText = renderPhaseBreakdown(row.phaseBreakdown);
+    const rows = breakdown
+      .map(
+        (pi) =>
+          `<small class="muted-text"><strong>${escapeHTML(pi.code)}:</strong> ${escapeHTML(pi.attainmentRate || 0)}% (${escapeHTML(pi.status || "Not assessed")})</small>`,
+      )
+      .join("");
+    return `<details><summary>${escapeHTML(breakdown.length)} PI result${breakdown.length === 1 ? "" : "s"}${phaseText ? ` | ${phaseText}` : ""}</summary>${rows}</details>`;
+  }
+
+  const indicators = Array.isArray(row.performanceIndicatorRows)
+    ? row.performanceIndicatorRows
+    : [];
+
+  if (indicators.length > 0) {
+    return indicators
+      .map(
+        (indicator) =>
+          `<small class="muted-text"><strong>${escapeHTML(indicator.label)}:</strong> ${escapeHTML(indicator.description)}</small>`,
+      )
+      .join("");
+  }
+
+  return escapeHTML(row.performanceIndicators || "Not set");
+}
+
+function renderPhaseBreakdown(phases = []) {
+  return Array.isArray(phases) && phases.length
+    ? phases
+        .filter((phase) => Number(phase.totalWeight || phase.possibleWeight || phase.totalScore || 0) > 0)
+        .map((phase) => `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`)
+        .join(", ")
+    : "";
 }
 
 function renderQuestionTables(tables) {

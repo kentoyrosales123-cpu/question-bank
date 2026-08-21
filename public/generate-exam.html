@@ -89,6 +89,22 @@
                   </select>
                   <small>Used for OBE assessment method mapping.</small>
                 </label>
+                <label>
+                  <span class="field-label">Assessment Phase *</span>
+                  <select id="assessmentPhase" required>
+                    <option value="Formative">Formative</option>
+                    <option value="Summative" selected>Summative</option>
+                  </select>
+                  <small>Used for SO formative/summative weighting.</small>
+                </label>
+                <label>
+                  <span class="field-label">Exam Type *</span>
+                  <select id="examType" required>
+                    <option value="Multiple Choice" selected>Multiple Choice</option>
+                    <option value="Problem Solving">Problem Solving</option>
+                  </select>
+                  <small>Controls which question-bank type will be selected.</small>
+                </label>
               </div>
 
               <div class="field-grid three">
@@ -264,6 +280,7 @@
               <p><span>Total Questions</span><strong id="summaryTotal">20</strong></p>
               <p><span>Program</span><strong id="summaryProgram">Not selected</strong></p>
               <p><span>Assessment Method</span><strong id="summaryAssessmentMethod">Major Exam</strong></p>
+              <p><span>Exam Type</span><strong id="summaryExamType">Multiple Choice</strong></p>
               <p><span>Section</span><strong id="summarySection">Not set</strong></p>
               <p><span>Term</span><strong id="summaryTerm">Not set</strong></p>
               <p><span>School Year</span><strong id="summarySchoolYear">Not set</strong></p>

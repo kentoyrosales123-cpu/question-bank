@@ -25,6 +25,12 @@ const questionSchema = new mongoose.Schema(
       required: true,
     },
 
+    questionType: {
+      type: String,
+      enum: ["Multiple Choice", "Problem Solving"],
+      default: "Multiple Choice",
+    },
+
     choices: {
       A: { type: String, default: "" },
       B: { type: String, default: "" },
@@ -36,6 +42,12 @@ const questionSchema = new mongoose.Schema(
       type: String,
       enum: ["A", "B", "C", "D", ""],
       default: "",
+    },
+
+    solutionAnswer: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     difficulty: {
@@ -51,6 +63,12 @@ const questionSchema = new mongoose.Schema(
     },
 
     programOutcome: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    performanceIndicator: {
       type: String,
       default: "",
       trim: true,

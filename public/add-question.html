@@ -44,6 +44,10 @@
             <option value="CHE">CHE</option>
           </select>
           <input id="topic" placeholder="Topic" required />
+          <select id="questionType" required>
+            <option value="Multiple Choice">Multiple Choice</option>
+            <option value="Problem Solving">Problem Solving</option>
+          </select>
 
           <textarea
             id="questionText"
@@ -51,18 +55,26 @@
             required
           ></textarea>
 
-          <input id="choiceA" placeholder="Choice A" required />
-          <input id="choiceB" placeholder="Choice B" required />
-          <input id="choiceC" placeholder="Choice C" required />
-          <input id="choiceD" placeholder="Choice D" required />
+          <div id="multipleChoiceFields">
+            <input id="choiceA" placeholder="Choice A" required />
+            <input id="choiceB" placeholder="Choice B" required />
+            <input id="choiceC" placeholder="Choice C" required />
+            <input id="choiceD" placeholder="Choice D" required />
 
-          <select id="correctAnswer" required>
-            <option value="">Correct Answer</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
+            <select id="correctAnswer" required>
+              <option value="">Correct Answer</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </div>
+
+          <textarea
+            id="solutionAnswer"
+            placeholder="Final answer"
+            hidden
+          ></textarea>
 
           <select id="difficulty" required>
             <option value="">Difficulty</option>
@@ -75,6 +87,10 @@
             <input id="courseOutcome" placeholder="CLO / Course Outcome" required />
             <input id="programOutcome" placeholder="SO / Student Outcome" required />
           </div>
+
+          <select id="performanceIndicator">
+            <option value="">Performance Indicator</option>
+          </select>
 
           <input
             id="studentLearningOutcome"

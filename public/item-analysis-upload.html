@@ -79,6 +79,20 @@
                 </select>
               </label>
               <label>
+                <span class="field-label">Assessment Phase *</span>
+                <select id="analysisAssessmentPhase" name="assessmentPhase" required>
+                  <option value="Formative">Formative</option>
+                  <option value="Summative" selected>Summative</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Analysis Type *</span>
+                <select id="analysisType" name="analysisType" required>
+                  <option value="Multiple Choice" selected>Multiple Choice</option>
+                  <option value="Problem Solving">Problem Solving</option>
+                </select>
+              </label>
+              <label>
                 <span class="field-label">Number of Items *</span>
                 <input id="analysisItems" name="numberOfItems" type="number" min="1" value="50" required />
               </label>
@@ -103,7 +117,7 @@
               />
             </label>
 
-            <div class="field-grid two">
+            <div class="field-grid two" id="answerKeyFields">
               <label>
                 <span class="field-label">Manual Answer Key (Optional)</span>
                 <textarea
@@ -117,6 +131,16 @@
                 <input id="answerKeyFile" name="answerKeyFile" type="file" accept=".xlsx,.csv" />
               </label>
             </div>
+
+            <label id="maxScoreKeyWrap" hidden>
+              <span class="field-label">Problem-Solving Max Scores</span>
+              <textarea
+                id="maxScoreKey"
+                name="maxScoreKey"
+                placeholder="Example: 10 10 15 15"
+              ></textarea>
+              <small>Leave blank to use 10 points for every item.</small>
+            </label>
 
             <div class="action-row">
               <button class="btn" type="submit">Upload and Analyze</button>
@@ -175,6 +199,8 @@
               <ul>
                 <li>Use <strong>1</strong> or <strong>C</strong> for correct.</li>
                 <li>Use <strong>0</strong> or <strong>W</strong> for wrong.</li>
+                <li>For problem-solving, enter the earned numeric score per item.</li>
+                <li>Rubric sheets with headers like <strong>Item 1 | CO1 | SO | PI | Bloom | Max | Target</strong> are accepted.</li>
                 <li>Blank item values are accepted and treated as wrong.</li>
                 <li>Total Score may be blank; the system can compute it.</li>
               </ul>

@@ -185,6 +185,7 @@ document
 
     form.append("title", document.getElementById("teacherEvidenceTitle").value.trim());
     form.append("evidenceType", document.getElementById("teacherEvidenceType").value);
+    form.append("assessmentPhase", document.getElementById("teacherEvidencePhase").value);
     form.append("subject", document.getElementById("teacherEvidenceSubject").value.trim());
     if (file) form.append("file", file);
 

@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  ASSESSMENT_PHASES,
+  DEFAULT_ASSESSMENT_PHASE,
+} = require("../utils/assessmentPhases");
 
 const obeEvidenceSchema = new mongoose.Schema(
   {
@@ -27,6 +31,12 @@ const obeEvidenceSchema = new mongoose.Schema(
     section: { type: String, default: "", trim: true },
     semester: { type: String, default: "", trim: true },
     schoolYear: { type: String, default: "", trim: true },
+    assessmentPhase: {
+      type: String,
+      enum: ASSESSMENT_PHASES,
+      default: DEFAULT_ASSESSMENT_PHASE,
+      trim: true,
+    },
     courseOutcome: { type: String, default: "", trim: true },
     programOutcome: { type: String, default: "", trim: true },
     description: { type: String, default: "", trim: true },

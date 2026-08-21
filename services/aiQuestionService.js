@@ -320,6 +320,9 @@ const normalizeGeneratedQuestion = (question, defaults) => {
     programOutcome: String(
       getFirstValue(question, ["studentOutcome", "so", "SO", "programOutcome"]),
     ).trim(),
+    performanceIndicator: String(
+      getFirstValue(question, ["performanceIndicator", "pi", "PI"]),
+    ).trim(),
     studentLearningOutcome: String(
       getFirstValue(question, [
         "studentLearningOutcome",
@@ -412,6 +415,8 @@ const applyOutcomeSuggestions = async (questions) => {
       ...question,
       courseOutcome: question.courseOutcome || suggestion.code || "",
       programOutcome: question.programOutcome || suggestion.programOutcome || "",
+      performanceIndicator:
+        question.performanceIndicator || suggestion.performanceIndicator || "",
       studentLearningOutcome:
         question.studentLearningOutcome ||
         suggestion.studentLearningOutcome ||

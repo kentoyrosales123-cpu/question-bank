@@ -419,7 +419,7 @@ function renderTraceabilityRow(row) {
 
 function renderOutcomeRows(outcomes = [], label) {
   const showProgram = label === "CLO";
-  const emptyColspan = showProgram ? 8 : 7;
+  const emptyColspan = showProgram ? 8 : 8;
 
   return outcomes.length > 0
     ? outcomes
@@ -428,6 +428,7 @@ function renderOutcomeRows(outcomes = [], label) {
             <tr>
               <td><strong>${escapeHTML(item.code)}</strong></td>
               ${showProgram ? `<td>${escapeHTML(item.programs || "Not set")}</td>` : ""}
+              ${!showProgram ? `<td>${renderPerformanceIndicators(item)}</td>` : ""}
               <td>${item.questionCount}</td>
               <td>${item.assessedItems}</td>
               <td>${item.correctItems}</td>
@@ -443,6 +444,45 @@ function renderOutcomeRows(outcomes = [], label) {
         )
         .join("")
     : `<tr><td colspan="${emptyColspan}" class="empty-table-cell">No ${label} mapping yet.</td></tr>`;
+}
+
+function renderPerformanceIndicators(row = {}) {
+  const breakdown = Array.isArray(row.piBreakdown) ? row.piBreakdown : [];
+
+  if (breakdown.length > 0) {
+    const phaseText = renderPhaseBreakdown(row.phaseBreakdown);
+    const rows = breakdown
+      .map(
+        (pi) =>
+          `<small class="muted-text"><strong>${escapeHTML(pi.code)}:</strong> ${escapeHTML(pi.attainmentRate || 0)}% (${escapeHTML(pi.status || "No Evidence")})</small>`,
+      )
+      .join("");
+    return `<details><summary>${escapeHTML(breakdown.length)} PI result${breakdown.length === 1 ? "" : "s"}${phaseText ? ` | ${phaseText}` : ""}</summary>${rows}</details>`;
+  }
+
+  const indicators = Array.isArray(row.performanceIndicatorRows)
+    ? row.performanceIndicatorRows
+    : [];
+
+  if (indicators.length > 0) {
+    return indicators
+      .map(
+        (indicator) =>
+          `<small class="muted-text"><strong>${escapeHTML(indicator.label)}:</strong> ${escapeHTML(indicator.description)}</small>`,
+      )
+      .join("");
+  }
+
+  return escapeHTML(row.performanceIndicators || "Not set");
+}
+
+function renderPhaseBreakdown(phases = []) {
+  return Array.isArray(phases) && phases.length
+    ? phases
+        .filter((phase) => Number(phase.totalWeight || phase.possibleWeight || phase.totalScore || 0) > 0)
+        .map((phase) => `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`)
+        .join(", ")
+    : "";
 }
 
 function getAttainmentClass(rate, targetRate = 75) {
@@ -542,6 +582,7 @@ function formatActivityAction(activity, isTosDownload = false) {
     request_password_reset: "Requested Password Reset",
     reset_password: "Reset Password",
     manage_peo: "Managed PEO",
+    created_exam: "Generated Exam",
     generate_exam: "Generated Exam",
     approve_exam: "Approved Exam",
     reject_exam: "Rejected Exam",

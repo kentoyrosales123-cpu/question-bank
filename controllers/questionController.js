@@ -22,11 +22,20 @@ const parseBooleanBodyValue = (value, fallback = false) => {
   return ["true", "1", "yes", "on"].includes(String(value).toLowerCase());
 };
 
+const QUESTION_TYPES = ["Multiple Choice", "Problem Solving"];
+
+const normalizeQuestionType = (value) =>
+  QUESTION_TYPES.includes(value) ? value : "Multiple Choice";
+
+const isProblemSolvingQuestion = (value) =>
+  normalizeQuestionType(value) === "Problem Solving";
+
 const getQuestionSnapshot = (question) => ({
   subject: question.subject,
   engineeringProgram: question.engineeringProgram || "",
   topic: question.topic,
   questionText: question.questionText,
+  questionType: normalizeQuestionType(question.questionType),
   choices: {
     A: question.choices?.A || "",
     B: question.choices?.B || "",
@@ -34,9 +43,11 @@ const getQuestionSnapshot = (question) => ({
     D: question.choices?.D || "",
   },
   correctAnswer: question.correctAnswer,
+  solutionAnswer: question.solutionAnswer || "",
   difficulty: question.difficulty,
   courseOutcome: question.courseOutcome || "",
   programOutcome: question.programOutcome || "",
+  performanceIndicator: question.performanceIndicator || "",
   studentLearningOutcome: question.studentLearningOutcome || "",
   bloomLevel: question.bloomLevel || "",
   outcomeWeight: Number(question.outcomeWeight || 1),
@@ -101,14 +112,17 @@ exports.createQuestion = async (req, res) => {
       engineeringProgram,
       topic,
       questionText,
+      questionType,
       choiceA,
       choiceB,
       choiceC,
       choiceD,
       correctAnswer,
+      solutionAnswer,
       difficulty,
       courseOutcome,
       programOutcome,
+      performanceIndicator,
       studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
@@ -118,21 +132,36 @@ exports.createQuestion = async (req, res) => {
       tables,
     } = req.body;
 
+    const normalizedQuestionType = normalizeQuestionType(questionType);
+    const isProblemSolving = isProblemSolvingQuestion(normalizedQuestionType);
+
     if (
       !subject ||
       !engineeringProgram ||
       !topic ||
       !questionText ||
-      !choiceA ||
-      !choiceB ||
-      !choiceC ||
-      !choiceD ||
-      !correctAnswer ||
       !difficulty
     ) {
       return res.status(400).json({
         success: false,
         message: "Please complete all required fields.",
+      });
+    }
+
+    if (
+      !isProblemSolving &&
+      (!choiceA || !choiceB || !choiceC || !choiceD || !correctAnswer)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please complete all choices and select the correct answer.",
+      });
+    }
+
+    if (isProblemSolving && !String(solutionAnswer || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide the final answer for the problem-solving question.",
       });
     }
 
@@ -147,6 +176,7 @@ exports.createQuestion = async (req, res) => {
       engineeringProgram,
       courseOutcome,
       programOutcome,
+      performanceIndicator,
       studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
@@ -184,6 +214,7 @@ exports.createQuestion = async (req, res) => {
         D: choiceD,
       },
       difficulty,
+      solutionAnswer,
       explanation,
       tableData,
     });
@@ -193,16 +224,19 @@ exports.createQuestion = async (req, res) => {
       engineeringProgram,
       topic,
       questionText,
+      questionType: normalizedQuestionType,
       choices: {
-        A: choiceA,
-        B: choiceB,
-        C: choiceC,
-        D: choiceD,
+        A: isProblemSolving ? "" : choiceA,
+        B: isProblemSolving ? "" : choiceB,
+        C: isProblemSolving ? "" : choiceC,
+        D: isProblemSolving ? "" : choiceD,
       },
-      correctAnswer,
+      correctAnswer: isProblemSolving ? "" : correctAnswer,
+      solutionAnswer: isProblemSolving ? solutionAnswer : "",
       difficulty,
       courseOutcome,
       programOutcome,
+      performanceIndicator,
       studentLearningOutcome,
       bloomLevel,
       outcomeWeight: Number(outcomeWeight || 1),
@@ -344,6 +378,9 @@ exports.updateQuestion = async (req, res) => {
       ),
       topic: getBodyValue("topic", question.topic),
       questionText: getBodyValue("questionText", question.questionText),
+      questionType: normalizeQuestionType(
+        getBodyValue("questionType", question.questionType),
+      ),
       choices: {
         A: getBodyValue("choiceA", question.choices.A),
         B: getBodyValue("choiceB", question.choices.B),
@@ -351,9 +388,14 @@ exports.updateQuestion = async (req, res) => {
         D: getBodyValue("choiceD", question.choices.D),
       },
       correctAnswer: getBodyValue("correctAnswer", question.correctAnswer),
+      solutionAnswer: getBodyValue("solutionAnswer", question.solutionAnswer),
       difficulty: getBodyValue("difficulty", question.difficulty),
       courseOutcome: getBodyValue("courseOutcome", question.courseOutcome),
       programOutcome: getBodyValue("programOutcome", question.programOutcome),
+      performanceIndicator: getBodyValue(
+        "performanceIndicator",
+        question.performanceIndicator,
+      ),
       studentLearningOutcome: getBodyValue(
         "studentLearningOutcome",
         question.studentLearningOutcome,
@@ -372,6 +414,38 @@ exports.updateQuestion = async (req, res) => {
           }
         : question.image,
     };
+
+    if (isProblemSolvingQuestion(updateData.questionType)) {
+      updateData.choices = { A: "", B: "", C: "", D: "" };
+      updateData.correctAnswer = "";
+    } else {
+      updateData.solutionAnswer = "";
+    }
+
+    if (
+      !isProblemSolvingQuestion(updateData.questionType) &&
+      (!updateData.choices.A ||
+        !updateData.choices.B ||
+        !updateData.choices.C ||
+        !updateData.choices.D ||
+        !updateData.correctAnswer)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please complete all choices and select the correct answer.",
+      });
+    }
+
+    if (
+      isProblemSolvingQuestion(updateData.questionType) &&
+      !String(updateData.solutionAnswer || "").trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide the final answer for the problem-solving question.",
+      });
+    }
+
     const complexity = classifyComplexEngineeringProblem(updateData);
 
     updateData.isComplexEngineeringProblem = parseBooleanBodyValue(
@@ -473,7 +547,7 @@ exports.getQuestionHistory = async (req, res) => {
 exports.getQuestionAnalytics = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id).select(
-      "subject engineeringProgram topic questionText difficulty courseOutcome programOutcome studentLearningOutcome bloomLevel outcomeWeight",
+      "subject engineeringProgram topic questionText difficulty courseOutcome programOutcome performanceIndicator studentLearningOutcome bloomLevel outcomeWeight",
     );
 
     if (!question) {

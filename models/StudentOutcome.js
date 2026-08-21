@@ -22,6 +22,18 @@ const studentOutcomeSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    performanceIndicators: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    performanceIndicatorDetails: [
+      {
+        piNumber: { type: Number, required: true, min: 1 },
+        description: { type: String, required: true, trim: true },
+        weight: { type: Number, default: 1, min: 0 },
+      },
+    ],
     peoLinks: {
       type: String,
       default: "",

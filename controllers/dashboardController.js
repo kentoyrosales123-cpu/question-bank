@@ -20,6 +20,12 @@ const {
   GENERAL_ENGINEERING_PROGRAM,
   getQuestionProgramMatch,
 } = require("../utils/engineeringPrograms");
+const {
+  attachStudentOutcomeIndicators,
+} = require("../utils/studentOutcomeIndicators");
+const {
+  weightedPhaseAttainment,
+} = require("../utils/phaseAttainment");
 
 const OBE_SUBMISSION_ROLES = Object.freeze([
   "super_admin",
@@ -44,7 +50,7 @@ const formatActivityAction = (activityOrAction) => {
 
   return isTosDownloadActivity(activityOrAction)
     ? "Downloaded TOS"
-    : action === "generate_exam"
+    : action === "generate_exam" || action === "created_exam"
     ? "Generated Exam"
     : action === "approve_exam"
     ? "Approved Exam"
@@ -393,6 +399,8 @@ const createOutcomeBucket = (code, targetRate) => ({
   attainmentRate: 0,
   assessedStudents: 0,
   attainedStudents: 0,
+  piBuckets: new Map(),
+  phaseBuckets: new Map(),
 });
 
 const CEP_LEVELS = Object.freeze([
@@ -571,8 +579,8 @@ const getAttainmentMethodLabel = (method) =>
 
 const getAttainmentFormula = (method) =>
   method === "student_based"
-    ? "Students who reached the outcome target / Students assessed"
-    : "Correct mapped responses / Total mapped responses";
+    ? "Students who reached the outcome target / Students assessed; SO phase rollup uses Formative 30% + Summative 70% when phase evidence exists"
+    : "Correct mapped responses / Total mapped responses; SO phase rollup uses Formative 30% + Summative 70% when phase evidence exists";
 
 const averageRates = (rows = []) => {
   const assessedRows = rows.filter((row) => Number(row.assessedItems || 0) > 0);
@@ -683,7 +691,7 @@ const buildCourseLevelSummary = (filters = {}, obeReport = {}) => {
   };
 };
 
-const recordOutcomeResponse = (bucket, itemResult, weight, studentKey) => {
+const recordOutcomeResponse = (bucket, itemResult, weight, studentKey, phase = "") => {
   bucket.assessedItems++;
   bucket.possibleWeight += weight;
 
@@ -704,9 +712,18 @@ const recordOutcomeResponse = (bucket, itemResult, weight, studentKey) => {
     }
     bucket.studentScores.set(studentKey, score);
   }
+
+  if (phase) {
+    recordOutcomeResponse(
+      ensureOutcomeBucket(bucket.phaseBuckets, phase, bucket.targetRate),
+      itemResult,
+      weight,
+      studentKey,
+    );
+  }
 };
 
-const recordOutcomeScore = (bucket, score, maxScore, studentKey, targetScore) => {
+const recordOutcomeScore = (bucket, score, maxScore, studentKey, targetScore, phase = "") => {
   bucket.assessedItems++;
   bucket.possibleWeight += maxScore;
   bucket.attainedWeight += score;
@@ -725,6 +742,24 @@ const recordOutcomeScore = (bucket, score, maxScore, studentKey, targetScore) =>
     studentScore.attainedWeight += score;
     bucket.studentScores.set(studentKey, studentScore);
   }
+
+  if (phase) {
+    recordOutcomeScore(
+      ensureOutcomeBucket(bucket.phaseBuckets, phase, bucket.targetRate),
+      score,
+      maxScore,
+      studentKey,
+      targetScore,
+    );
+  }
+};
+
+const ensureOutcomeBucket = (map, code, targetRate) => {
+  if (!map.has(code)) {
+    map.set(code, createOutcomeBucket(code, targetRate));
+  }
+
+  return map.get(code);
 };
 
 const calculateObeReport = async (filters = {}) => {
@@ -738,13 +773,13 @@ const calculateObeReport = async (filters = {}) => {
     getObeSettings(),
     Question.find()
       .where(questionFilter)
-      .select("engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel")
+      .select("engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel")
       .lean(),
     Exam.find(submittedExamFilter)
-      .select("title subject section semester schoolYear assessmentMethod answers questions user")
+      .select("title subject section semester schoolYear assessmentMethod assessmentPhase answers questions user")
       .populate({
         path: "questions",
-        select: "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+        select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
       })
         .lean(),
     ItemAnalysisExam.find({
@@ -752,14 +787,14 @@ const calculateObeReport = async (filters = {}) => {
       includeInObe: { $ne: false },
       ...itemAnalysisFilter,
     })
-      .select("title generatedExamId subject section semester schoolYear assessmentMethod")
+      .select("title generatedExamId subject section semester schoolYear assessmentMethod assessmentPhase")
       .populate({
         path: "generatedExamId",
-        select: "title engineeringProgram subject assessmentMethod questions",
+        select: "title engineeringProgram subject assessmentMethod assessmentPhase questions",
         populate: {
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+            "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         },
       })
       .lean(),
@@ -790,6 +825,10 @@ const calculateObeReport = async (filters = {}) => {
   questions.forEach((question) => {
     const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
     const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+    const performanceIndicator = toOutcomeKey(
+      question.performanceIndicator,
+      "",
+    );
     const bloomLevel = toOutcomeKey(question.bloomLevel, "Unmapped Bloom");
     const cepLevel = getQuestionCepLevel(question);
 
@@ -803,12 +842,11 @@ const calculateObeReport = async (filters = {}) => {
         createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
       );
     }
-    if (!programOutcomes.has(programOutcome)) {
-      programOutcomes.set(
-        programOutcome,
-        createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-      );
-    }
+    const soBucket = ensureOutcomeBucket(
+      programOutcomes,
+      programOutcome,
+      settings.studentOutcomeTarget,
+    );
     if (!bloomLevels.has(bloomLevel)) {
       bloomLevels.set(bloomLevel, { level: bloomLevel, questionCount: 0 });
     }
@@ -828,6 +866,13 @@ const calculateObeReport = async (filters = {}) => {
       cepAttainment.get(cepLevel)?.programs.add(question.engineeringProgram);
     }
     programOutcomes.get(programOutcome).questionCount++;
+    if (performanceIndicator) {
+      ensureOutcomeBucket(
+        soBucket.piBuckets,
+        performanceIndicator,
+        settings.studentOutcomeTarget,
+      ).questionCount++;
+    }
     bloomLevels.get(bloomLevel).questionCount++;
     cepAttainment.get(cepLevel).questionCount++;
   });
@@ -848,9 +893,14 @@ const calculateObeReport = async (filters = {}) => {
 
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+      const performanceIndicator = toOutcomeKey(
+        question.performanceIndicator,
+        "",
+      );
       const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const studentKey = `exam:${exam.user || exam._id}`;
+      const assessmentPhase = exam.assessmentPhase || "Summative";
       const traceBucket = ensureTraceabilityBucket(
         traceabilityMatrix,
         courseOutcome,
@@ -864,12 +914,11 @@ const calculateObeReport = async (filters = {}) => {
           createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
         );
       }
-      if (!programOutcomes.has(programOutcome)) {
-        programOutcomes.set(
-          programOutcome,
-          createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-        );
-      }
+      const soBucket = ensureOutcomeBucket(
+        programOutcomes,
+        programOutcome,
+        settings.studentOutcomeTarget,
+      );
       recordTraceabilityQuestion(traceBucket, question);
       recordTraceabilityEvidence(traceBucket, {
         itemResult: answer,
@@ -881,13 +930,32 @@ const calculateObeReport = async (filters = {}) => {
 
       [courseOutcomes.get(courseOutcome), programOutcomes.get(programOutcome)].forEach(
         (bucket) => {
-          recordOutcomeResponse(bucket, answer, weight, studentKey);
+          recordOutcomeResponse(
+            bucket,
+            answer,
+            weight,
+            studentKey,
+            bucket === programOutcomes.get(programOutcome) ? assessmentPhase : "",
+          );
 
           if (bucket === courseOutcomes.get(courseOutcome) && question.engineeringProgram) {
             bucket.programs.add(question.engineeringProgram);
           }
         },
       );
+      if (performanceIndicator) {
+        recordOutcomeResponse(
+          ensureOutcomeBucket(
+            soBucket.piBuckets,
+            performanceIndicator,
+              settings.studentOutcomeTarget,
+            ),
+            answer,
+            weight,
+            studentKey,
+            assessmentPhase,
+          );
+      }
       recordOutcomeResponse(
         cepAttainment.get(cepLevel),
         answer,
@@ -907,8 +975,16 @@ const calculateObeReport = async (filters = {}) => {
       const itemNo = index + 1;
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+      const performanceIndicator = toOutcomeKey(
+        question.performanceIndicator,
+        "",
+      );
       const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
+      const assessmentPhase =
+        analysisExam.assessmentPhase ||
+        analysisExam.generatedExamId?.assessmentPhase ||
+        "Summative";
       const traceBucket = ensureTraceabilityBucket(
         traceabilityMatrix,
         courseOutcome,
@@ -924,12 +1000,11 @@ const calculateObeReport = async (filters = {}) => {
           createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
         );
       }
-      if (!programOutcomes.has(programOutcome)) {
-        programOutcomes.set(
-          programOutcome,
-          createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-        );
-      }
+      const soBucket = ensureOutcomeBucket(
+        programOutcomes,
+        programOutcome,
+        settings.studentOutcomeTarget,
+      );
 
       examResults.forEach((result) => {
         const itemResult =
@@ -950,7 +1025,13 @@ const calculateObeReport = async (filters = {}) => {
 
         [courseOutcomes.get(courseOutcome), programOutcomes.get(programOutcome)].forEach(
           (bucket) => {
-            recordOutcomeResponse(bucket, itemResult, weight, studentKey);
+            recordOutcomeResponse(
+              bucket,
+              itemResult,
+              weight,
+              studentKey,
+              bucket === programOutcomes.get(programOutcome) ? assessmentPhase : "",
+            );
 
             if (
               bucket === courseOutcomes.get(courseOutcome) &&
@@ -960,6 +1041,19 @@ const calculateObeReport = async (filters = {}) => {
             }
           },
         );
+        if (performanceIndicator) {
+          recordOutcomeResponse(
+            ensureOutcomeBucket(
+              soBucket.piBuckets,
+              performanceIndicator,
+              settings.studentOutcomeTarget,
+            ),
+            itemResult,
+            weight,
+            studentKey,
+            assessmentPhase,
+          );
+        }
         recordOutcomeResponse(
           cepAttainment.get(cepLevel),
           itemResult,
@@ -974,6 +1068,11 @@ const calculateObeReport = async (filters = {}) => {
     (assessment.criteria || []).forEach((criterion, criterionIndex) => {
       const courseOutcome = toOutcomeKey(criterion.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(criterion.programOutcome, "Unmapped SO");
+      const performanceIndicator = toOutcomeKey(
+        criterion.performanceIndicator,
+        "",
+      );
+      const assessmentPhase = assessment.assessmentPhase || "Summative";
       const maxScore =
         Math.max(0, Number(criterion.maxScore || 0)) *
         Math.max(0, Number(criterion.weight || 1));
@@ -998,12 +1097,11 @@ const calculateObeReport = async (filters = {}) => {
           createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
         );
       }
-      if (!programOutcomes.has(programOutcome)) {
-        programOutcomes.set(
-          programOutcome,
-          createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-        );
-      }
+      const soBucket = ensureOutcomeBucket(
+        programOutcomes,
+        programOutcome,
+        settings.studentOutcomeTarget,
+      );
       if (assessment.engineeringProgram) {
         courseOutcomes.get(courseOutcome).programs.add(assessment.engineeringProgram);
         traceBucket.programs.add(assessment.engineeringProgram);
@@ -1041,7 +1139,22 @@ const calculateObeReport = async (filters = {}) => {
           maxScore,
           studentKey,
           targetScore,
+          assessmentPhase,
         );
+        if (performanceIndicator) {
+          recordOutcomeScore(
+            ensureOutcomeBucket(
+              soBucket.piBuckets,
+              performanceIndicator,
+              settings.studentOutcomeTarget,
+            ),
+            weightedScore,
+            maxScore,
+            studentKey,
+            targetScore,
+            assessmentPhase,
+          );
+        }
         recordTraceabilityEvidence(traceBucket, {
           itemResult: { isCorrect: weightedScore >= targetScore },
           weight: maxScore,
@@ -1055,9 +1168,7 @@ const calculateObeReport = async (filters = {}) => {
     });
   });
 
-  const finalizeBuckets = (buckets) =>
-    Array.from(buckets.values())
-      .map((bucket) => {
+  const finalizeSingleBucket = (bucket) => {
         const studentScores = Array.from(bucket.studentScores?.values() || [])
           .filter((score) => Number(score.possibleWeight || 0) > 0);
         const attainedStudents = studentScores.filter((score) => {
@@ -1080,7 +1191,7 @@ const calculateObeReport = async (filters = {}) => {
             ? Math.round((attainedStudents / studentScores.length) * 1000) / 10
             : 0;
 
-        return {
+        const finalized = {
           ...bucket,
           programs: Array.from(bucket.programs || []).sort().join(", "),
           studentScores: undefined,
@@ -1092,11 +1203,58 @@ const calculateObeReport = async (filters = {}) => {
               ? studentAttainmentRate
               : responseAttainmentRate,
         };
+
+        delete finalized.piBuckets;
+        delete finalized.phaseBuckets;
+
+        return finalized;
+      };
+  const finalizeBuckets = (buckets) =>
+    Array.from(buckets.values())
+      .map(finalizeSingleBucket)
+      .sort((a, b) => a.code.localeCompare(b.code));
+  const finalizeStudentOutcomeBuckets = (buckets) =>
+    Array.from(buckets.values())
+      .map((bucket) => {
+        const finalized = finalizeSingleBucket(bucket);
+        const piBreakdown = finalizeBuckets(bucket.piBuckets || new Map());
+        const phaseBreakdown = finalizeBuckets(bucket.phaseBuckets || new Map())
+          .map((phase) => ({
+            ...phase,
+            phase: phase.code,
+          }));
+        const phaseWeightedRate = weightedPhaseAttainment(phaseBreakdown, {
+          evidenceKey: "possibleWeight",
+        });
+        const assessedPis = piBreakdown.filter(
+          (pi) => Number(pi.assessedItems || 0) > 0,
+        );
+
+        if (phaseWeightedRate !== null) {
+          finalized.attainmentRate = phaseWeightedRate;
+        } else if (assessedPis.length > 0) {
+          finalized.attainmentRate =
+            Math.round(
+              (assessedPis.reduce(
+                (sum, pi) => sum + Number(pi.attainmentRate || 0),
+                0,
+              ) /
+                assessedPis.length) *
+                10,
+            ) / 10;
+        }
+
+        finalized.piBreakdown = piBreakdown;
+        finalized.phaseBreakdown = phaseBreakdown;
+
+        return finalized;
       })
       .sort((a, b) => a.code.localeCompare(b.code));
 
   const courseOutcomeRows = finalizeBuckets(courseOutcomes);
-  const programOutcomeRows = finalizeBuckets(programOutcomes);
+  const programOutcomeRows = await attachStudentOutcomeIndicators(
+    finalizeStudentOutcomeBuckets(programOutcomes),
+  );
   const cepAttainmentRows = finalizeBuckets(cepAttainment).sort(
     (a, b) => CEP_LEVELS.indexOf(a.code) - CEP_LEVELS.indexOf(b.code),
   );
@@ -1383,7 +1541,7 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
         select: "engineeringProgram subject questions",
         populate: {
           path: "questions",
-          select: "subject engineeringProgram courseOutcome programOutcome outcomeWeight",
+          select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator outcomeWeight",
         },
       })
       .sort({ updatedAt: -1 })
@@ -1427,12 +1585,16 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
     const examResults = resultsByExam.get(analysisExam._id.toString()) || [];
     const courseOutcomes = new Map();
     const studentOutcomes = new Map();
+    const performanceIndicators = new Map();
 
     generatedQuestions.forEach((question, index) => {
       const itemNo = index + 1;
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const courseOutcome = question.courseOutcome || "Unmapped CLO";
       const studentOutcome = question.programOutcome || "Unmapped SO";
+      const performanceIndicator = question.performanceIndicator
+        ? `${studentOutcome} - ${question.performanceIndicator}`
+        : "";
 
       ensureCqiBucket(
         courseOutcomes,
@@ -1444,13 +1606,20 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
         studentOutcome,
         settings.studentOutcomeTarget,
       ).itemCount += 1;
+      if (performanceIndicator) {
+        ensureCqiBucket(
+          performanceIndicators,
+          performanceIndicator,
+          settings.studentOutcomeTarget,
+        ).itemCount += 1;
+      }
 
       examResults.forEach((result) => {
         const itemResult =
           (result.itemResults || []).find((item) => Number(item.itemNo) === itemNo) ||
           result.itemResults?.[index];
 
-        [
+        const buckets = [
           ensureCqiBucket(
             courseOutcomes,
             courseOutcome,
@@ -1461,7 +1630,19 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
             studentOutcome,
             settings.studentOutcomeTarget,
           ),
-        ].forEach((bucket) => {
+        ];
+
+        if (performanceIndicator) {
+          buckets.push(
+            ensureCqiBucket(
+              performanceIndicators,
+              performanceIndicator,
+              settings.studentOutcomeTarget,
+            ),
+          );
+        }
+
+        buckets.forEach((bucket) => {
           bucket.responseCount += 1;
           bucket.totalWeight += weight;
 
@@ -1476,6 +1657,7 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
     [
       ["CO", courseOutcomes],
       ["SO", studentOutcomes],
+      ["PI", performanceIndicators],
     ].forEach(([outcomeType, buckets]) => {
       Array.from(buckets.values())
         .map(finalizeCqiBucket)
@@ -2134,6 +2316,9 @@ const buildAccreditationObeWorkbook = async (report) => {
     "SO Attainment",
     [
       { header: "SO", key: "code", width: 18 },
+      { header: "Performance Indicators", key: "performanceIndicators", width: 46 },
+      { header: "Phase Breakdown", key: "phaseBreakdownText", width: 34 },
+      { header: "PI Attainment Breakdown", key: "piBreakdownText", width: 46 },
       { header: "Question Bank Items", key: "questionCount", width: 22 },
       { header: "Assessed Responses", key: "assessedItems", width: 22 },
       { header: "Correct Responses", key: "correctItems", width: 22 },
@@ -2148,6 +2333,15 @@ const buildAccreditationObeWorkbook = async (report) => {
     ],
     (obeReport.programOutcomes || []).map((row) => ({
       ...row,
+      piBreakdownText: (row.piBreakdown || [])
+        .map(
+          (pi) =>
+            `${pi.code}: ${pi.attainmentRate || 0}% (${pi.status || "No Evidence"})`,
+        )
+        .join("\n"),
+      phaseBreakdownText: (row.phaseBreakdown || [])
+        .map((phase) => `${phase.phase || phase.code}: ${phase.attainmentRate || 0}%`)
+        .join("\n"),
       status:
         Number(row.attainmentRate || 0) >= Number(row.targetRate ?? 75)
           ? "Attained"
@@ -2355,6 +2549,9 @@ const calculateReportsPayload = async (rawFilters = {}) => {
     (total, item) => total + item.count,
     0,
   );
+  const generatedExamCount = activityCounts
+    .filter((item) => item._id === "generate_exam" || item._id === "created_exam")
+    .reduce((total, item) => total + item.count, 0);
   const outcomeCoverageAlerts = await calculateOutcomeCoverageAlerts(
     obeReport,
     cqiReport,
@@ -2383,8 +2580,7 @@ const calculateReportsPayload = async (rawFilters = {}) => {
     teacherSubmissionStatus,
     outcomeCoverageAlerts,
     loginCount: activityCounts.find((item) => item._id === "login")?.count || 0,
-    generatedExamCount:
-      activityCounts.find((item) => item._id === "generate_exam")?.count || 0,
+    generatedExamCount,
     downloadedTosCount:
       activityCounts.find((item) => item._id === "download_tos")?.count || 0,
     activityCount: totalActivityCount,
@@ -2424,9 +2620,7 @@ const ensureSubmissionBucket = (map, record = {}) => {
   return map.get(key);
 };
 
-const finalizeTeacherBuckets = (buckets, settings) =>
-  Array.from(buckets.values())
-    .map((bucket) => {
+const finalizeTeacherBucket = (bucket, settings) => {
       const studentScores = Array.from(bucket.studentScores?.values() || []).filter(
         (score) => Number(score.possibleWeight || 0) > 0,
       );
@@ -2454,7 +2648,7 @@ const finalizeTeacherBuckets = (buckets, settings) =>
           ? studentAttainmentRate
           : responseAttainmentRate;
 
-      return {
+      const finalized = {
         ...bucket,
         programs: Array.from(bucket.programs || []).sort().join(", "),
         studentScores: undefined,
@@ -2469,6 +2663,62 @@ const finalizeTeacherBuckets = (buckets, settings) =>
               ? "Attained"
               : "Not Attained",
       };
+
+      delete finalized.piBuckets;
+      delete finalized.phaseBuckets;
+
+      return finalized;
+    };
+
+const finalizeTeacherBuckets = (buckets, settings) =>
+  Array.from(buckets.values())
+    .map((bucket) => finalizeTeacherBucket(bucket, settings))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+const finalizeTeacherStudentOutcomeBuckets = (buckets, settings) =>
+  Array.from(buckets.values())
+    .map((bucket) => {
+      const finalized = finalizeTeacherBucket(bucket, settings);
+      const piBreakdown = finalizeTeacherBuckets(bucket.piBuckets || new Map(), settings);
+      const phaseBreakdown = finalizeTeacherBuckets(
+        bucket.phaseBuckets || new Map(),
+        settings,
+      ).map((phase) => ({
+        ...phase,
+        phase: phase.code,
+      }));
+      const phaseWeightedRate = weightedPhaseAttainment(phaseBreakdown, {
+        evidenceKey: "possibleWeight",
+      });
+      const assessedPis = piBreakdown.filter(
+        (pi) => Number(pi.assessedItems || 0) > 0,
+      );
+
+      if (phaseWeightedRate !== null) {
+        finalized.attainmentRate = phaseWeightedRate;
+        finalized.status =
+          finalized.attainmentRate >= Number(finalized.targetRate ?? 75)
+            ? "Attained"
+            : "Not Attained";
+      } else if (assessedPis.length > 0) {
+        finalized.attainmentRate =
+          Math.round(
+            (assessedPis.reduce(
+              (sum, pi) => sum + Number(pi.attainmentRate || 0),
+              0,
+            ) /
+              assessedPis.length) *
+              10,
+          ) / 10;
+        finalized.status =
+          finalized.attainmentRate >= Number(finalized.targetRate ?? 75)
+            ? "Attained"
+            : "Not Attained";
+      }
+
+      finalized.piBreakdown = piBreakdown;
+      finalized.phaseBreakdown = phaseBreakdown;
+      return finalized;
     })
     .sort((a, b) => a.code.localeCompare(b.code));
 
@@ -2487,7 +2737,7 @@ exports.getMyObeDashboard = async (req, res) => {
         .populate({
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+            "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         })
         .lean(),
       ItemAnalysisExam.find({
@@ -2495,14 +2745,14 @@ exports.getMyObeDashboard = async (req, res) => {
         generatedExamId: { $ne: null },
         includeInObe: { $ne: false },
       })
-        .select("title subject section semester schoolYear generatedExamId assessmentMethod")
+        .select("title subject section semester schoolYear generatedExamId assessmentMethod assessmentPhase")
         .populate({
           path: "generatedExamId",
-          select: "title engineeringProgram subject assessmentMethod questions",
+          select: "title engineeringProgram subject assessmentMethod assessmentPhase questions",
           populate: {
             path: "questions",
             select:
-              "subject engineeringProgram courseOutcome programOutcome bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+              "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
           },
         })
         .lean(),
@@ -2555,8 +2805,16 @@ exports.getMyObeDashboard = async (req, res) => {
         const itemNo = index + 1;
         const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
         const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
+        const performanceIndicator = toOutcomeKey(
+          question.performanceIndicator,
+          "",
+        );
         const cepLevel = getQuestionCepLevel(question);
         const weight = Math.max(0, Number(question.outcomeWeight || 1));
+        const assessmentPhase =
+          analysisExam.assessmentPhase ||
+          analysisExam.generatedExamId?.assessmentPhase ||
+          "Summative";
 
         if (!courseOutcomes.has(courseOutcome)) {
           courseOutcomes.set(
@@ -2564,12 +2822,11 @@ exports.getMyObeDashboard = async (req, res) => {
             createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
           );
         }
-        if (!studentOutcomes.has(programOutcome)) {
-          studentOutcomes.set(
-            programOutcome,
-            createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-          );
-        }
+        const soBucket = ensureOutcomeBucket(
+          studentOutcomes,
+          programOutcome,
+          settings.studentOutcomeTarget,
+        );
         if (question.engineeringProgram) {
           courseOutcomes.get(courseOutcome).programs.add(question.engineeringProgram);
           cepAttainment.get(cepLevel)?.programs.add(question.engineeringProgram);
@@ -2593,7 +2850,21 @@ exports.getMyObeDashboard = async (req, res) => {
             itemResult,
             weight,
             studentKey,
+            assessmentPhase,
           );
+          if (performanceIndicator) {
+            recordOutcomeResponse(
+              ensureOutcomeBucket(
+                soBucket.piBuckets,
+                performanceIndicator,
+                settings.studentOutcomeTarget,
+              ),
+              itemResult,
+              weight,
+              studentKey,
+              assessmentPhase,
+            );
+          }
           recordOutcomeResponse(
             cepAttainment.get(cepLevel),
             itemResult,
@@ -2608,6 +2879,11 @@ exports.getMyObeDashboard = async (req, res) => {
       (assessment.criteria || []).forEach((criterion, criterionIndex) => {
         const courseOutcome = toOutcomeKey(criterion.courseOutcome, "Unmapped CLO");
         const programOutcome = toOutcomeKey(criterion.programOutcome, "Unmapped SO");
+        const performanceIndicator = toOutcomeKey(
+          criterion.performanceIndicator,
+          "",
+        );
+        const assessmentPhase = assessment.assessmentPhase || "Summative";
         const maxScore =
           Math.max(0, Number(criterion.maxScore || 0)) *
           Math.max(0, Number(criterion.weight || 1));
@@ -2624,12 +2900,11 @@ exports.getMyObeDashboard = async (req, res) => {
             createOutcomeBucket(courseOutcome, settings.courseOutcomeTarget),
           );
         }
-        if (!studentOutcomes.has(programOutcome)) {
-          studentOutcomes.set(
-            programOutcome,
-            createOutcomeBucket(programOutcome, settings.studentOutcomeTarget),
-          );
-        }
+        const soBucket = ensureOutcomeBucket(
+          studentOutcomes,
+          programOutcome,
+          settings.studentOutcomeTarget,
+        );
         if (assessment.engineeringProgram) {
           courseOutcomes.get(courseOutcome).programs.add(assessment.engineeringProgram);
         }
@@ -2659,13 +2934,30 @@ exports.getMyObeDashboard = async (req, res) => {
             maxScore,
             studentKey,
             targetScore,
+            assessmentPhase,
           );
+          if (performanceIndicator) {
+            recordOutcomeScore(
+              ensureOutcomeBucket(
+                soBucket.piBuckets,
+                performanceIndicator,
+                settings.studentOutcomeTarget,
+              ),
+              weightedScore,
+              maxScore,
+              studentKey,
+              targetScore,
+              assessmentPhase,
+            );
+          }
         });
       });
     });
 
     const courseOutcomeRows = finalizeTeacherBuckets(courseOutcomes, settings);
-    const studentOutcomeRows = finalizeTeacherBuckets(studentOutcomes, settings);
+    const studentOutcomeRows = await attachStudentOutcomeIndicators(
+      finalizeTeacherStudentOutcomeBuckets(studentOutcomes, settings),
+    );
     const cepAttainmentRows = finalizeTeacherBuckets(cepAttainment, settings).sort(
       (a, b) => CEP_LEVELS.indexOf(a.code) - CEP_LEVELS.indexOf(b.code),
     );
