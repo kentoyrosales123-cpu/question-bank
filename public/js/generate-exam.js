@@ -4,6 +4,10 @@ let examOptionData = [];
 let examOutcomeOptionData = [];
 let blueprintRows = [];
 let generationPollTimer = null;
+let generationAvailabilityTimer = null;
+let isGenerationBusy = false;
+let canGenerateWithCurrentCounts = false;
+let latestAvailabilityRequest = 0;
 
 const summaryFields = [
   "title",
@@ -36,6 +40,52 @@ function getSelectedValues(id) {
   return Array.from(document.getElementById(id).selectedOptions || []).map(
     (option) => option.value,
   );
+}
+
+function setExamMessage(message, isError = true) {
+  const messageEl = document.getElementById("examMessage");
+  messageEl.textContent = message;
+  messageEl.classList.toggle("wrong", Boolean(message && isError));
+  messageEl.classList.toggle("correct", Boolean(message && !isError));
+}
+
+function applyGenerateButtonState() {
+  const button = document.querySelector(".generate-btn");
+  if (!button) return;
+
+  button.disabled = isGenerationBusy || !canGenerateWithCurrentCounts;
+  button.textContent = isGenerationBusy ? "Generating..." : "Generate Exam";
+}
+
+function createAvailabilityQuery(body) {
+  const params = new URLSearchParams();
+
+  [
+    "engineeringProgram",
+    "examType",
+    "subjects",
+    "topics",
+    "courseOutcomes",
+    "programOutcomes",
+    "bloomLevels",
+  ].forEach((key) => {
+    const value = body[key];
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item) params.append(key, item);
+      });
+      return;
+    }
+
+    if (value) params.set(key, value);
+  });
+
+  if (body.blueprint?.length > 0) {
+    params.set("blueprint", JSON.stringify(body.blueprint));
+  }
+
+  return params.toString();
 }
 
 function formatSelection(values, fallback) {
@@ -122,6 +172,7 @@ function updateExamSummary() {
     totalItems,
   );
   updateDifficultyDonut(easy, average, difficult);
+  scheduleQuestionAvailabilityCheck();
 }
 
 function getAvailableBlueprintTopics() {
@@ -212,6 +263,138 @@ function clearBlueprintRows() {
   blueprintRows = [];
   renderBlueprintRows();
   updateExamSummary();
+}
+
+function collectExamFormData() {
+  const body = {
+    title: document.getElementById("title").value,
+    engineeringProgram: document.getElementById("engineeringProgram").value,
+    assessmentMethod: document.getElementById("assessmentMethod").value,
+    assessmentPhase: document.getElementById("assessmentPhase").value,
+    examType: document.getElementById("examType").value,
+    section: document.getElementById("section").value,
+    semester: document.getElementById("semester").value,
+    schoolYear: document.getElementById("schoolYear").value,
+    subjects: getSelectedValues("subject"),
+    topics: getSelectedValues("topic"),
+    courseOutcomes: getSelectedValues("courseOutcome"),
+    programOutcomes: getSelectedValues("programOutcome"),
+    bloomLevels: getSelectedValues("bloomLevel"),
+    totalItems: Number(document.getElementById("totalItems").value),
+    easyCount: Number(document.getElementById("easyCount").value),
+    averageCount: Number(document.getElementById("averageCount").value),
+    difficultCount: Number(document.getElementById("difficultCount").value),
+  };
+
+  if (document.getElementById("useBlueprint").checked) {
+    body.blueprint = blueprintRows.filter(
+      (row) =>
+        Number(row.easyCount || 0) +
+          Number(row.averageCount || 0) +
+          Number(row.difficultCount || 0) >
+        0,
+    );
+  }
+
+  return body;
+}
+
+function getDifficultyAvailabilityIssues(body, data) {
+  const useBlueprint = document.getElementById("useBlueprint").checked;
+
+  if (useBlueprint) {
+    return (data.blueprintAvailability || []).flatMap((row) =>
+      [
+        ["Easy", row.requested?.Easy || 0, row.available?.Easy || 0],
+        ["Average", row.requested?.Average || 0, row.available?.Average || 0],
+        ["Difficult", row.requested?.Difficult || 0, row.available?.Difficult || 0],
+      ]
+        .filter(([, requested, available]) => Number(requested) > Number(available))
+        .map(
+          ([label, requested, available]) =>
+            `${row.subject} / ${row.topic}: ${label} requested ${requested}, available ${available}`,
+        ),
+    );
+  }
+
+  return [
+    ["Easy", body.easyCount, data.availability?.Easy || 0],
+    ["Average", body.averageCount, data.availability?.Average || 0],
+    ["Difficult", body.difficultCount, data.availability?.Difficult || 0],
+  ]
+    .filter(([, requested, available]) => Number(requested) > Number(available))
+    .map(
+      ([label, requested, available]) =>
+        `${label} requested ${requested}, available ${available}`,
+    );
+}
+
+async function validateQuestionAvailability() {
+  const requestId = ++latestAvailabilityRequest;
+  const body = collectExamFormData();
+  const useBlueprint = document.getElementById("useBlueprint").checked;
+  const difficultyTotal =
+    Number(body.easyCount || 0) +
+    Number(body.averageCount || 0) +
+    Number(body.difficultCount || 0);
+
+  canGenerateWithCurrentCounts = false;
+  applyGenerateButtonState();
+
+  if (!body.engineeringProgram) {
+    setExamMessage("Select an engineering program.");
+    return;
+  }
+
+  if (!useBlueprint && body.subjects.length === 0) {
+    setExamMessage("Select at least one subject.");
+    return;
+  }
+
+  if (useBlueprint && (!body.blueprint || body.blueprint.length === 0)) {
+    setExamMessage("Add at least one blueprint row with item counts.");
+    return;
+  }
+
+  if (Number(body.totalItems || 0) < 1 || difficultyTotal < 1) {
+    setExamMessage("Set at least one exam item.");
+    return;
+  }
+
+  if (Number(body.totalItems || 0) !== difficultyTotal) {
+    setExamMessage("Total items must equal Easy + Average + Difficult.");
+    return;
+  }
+
+  try {
+    const query = createAvailabilityQuery(body);
+    const data = await apiRequest(`/exams/availability?${query}`);
+
+    if (requestId !== latestAvailabilityRequest) return;
+
+    const issues = getDifficultyAvailabilityIssues(body, data);
+
+    if (issues.length > 0) {
+      setExamMessage(`Not enough questions available. ${issues.join("; ")}.`);
+      canGenerateWithCurrentCounts = false;
+    } else {
+      setExamMessage("", false);
+      canGenerateWithCurrentCounts = true;
+    }
+  } catch (error) {
+    if (requestId !== latestAvailabilityRequest) return;
+    setExamMessage(error.message);
+    canGenerateWithCurrentCounts = false;
+  } finally {
+    if (requestId === latestAvailabilityRequest) {
+      applyGenerateButtonState();
+    }
+  }
+}
+
+function scheduleQuestionAvailabilityCheck() {
+  clearTimeout(generationAvailabilityTimer);
+  generationAvailabilityTimer = setTimeout(validateQuestionAvailability, 250);
 }
 
 function syncBlueprintTotals() {
@@ -402,62 +585,21 @@ document
 
 document.getElementById("examForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const subjects = getSelectedValues("subject");
-  const topics = getSelectedValues("topic");
-  const courseOutcomes = getSelectedValues("courseOutcome");
-  const programOutcomes = getSelectedValues("programOutcome");
-  const bloomLevels = getSelectedValues("bloomLevel");
-  const engineeringProgram = document.getElementById("engineeringProgram").value;
-
-  const body = {
-    title: document.getElementById("title").value,
-    engineeringProgram,
-    assessmentMethod: document.getElementById("assessmentMethod").value,
-    assessmentPhase: document.getElementById("assessmentPhase").value,
-    examType: document.getElementById("examType").value,
-    section: document.getElementById("section").value,
-    semester: document.getElementById("semester").value,
-    schoolYear: document.getElementById("schoolYear").value,
-    subjects,
-    topics,
-    courseOutcomes,
-    programOutcomes,
-    bloomLevels,
-    totalItems: Number(document.getElementById("totalItems").value),
-    easyCount: Number(document.getElementById("easyCount").value),
-    averageCount: Number(document.getElementById("averageCount").value),
-    difficultCount: Number(document.getElementById("difficultCount").value),
-  };
+  const body = collectExamFormData();
   const useBlueprint = document.getElementById("useBlueprint").checked;
 
-  if (useBlueprint) {
-    body.blueprint = blueprintRows.filter(
-      (row) =>
-        Number(row.easyCount || 0) +
-          Number(row.averageCount || 0) +
-          Number(row.difficultCount || 0) >
-        0,
-    );
-  }
-
-  if (!useBlueprint && subjects.length === 0) {
-    document.getElementById("examMessage").textContent =
-      "Select at least one subject.";
-    document.getElementById("examMessage").classList.add("wrong");
+  if (!canGenerateWithCurrentCounts) {
+    await validateQuestionAvailability();
     return;
   }
 
-  if (!engineeringProgram) {
-    document.getElementById("examMessage").textContent =
-      "Select an engineering program.";
-    document.getElementById("examMessage").classList.add("wrong");
+  if (!useBlueprint && body.subjects.length === 0) {
+    setExamMessage("Select at least one subject.");
     return;
   }
 
   if (useBlueprint && (!body.blueprint || body.blueprint.length === 0)) {
-    document.getElementById("examMessage").textContent =
-      "Add at least one blueprint row with item counts.";
-    document.getElementById("examMessage").classList.add("wrong");
+    setExamMessage("Add at least one blueprint row with item counts.");
     return;
   }
 
@@ -543,9 +685,8 @@ async function pollGenerationJob(jobId) {
 }
 
 function setGenerateButtonBusy(isBusy) {
-  const button = document.querySelector(".generate-btn");
-  button.disabled = isBusy;
-  button.textContent = isBusy ? "Generating..." : "Generate Exam";
+  isGenerationBusy = isBusy;
+  applyGenerateButtonState();
 }
 
 function ensureGenerationQueueModal() {

@@ -5,6 +5,7 @@ const {
   generateExam,
   getGenerationJobStatus,
   getExamOptions,
+  getExamAvailability,
   getExam,
   getMyExamSummary,
   downloadExamDocx,
@@ -20,6 +21,7 @@ router.post("/generate", protect, generateExam);
 router.get("/generate/jobs/:id", protect, getGenerationJobStatus);
 router.get("/my/summary", protect, getMyExamSummary);
 router.get("/options", protect, getExamOptions);
+router.get("/availability", protect, getExamAvailability);
 router.post("/:id/approve", protect, approveExam);
 router.post("/:id/reject", protect, rejectExam);
 router.get("/:id/download-docx", protect, downloadExamDocx);

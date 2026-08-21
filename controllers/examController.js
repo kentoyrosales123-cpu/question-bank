@@ -364,6 +364,70 @@ const getRandomQuestions = async (
   ]);
 };
 
+const buildQuestionAvailabilityMatch = ({
+  engineeringProgram,
+  subjects = [],
+  topics = [],
+  difficulty,
+  obeFilters = {},
+  examType = "Multiple Choice",
+}) => {
+  const match = {
+    ...getQuestionTypeFilter(examType),
+    engineeringProgram: getQuestionProgramMatch(engineeringProgram),
+    courseOutcome: { $ne: "" },
+    programOutcome: { $ne: "" },
+    bloomLevel: { $ne: "" },
+    outcomeWeight: { $gt: 0 },
+  };
+
+  if (difficulty) {
+    match.difficulty = difficulty;
+  }
+
+  if (subjects.length > 0) {
+    match.subject = { $in: subjects };
+  }
+
+  if (topics.length > 0) {
+    match.topic = { $in: topics };
+  }
+
+  if (obeFilters.courseOutcomes?.length > 0) {
+    match.courseOutcome = { $in: obeFilters.courseOutcomes };
+  }
+
+  if (obeFilters.programOutcomes?.length > 0) {
+    match.programOutcome = { $in: obeFilters.programOutcomes };
+  }
+
+  if (obeFilters.bloomLevels?.length > 0) {
+    match.bloomLevel = { $in: obeFilters.bloomLevels };
+  }
+
+  return match;
+};
+
+const countAvailableQuestionsByDifficulty = async (options) => {
+  const rows = await Question.aggregate([
+    { $match: buildQuestionAvailabilityMatch(options) },
+    {
+      $group: {
+        _id: "$difficulty",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  return rows.reduce(
+    (counts, row) => ({
+      ...counts,
+      [row._id]: row.count,
+    }),
+    { Easy: 0, Average: 0, Difficult: 0 },
+  );
+};
+
 const normalizeBlueprint = (blueprint = []) =>
   (Array.isArray(blueprint) ? blueprint : [])
     .map((row) => ({
@@ -644,6 +708,80 @@ exports.getExamOptions = async (req, res) => {
         programOutcomes: item.programOutcomes.filter(Boolean).sort(),
         bloomLevels: item.bloomLevels.filter(Boolean).sort(),
       })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getExamAvailability = async (req, res) => {
+  try {
+    const engineeringProgram = String(req.query.engineeringProgram || "").trim();
+    const examType = normalizeExamType(req.query.examType);
+    const subjects = normalizeSelection(req.query.subjects);
+    const topics = normalizeSelection(req.query.topics);
+    const obeFilters = {
+      courseOutcomes: normalizeSelection(req.query.courseOutcomes),
+      programOutcomes: normalizeSelection(req.query.programOutcomes),
+      bloomLevels: normalizeSelection(req.query.bloomLevels),
+    };
+    const blueprint = normalizeBlueprint(
+      req.query.blueprint ? JSON.parse(req.query.blueprint) : [],
+    );
+
+    if (!engineeringProgram) {
+      return res.json({
+        success: true,
+        availability: { Easy: 0, Average: 0, Difficult: 0 },
+        blueprintAvailability: [],
+      });
+    }
+
+    const selectedSubjects =
+      blueprint.length > 0 ? blueprint.map((row) => row.subject) : subjects;
+    const blockedSubject = selectedSubjects.find(
+      (item) => !canAccessSubject(req.user, item),
+    );
+
+    if (blockedSubject) {
+      return res.status(403).json({
+        success: false,
+        message: `You do not have access to generate exams for ${blockedSubject}.`,
+      });
+    }
+
+    const availability = await countAvailableQuestionsByDifficulty({
+      engineeringProgram,
+      subjects,
+      topics,
+      obeFilters,
+      examType,
+    });
+    const blueprintAvailability = await Promise.all(
+      blueprint.map(async (row) => ({
+        subject: row.subject,
+        topic: row.topic,
+        requested: {
+          Easy: row.easyCount,
+          Average: row.averageCount,
+          Difficult: row.difficultCount,
+        },
+        available: await countAvailableQuestionsByDifficulty({
+          engineeringProgram,
+          subjects: [row.subject],
+          topics: [row.topic],
+          examType,
+        }),
+      })),
+    );
+
+    res.json({
+      success: true,
+      availability,
+      blueprintAvailability,
     });
   } catch (error) {
     res.status(500).json({
