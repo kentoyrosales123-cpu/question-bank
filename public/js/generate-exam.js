@@ -383,8 +383,11 @@ async function validateQuestionAvailability() {
     }
   } catch (error) {
     if (requestId !== latestAvailabilityRequest) return;
-    setExamMessage(error.message);
-    canGenerateWithCurrentCounts = false;
+    setExamMessage(
+      "Question availability could not be checked. You can still generate; the server will validate the request.",
+      false,
+    );
+    canGenerateWithCurrentCounts = true;
   } finally {
     if (requestId === latestAvailabilityRequest) {
       applyGenerateButtonState();

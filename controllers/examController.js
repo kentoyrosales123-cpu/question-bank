@@ -328,35 +328,14 @@ const getRandomQuestions = async (
     return [];
   }
 
-  const match = {
-    ...getQuestionTypeFilter(examType),
+  const match = buildQuestionAvailabilityMatch({
+    engineeringProgram,
+    subjects,
+    topics,
     difficulty,
-    engineeringProgram: getQuestionProgramMatch(engineeringProgram),
-    courseOutcome: { $ne: "" },
-    programOutcome: { $ne: "" },
-    bloomLevel: { $ne: "" },
-    outcomeWeight: { $gt: 0 },
-  };
-
-  if (subjects.length > 0) {
-    match.subject = { $in: subjects };
-  }
-
-  if (topics.length > 0) {
-    match.topic = { $in: topics };
-  }
-
-  if (obeFilters.courseOutcomes?.length > 0) {
-    match.courseOutcome = { $in: obeFilters.courseOutcomes };
-  }
-
-  if (obeFilters.programOutcomes?.length > 0) {
-    match.programOutcome = { $in: obeFilters.programOutcomes };
-  }
-
-  if (obeFilters.bloomLevels?.length > 0) {
-    match.bloomLevel = { $in: obeFilters.bloomLevels };
-  }
+    obeFilters,
+    examType,
+  });
 
   return Question.aggregate([
     { $match: match },
