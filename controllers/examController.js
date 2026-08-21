@@ -19,7 +19,6 @@ const {
   isExamRequestor,
   ROLES,
 } = require("../utils/roles");
-const { hasCompleteObeMapping } = require("../utils/obeValidation");
 const {
   getQuestionProgramMatch,
   SPECIFIC_ENGINEERING_PROGRAMS,
@@ -350,15 +349,23 @@ const buildQuestionAvailabilityMatch = ({
   difficulty,
   obeFilters = {},
   examType = "Multiple Choice",
+  requireCompleteObeMapping = false,
 }) => {
   const match = {
     ...getQuestionTypeFilter(examType),
     engineeringProgram: getQuestionProgramMatch(engineeringProgram),
-    courseOutcome: { $ne: "" },
-    programOutcome: { $ne: "" },
-    bloomLevel: { $ne: "" },
-    outcomeWeight: { $gt: 0 },
   };
+
+  if (requireCompleteObeMapping) {
+    Object.assign(match, {
+      courseOutcome: { $nin: ["", null] },
+      programOutcome: { $nin: ["", null] },
+      performanceIndicator: { $nin: ["", null] },
+      studentLearningOutcome: { $nin: ["", null] },
+      bloomLevel: { $nin: ["", null] },
+      outcomeWeight: { $gt: 0 },
+    });
+  }
 
   if (difficulty) {
     match.difficulty = difficulty;
@@ -732,13 +739,23 @@ exports.getExamAvailability = async (req, res) => {
       });
     }
 
-    const availability = await countAvailableQuestionsByDifficulty({
-      engineeringProgram,
-      subjects,
-      topics,
-      obeFilters,
-      examType,
-    });
+    const [availability, questionBankAvailability] = await Promise.all([
+      countAvailableQuestionsByDifficulty({
+        engineeringProgram,
+        subjects,
+        topics,
+        obeFilters,
+        examType,
+      }),
+      countAvailableQuestionsByDifficulty({
+        engineeringProgram,
+        subjects,
+        topics,
+        obeFilters,
+        examType,
+        requireCompleteObeMapping: false,
+      }),
+    ]);
     const blueprintAvailability = await Promise.all(
       blueprint.map(async (row) => ({
         subject: row.subject,
@@ -754,12 +771,20 @@ exports.getExamAvailability = async (req, res) => {
           topics: [row.topic],
           examType,
         }),
+        questionBankAvailable: await countAvailableQuestionsByDifficulty({
+          engineeringProgram,
+          subjects: [row.subject],
+          topics: [row.topic],
+          examType,
+          requireCompleteObeMapping: false,
+        }),
       })),
     );
 
     res.json({
       success: true,
       availability,
+      questionBankAvailability,
       blueprintAvailability,
     });
   } catch (error) {
@@ -969,18 +994,6 @@ const generateExamForQueue = async (req, res) => {
         ...averageQuestions,
         ...difficultQuestions,
       ].sort(() => Math.random() - 0.5);
-    }
-
-    const unmappedQuestion = allQuestions.find(
-      (question) => !hasCompleteObeMapping(question),
-    );
-
-    if (unmappedQuestion) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Exam generation requires complete OBE mapping. Review the selected program, subject, filters, and question bank mappings.",
-      });
     }
 
     const exam = await Exam.create({
@@ -1213,6 +1226,7 @@ exports.getGenerationJobStatus = async (req, res) => {
       queued: false,
       jobId: job.id,
       status: job.status,
+      message: job.result?.payload?.message,
       result: job.result?.payload,
     });
   }

@@ -301,31 +301,70 @@ function collectExamFormData() {
 
 function getDifficultyAvailabilityIssues(body, data) {
   const useBlueprint = document.getElementById("useBlueprint").checked;
+  const formatIssue = (label, requested, eligible, bankAvailable) => {
+    const available = Math.max(Number(eligible || 0), Number(bankAvailable || 0));
+    return `${label} requested ${requested}, available ${available}`;
+  };
 
   if (useBlueprint) {
     return (data.blueprintAvailability || []).flatMap((row) =>
       [
-        ["Easy", row.requested?.Easy || 0, row.available?.Easy || 0],
-        ["Average", row.requested?.Average || 0, row.available?.Average || 0],
-        ["Difficult", row.requested?.Difficult || 0, row.available?.Difficult || 0],
+        [
+          "Easy",
+          row.requested?.Easy || 0,
+          row.available?.Easy || 0,
+          row.questionBankAvailable?.Easy || 0,
+        ],
+        [
+          "Average",
+          row.requested?.Average || 0,
+          row.available?.Average || 0,
+          row.questionBankAvailable?.Average || 0,
+        ],
+        [
+          "Difficult",
+          row.requested?.Difficult || 0,
+          row.available?.Difficult || 0,
+          row.questionBankAvailable?.Difficult || 0,
+        ],
       ]
         .filter(([, requested, available]) => Number(requested) > Number(available))
         .map(
-          ([label, requested, available]) =>
-            `${row.subject} / ${row.topic}: ${label} requested ${requested}, available ${available}`,
+          ([label, requested, eligible, bankAvailable]) =>
+            `${row.subject} / ${row.topic}: ${formatIssue(
+              label,
+              requested,
+              eligible,
+              bankAvailable,
+            )}`,
         ),
     );
   }
 
   return [
-    ["Easy", body.easyCount, data.availability?.Easy || 0],
-    ["Average", body.averageCount, data.availability?.Average || 0],
-    ["Difficult", body.difficultCount, data.availability?.Difficult || 0],
+    [
+      "Easy",
+      body.easyCount,
+      data.availability?.Easy || 0,
+      data.questionBankAvailability?.Easy || 0,
+    ],
+    [
+      "Average",
+      body.averageCount,
+      data.availability?.Average || 0,
+      data.questionBankAvailability?.Average || 0,
+    ],
+    [
+      "Difficult",
+      body.difficultCount,
+      data.availability?.Difficult || 0,
+      data.questionBankAvailability?.Difficult || 0,
+    ],
   ]
     .filter(([, requested, available]) => Number(requested) > Number(available))
     .map(
-      ([label, requested, available]) =>
-        `${label} requested ${requested}, available ${available}`,
+      ([label, requested, eligible, bankAvailable]) =>
+        formatIssue(label, requested, eligible, bankAvailable),
     );
 }
 
@@ -677,9 +716,7 @@ async function pollGenerationJob(jobId) {
       clearInterval(generationPollTimer);
       hideGenerationQueueModal();
       setGenerateButtonBusy(false);
-      document.getElementById("examMessage").textContent = error.message;
-      document.getElementById("examMessage").classList.add("wrong");
-      document.getElementById("examMessage").classList.remove("correct");
+      setExamMessage(error.message);
     }
   };
 
