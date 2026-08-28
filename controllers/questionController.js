@@ -657,6 +657,7 @@ exports.filterQuestions = async (req, res) => {
       subject,
       engineeringProgram,
       topic,
+      questionType,
       difficulty,
       courseOutcome,
       programOutcome,
@@ -671,6 +672,7 @@ exports.filterQuestions = async (req, res) => {
       filter.engineeringProgram = getQuestionProgramMatch(engineeringProgram);
     }
     if (topic) filter.topic = new RegExp(escapeRegex(topic), "i");
+    if (questionType) filter.questionType = normalizeQuestionType(questionType);
     if (difficulty) filter.difficulty = difficulty;
     if (courseOutcome) {
       filter.courseOutcome = new RegExp(escapeRegex(courseOutcome), "i");

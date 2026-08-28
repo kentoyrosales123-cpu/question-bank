@@ -3,6 +3,7 @@ const ExcelJS = require("exceljs");
 const CourseOutcome = require("../models/CourseOutcome");
 const StudentOutcome = require("../models/StudentOutcome");
 const ProgramEducationalObjective = require("../models/ProgramEducationalObjective");
+const CurriculumMapCourse = require("../models/CurriculumMapCourse");
 const Question = require("../models/Question");
 const Exam = require("../models/Exam");
 const RubricAssessment = require("../models/RubricAssessment");
@@ -73,6 +74,45 @@ const normalizeStudentOutcomeLink = (value = "") =>
     .join(", ");
 
 const toTrimmedString = (value = "") => String(value || "").trim();
+
+const CURRICULUM_ALIGNMENT_LEVELS = Object.freeze({
+  I: "Introductory",
+  E: "Enabling",
+  D: "Demonstrative",
+});
+
+const normalizeCurriculumAlignmentLevel = (value = "") => {
+  const level = String(value || "").trim().toUpperCase();
+
+  return CURRICULUM_ALIGNMENT_LEVELS[level] ? level : "";
+};
+
+const normalizeCurriculumCourseAlignments = (alignments = []) =>
+  parseJsonArray(alignments)
+    .map((alignment) => ({
+      studentOutcome: normalizeStudentOutcomeLink(
+        alignment.studentOutcome || alignment.so || alignment.code,
+      ),
+      level: normalizeCurriculumAlignmentLevel(alignment.level),
+    }))
+    .filter((alignment) => alignment.studentOutcome && alignment.level)
+    .filter(
+      (alignment, index, rows) =>
+        rows.findIndex(
+          (row) => row.studentOutcome === alignment.studentOutcome,
+        ) === index,
+    );
+
+const normalizePerformanceIndicatorDetails = (
+  performanceIndicatorDetails = [],
+) =>
+  parseJsonArray(performanceIndicatorDetails, [])
+    .map((item, index) => ({
+      piNumber: Math.max(1, toNumber(item.piNumber, index + 1)),
+      description: toTrimmedString(item.description),
+      weight: Math.max(0, toNumber(item.weight, 1)),
+    }))
+    .filter((item) => item.description);
 
 const formatSubjectScopedCourseOutcome = (subject = "", courseOutcome = "") => {
   const code = toTrimmedString(courseOutcome);
@@ -705,16 +745,9 @@ exports.createStudentOutcome = async (req, res) => {
       performanceIndicatorDetails,
       peoLinks,
     } = req.body;
-    const parsedIndicatorDetails = parseJsonArray(
+    const parsedIndicatorDetails = normalizePerformanceIndicatorDetails(
       performanceIndicatorDetails,
-      [],
-    )
-      .map((item, index) => ({
-        piNumber: Math.max(1, toNumber(item.piNumber, index + 1)),
-        description: toTrimmedString(item.description),
-        weight: Math.max(0, toNumber(item.weight, 1)),
-      }))
-      .filter((item) => item.description);
+    );
     const fallbackIndicatorDetails =
       parsedIndicatorDetails.length > 0
         ? parsedIndicatorDetails
@@ -749,6 +782,51 @@ exports.createStudentOutcome = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Student Outcome saved.",
+      studentOutcome,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateStudentOutcomePerformanceIndicators = async (req, res) => {
+  try {
+    const performanceIndicatorDetails = normalizePerformanceIndicatorDetails(
+      req.body.performanceIndicatorDetails,
+    );
+
+    if (performanceIndicatorDetails.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter at least one PI description before saving.",
+      });
+    }
+
+    const performanceIndicators = performanceIndicatorDetails
+      .map((item) => `${item.piNumber}. ${item.description}`)
+      .join("\n");
+    const studentOutcome = await StudentOutcome.findByIdAndUpdate(
+      req.params.id,
+      {
+        performanceIndicators,
+        performanceIndicatorDetails,
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (!studentOutcome) {
+      return res.status(404).json({
+        success: false,
+        message: "Student Outcome not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Performance indicators saved.",
       studentOutcome,
     });
   } catch (error) {
@@ -1234,6 +1312,344 @@ exports.getCurriculumMap = async (req, res) => {
           ),
         },
       },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.listCurriculumMapCourses = async (req, res) => {
+  try {
+    const department = toTrimmedString(req.query.department);
+    const subject = toTrimmedString(req.query.subject);
+    const filter = {};
+
+    if (department) {
+      filter.department = new RegExp(
+        department.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i",
+      );
+    }
+
+    if (subject) {
+      filter.subject = new RegExp(
+        subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i",
+      );
+    }
+
+    const courses = await CurriculumMapCourse.find(filter)
+      .populate("createdBy", "name email")
+      .sort({ department: 1, courseCode: 1, subject: 1 })
+      .lean();
+
+    res.json({
+      success: true,
+      courses,
+      alignmentLevels: CURRICULUM_ALIGNMENT_LEVELS,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.saveCurriculumMapCourse = async (req, res) => {
+  try {
+    const department = toTrimmedString(req.body.department);
+    const courseCode = toTrimmedString(req.body.courseCode);
+    const subject = toTrimmedString(req.body.subject);
+    const units = Math.max(0, toNumber(req.body.units));
+    const description = toTrimmedString(req.body.description);
+    const alignments = normalizeCurriculumCourseAlignments(req.body.alignments);
+
+    if (!subject) {
+      return res.status(400).json({
+        success: false,
+        message: "Course subject is required.",
+      });
+    }
+
+    if (alignments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Select at least one SO alignment level.",
+      });
+    }
+
+    const course = await CurriculumMapCourse.findOneAndUpdate(
+      { department, courseCode, subject },
+      {
+        department,
+        courseCode,
+        subject,
+        units,
+        description,
+        alignments,
+        createdBy: req.user._id,
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Curriculum map course saved.",
+      course,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const curriculumMapCourseTitle = (course = {}) =>
+  [
+    course.subject,
+    course.description ? `- ${course.description}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+const addCurriculumMapExportSection = (
+  sheet,
+  department,
+  courses,
+  studentOutcomes,
+  startRow,
+) => {
+  const alignmentCodes = courses.flatMap((course) =>
+    (course.alignments || []).map((alignment) =>
+      normalizeStudentOutcomeLink(alignment.studentOutcome),
+    ),
+  );
+  const soCodes = [
+    ...new Set([
+      ...studentOutcomes.map((outcome) =>
+        normalizeStudentOutcomeLink(outcome.code),
+      ),
+      ...alignmentCodes,
+    ]),
+  ].filter(Boolean);
+  const columnCodes =
+    soCodes.length > 0
+      ? soCodes
+      : "abcdefghijklm".split("");
+  const headerRow = startRow + 2;
+  const firstSoColumn = 4;
+
+  sheet.mergeCells(startRow, 1, startRow, Math.max(4, columnCodes.length + 3));
+  sheet.getCell(startRow, 1).value = `${department || "All Departments"} Curriculum Map`;
+  sheet.getCell(startRow, 1).font = { bold: true, size: 14 };
+  sheet.getCell(startRow, 1).alignment = { horizontal: "center" };
+
+  sheet.getCell(headerRow, 1).value = "Code";
+  sheet.getCell(headerRow, 2).value = "Course";
+  sheet.getCell(headerRow, 3).value = "Units";
+  columnCodes.forEach((code, index) => {
+    sheet.getCell(headerRow, firstSoColumn + index).value = code;
+  });
+
+  const header = sheet.getRow(headerRow);
+  header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF8A0015" },
+  };
+  header.alignment = { horizontal: "center", vertical: "middle" };
+
+  const rows = courses.length
+    ? courses
+    : [{ courseCode: "", subject: "", units: "", alignments: [] }];
+
+  rows.forEach((course, index) => {
+    const rowNumber = headerRow + index + 1;
+    const alignmentBySo = new Map(
+      (course.alignments || []).map((alignment) => [
+        normalizeStudentOutcomeLink(alignment.studentOutcome),
+        alignment.level,
+      ]),
+    );
+
+    sheet.getCell(rowNumber, 1).value = course.courseCode || "";
+    sheet.getCell(rowNumber, 2).value = curriculumMapCourseTitle(course);
+    sheet.getCell(rowNumber, 3).value = Number(course.units || 0) || "";
+    columnCodes.forEach((code, soIndex) => {
+      sheet.getCell(rowNumber, firstSoColumn + soIndex).value =
+        alignmentBySo.get(code) || "";
+    });
+  });
+
+  const endRow = headerRow + rows.length;
+  const endColumn = Math.max(4, columnCodes.length + 3);
+
+  for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
+    for (let columnIndex = 1; columnIndex <= endColumn; columnIndex += 1) {
+      const cell = sheet.getCell(rowIndex, columnIndex);
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFD9D9D9" } },
+        left: { style: "thin", color: { argb: "FFD9D9D9" } },
+        bottom: { style: "thin", color: { argb: "FFD9D9D9" } },
+        right: { style: "thin", color: { argb: "FFD9D9D9" } },
+      };
+      cell.alignment = {
+        vertical: "top",
+        horizontal: columnIndex >= firstSoColumn ? "center" : "left",
+        wrapText: true,
+      };
+    }
+  }
+
+  return endRow + 3;
+};
+
+const buildCurriculumMapWorkbook = async () => {
+  const [courses, studentOutcomes] = await Promise.all([
+    CurriculumMapCourse.find()
+      .sort({ department: 1, courseCode: 1, subject: 1 })
+      .lean(),
+    StudentOutcome.find()
+      .select("department code description")
+      .sort({ department: 1, code: 1 })
+      .lean(),
+  ]);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Curriculum Map");
+  const legendSheet = workbook.addWorksheet("Legend");
+  const departments = [
+    ...new Set(
+      [
+        ...courses.map((course) => course.department || "All Departments"),
+        ...studentOutcomes.map(
+          (outcome) => outcome.department || "All Departments",
+        ),
+      ].filter(Boolean),
+    ),
+  ].sort();
+  const exportDepartments =
+    departments.length > 0 ? departments : ["All Departments"];
+
+  sheet.views = [{ state: "frozen", ySplit: 3 }];
+  sheet.getCell("A1").value = "College of Engineering Education";
+  sheet.getCell("A2").value = "Curriculum Map";
+  sheet.getCell("A1").font = { bold: true, size: 14 };
+  sheet.getCell("A2").font = { bold: true, size: 16 };
+  sheet.columns = [
+    { width: 16 },
+    { width: 54 },
+    { width: 10 },
+    ...Array.from({ length: 13 }, () => ({ width: 8 })),
+  ];
+
+  let nextRow = 4;
+  exportDepartments.forEach((department) => {
+    const departmentCourses = courses.filter(
+      (course) =>
+        (course.department || "All Departments") === department,
+    );
+    const departmentStudentOutcomes = studentOutcomes.filter(
+      (outcome) =>
+        (outcome.department || "All Departments") === department,
+    );
+    nextRow = addCurriculumMapExportSection(
+      sheet,
+      department,
+      departmentCourses,
+      departmentStudentOutcomes,
+      nextRow,
+    );
+  });
+
+  legendSheet.columns = [{ width: 18 }, { width: 60 }];
+  legendSheet.addRows([
+    ["Code", "Course Classification"],
+    ["M-XX", "Mathematics"],
+    ["S-XX", "Natural or Physical Science"],
+    ["L-XX", "Laboratory Course"],
+    ["E-XX", "Engineering Science"],
+    ["A-XX", "Allied"],
+    ["P-XX", "Professional"],
+    ["N-XX", "Non-Technical"],
+    ["I-XX", "Institutional"],
+    ["T-XX", "Technical Electives"],
+    [],
+    ["Code", "Descriptor"],
+    ["I", "Introductory Course"],
+    ["E", "Enabling Course"],
+    ["D", "Demonstrative Course"],
+    [],
+    ["Code", "Definition"],
+    ["I", "An introductory course to an outcome"],
+    ["E", "A course that strengthens the outcome"],
+    ["D", "A course demonstrating an outcome"],
+  ]);
+  [1, 12, 17].forEach((rowNumber) => {
+    const row = legendSheet.getRow(rowNumber);
+    row.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    row.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF8A0015" },
+    };
+  });
+
+  workbook.eachSheet((worksheet) => {
+    worksheet.eachRow((row) => {
+      row.alignment = { vertical: "top", wrapText: true };
+    });
+  });
+
+  return workbook.xlsx.writeBuffer();
+};
+
+exports.downloadCurriculumMapWorkbook = async (req, res) => {
+  try {
+    const buffer = await buildCurriculumMapWorkbook();
+    const today = new Date().toISOString().slice(0, 10);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="curriculum-map-${today}.xlsx"`,
+    );
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deleteCurriculumMapCourse = async (req, res) => {
+  try {
+    const course = await CurriculumMapCourse.findByIdAndDelete(req.params.id);
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Curriculum map course not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Curriculum map course deleted.",
     });
   } catch (error) {
     res.status(500).json({

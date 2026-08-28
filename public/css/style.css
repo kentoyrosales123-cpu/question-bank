@@ -686,6 +686,32 @@ body.dark .dashboard-layout {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.question-filter-card {
+  display: grid;
+  gap: 18px;
+}
+
+.question-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 14px 18px;
+}
+
+.question-filter-grid input,
+.question-filter-grid select {
+  margin-bottom: 0;
+}
+
+.question-filter-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 220px));
+  gap: 12px;
+}
+
+.question-filter-actions .btn {
+  width: 100%;
+}
+
 .stat h3 {
   color: var(--muted);
   margin: 0 0 8px;
@@ -3683,6 +3709,11 @@ body.dark .activity-strip-item small {
     grid-template-columns: 1fr;
   }
 
+  .question-filter-grid,
+  .question-filter-actions {
+    grid-template-columns: 1fr;
+  }
+
   .review-toolbar,
   .review-card-body,
   .field-grid.two,
@@ -4681,6 +4712,122 @@ body.dark .activity-monitor-card .section-heading h2 {
 
 .curriculum-map-table {
   min-width: 980px;
+}
+
+.curriculum-course-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-soft);
+}
+
+.curriculum-alignment-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.curriculum-alignment-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.curriculum-alignment-legend span,
+.curriculum-alignment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px 6px 0;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.curriculum-alignment-legend strong {
+  color: var(--primary);
+}
+
+#curriculumCourseAlignments {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.curriculum-alignment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.curriculum-alignment-row label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+}
+
+.curriculum-alignment-row input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  margin-top: 3px;
+}
+
+.curriculum-alignment-row small,
+.curriculum-course-table small {
+  display: block;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.curriculum-course-table {
+  min-width: 900px;
+}
+
+.curriculum-course-wrap {
+  margin-bottom: 18px;
+}
+
+.performance-indicator-form {
+  display: grid;
+  gap: 14px;
+}
+
+.performance-indicator-editor table,
+.performance-indicator-summary-wrap table {
+  min-width: 760px;
+}
+
+.performance-indicator-editor input {
+  margin: 0;
+}
+
+.performance-indicator-editor .pi-number-input,
+.performance-indicator-editor .pi-weight-input {
+  min-width: 84px;
+}
+
+.performance-indicator-summary-wrap small {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 6px;
 }
 
 .curriculum-map-table td {

@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   createCourseOutcome,
   createAttainmentSnapshot,
+  deleteCurriculumMapCourse,
   createEvidence,
   createProgramEducationalObjective,
   createRubricAssessment,
@@ -11,6 +12,7 @@ const {
   deleteAttainmentSnapshot,
   deleteCourseOutcome,
   deleteEvidence,
+  downloadCurriculumMapWorkbook,
   deleteProgramEducationalObjective,
   deleteRubricAssessment,
   deleteStudentOutcome,
@@ -18,6 +20,7 @@ const {
   importRubricAssessment,
   listAttainmentSnapshots,
   listEvidence,
+  listCurriculumMapCourses,
   listRubricAssessments,
   listRubricTemplates,
   getCourseOutcomes,
@@ -28,7 +31,9 @@ const {
   importCourseOutcomes,
   importProgramEducationalObjectives,
   importStudentOutcomes,
+  saveCurriculumMapCourse,
   updateCourseOutcome,
+  updateStudentOutcomePerformanceIndicators,
   updateSettings,
   updateRubricTemplate,
 } = require("../controllers/obeController");
@@ -51,6 +56,30 @@ const teacherObeOnly = (req, res, next) => {
 router.get("/settings", protect, superAdminOnly, getSettings);
 router.put("/settings", protect, superAdminOnly, updateSettings);
 router.get("/curriculum-map", protect, superAdminOnly, getCurriculumMap);
+router.get(
+  "/curriculum-map-courses",
+  protect,
+  superAdminOnly,
+  listCurriculumMapCourses,
+);
+router.get(
+  "/curriculum-map-courses/export",
+  protect,
+  superAdminOnly,
+  downloadCurriculumMapWorkbook,
+);
+router.post(
+  "/curriculum-map-courses",
+  protect,
+  superAdminOnly,
+  saveCurriculumMapCourse,
+);
+router.delete(
+  "/curriculum-map-courses/:id",
+  protect,
+  superAdminOnly,
+  deleteCurriculumMapCourse,
+);
 
 router.get("/peos", protect, superAdminOnly, getProgramEducationalObjectives);
 router.post("/peos", protect, superAdminOnly, createProgramEducationalObjective);
@@ -90,6 +119,12 @@ router.delete(
 
 router.get("/student-outcomes", protect, getStudentOutcomes);
 router.post("/student-outcomes", protect, superAdminOnly, createStudentOutcome);
+router.put(
+  "/student-outcomes/:id/performance-indicators",
+  protect,
+  superAdminOnly,
+  updateStudentOutcomePerformanceIndicators,
+);
 router.post(
   "/student-outcomes/import",
   protect,

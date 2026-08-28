@@ -72,6 +72,7 @@ function renderQuestionsPage() {
         <td>${escapeHTML(q.subject)}</td>
         <td>${escapeHTML(q.engineeringProgram || "Not set")}</td>
         <td>${escapeHTML(q.topic)}</td>
+        <td>${escapeHTML(q.questionType || "Multiple Choice")}</td>
         <td>${escapeHTML(truncateText(q.questionText, 80))}</td>
         <td>
   <span class="badge ${escapeHTML(difficultyClass)}">
@@ -118,7 +119,7 @@ Delete
           },
         )
         .join("")
-    : `<tr><td colspan="9" class="muted-text">No questions found.</td></tr>`;
+    : `<tr><td colspan="10" class="muted-text">No questions found.</td></tr>`;
 
   renderQuestionsPagination();
 }
@@ -228,6 +229,7 @@ function renderPerformanceIndicatorOptions(soCode, selected = "") {
 async function filterQuestions() {
   const subject = document.getElementById("filterSubject").value;
   const topic = document.getElementById("filterTopic").value;
+  const questionType = document.getElementById("filterQuestionType").value;
   const difficulty = document.getElementById("filterDifficulty").value;
   const courseOutcome = document.getElementById("filterCourseOutcome").value;
   const programOutcome = document.getElementById("filterProgramOutcome").value;
@@ -239,6 +241,7 @@ async function filterQuestions() {
   const query = new URLSearchParams({
     subject,
     topic,
+    questionType,
     difficulty,
     courseOutcome,
     programOutcome,

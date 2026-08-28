@@ -12,6 +12,7 @@ let outcomes = [];
 let studentOutcomes = [];
 let peos = [];
 let curriculumMap = null;
+let curriculumCourses = [];
 let peoPage = 1;
 let studentOutcomePage = 1;
 let courseOutcomePage = 1;
@@ -28,9 +29,11 @@ const courseOutcomesPerPage = 15;
 const curriculumMapRowsPerPage = 15;
 const OBE_SUBPAGES = [
   "curriculum-map",
+  "obe-traceability-matrix",
   "live-attainment",
   "peos",
   "student-outcomes",
+  "performance-indicator",
   "course-outcomes",
   "rubrics",
   "evidence",
@@ -123,6 +126,7 @@ async function loadOutcomes() {
     renderStudentOutcomes();
     renderOutcomes();
     renderOutcomeOptions();
+    loadCurriculumMapCourses();
     loadCurriculumMap();
     loadLiveObeAttainment();
     loadRubrics();
@@ -1034,13 +1038,30 @@ async function deleteSnapshot(id) {
   }
 }
 
+function getCurriculumMapFilters() {
+  const department = document
+    .getElementById("curriculumDepartmentFilter")
+    ?.value.trim();
+  const subject = document.getElementById("curriculumSubjectFilter")?.value.trim();
+
+  return { department, subject };
+}
+
+async function loadCurriculumMapCourses() {
+  try {
+    const data = await apiRequest("/obe/curriculum-map-courses");
+    curriculumCourses = data.courses || [];
+    renderCurriculumCourses();
+    setMessage("curriculumCourseMessage", "", false);
+  } catch (error) {
+    setMessage("curriculumCourseMessage", getObeRouteErrorMessage(error));
+  }
+}
+
 async function loadCurriculumMap() {
   try {
     const params = new URLSearchParams();
-    const department = document
-      .getElementById("curriculumDepartmentFilter")
-      ?.value.trim();
-    const subject = document.getElementById("curriculumSubjectFilter")?.value.trim();
+    const { department, subject } = getCurriculumMapFilters();
 
     if (department) params.set("department", department);
     if (subject) params.set("subject", subject);
@@ -1055,6 +1076,357 @@ async function loadCurriculumMap() {
   } catch (error) {
     setMessage("curriculumMapMessage", getObeRouteErrorMessage(error));
   }
+}
+
+function renderCurriculumAlignmentEditor(selectedAlignments = []) {
+  const container = document.getElementById("curriculumCourseAlignments");
+  if (!container) return;
+  const department = String(
+    document.getElementById("curriculumCourseDepartment")?.value || "",
+  )
+    .trim()
+    .toLowerCase();
+  const departmentStudentOutcomes = department
+    ? studentOutcomes.filter(
+        (outcome) =>
+          String(outcome.department || "").trim().toLowerCase() === department,
+      )
+    : [];
+
+  const selectedBySo = new Map(
+    selectedAlignments.map((alignment) => [
+      formatStudentOutcomeLink(alignment.studentOutcome),
+      String(alignment.level || "").toUpperCase(),
+    ]),
+  );
+
+  if (!department) {
+    container.innerHTML = `<p class="muted-text">Type a department to show its Student Outcomes.</p>`;
+    return;
+  }
+
+  container.innerHTML = departmentStudentOutcomes.length
+    ? departmentStudentOutcomes
+        .map((outcome) => {
+          const code = formatStudentOutcomeLink(outcome.code);
+          const level = selectedBySo.get(code) || "I";
+          const checked = selectedBySo.has(code) ? "checked" : "";
+
+          return `
+            <div class="curriculum-alignment-row">
+              <label>
+                <input type="checkbox" value="${escapeHTML(code)}" ${checked} />
+                <span>
+                  <strong>${escapeHTML(outcome.code)}</strong>
+                  <small>${escapeHTML(outcome.department)} - ${escapeHTML(outcome.description || "")}</small>
+                </span>
+              </label>
+              <select aria-label="${escapeHTML(outcome.code)} alignment level">
+                <option value="I" ${level === "I" ? "selected" : ""}>I - Introductory</option>
+                <option value="E" ${level === "E" ? "selected" : ""}>E - Enabling</option>
+                <option value="D" ${level === "D" ? "selected" : ""}>D - Demonstrative</option>
+              </select>
+            </div>
+          `;
+        })
+        .join("")
+    : `<p class="muted-text">No Student Outcomes found for this department.</p>`;
+}
+
+function getCurriculumCourseAlignments() {
+  return Array.from(
+    document.querySelectorAll("#curriculumCourseAlignments .curriculum-alignment-row"),
+  )
+    .filter((row) => row.querySelector('input[type="checkbox"]')?.checked)
+    .map((row) => ({
+      studentOutcome: row.querySelector('input[type="checkbox"]')?.value || "",
+      level: row.querySelector("select")?.value || "",
+    }));
+}
+
+function formatCurriculumAlignmentLevel(level = "") {
+  const labels = {
+    I: "Introductory",
+    E: "Enabling",
+    D: "Demonstrative",
+  };
+  const code = String(level || "").toUpperCase();
+
+  return labels[code] ? `${code} - ${labels[code]}` : code;
+}
+
+function renderCurriculumCourses() {
+  const body = document.getElementById("curriculumCourseBody");
+  if (!body) return;
+
+  body.innerHTML = curriculumCourses.length
+    ? curriculumCourses
+        .map(
+          (course) => `
+            <tr>
+              <td>
+                <strong>${escapeHTML(course.courseCode || "No code")}</strong>
+                <small>${escapeHTML(course.subject || "")}</small>
+              </td>
+              <td>${escapeHTML(course.department || "No department")}</td>
+              <td>${escapeHTML(course.units || "")}</td>
+              <td>
+                ${
+                  course.alignments?.length
+                    ? course.alignments
+                        .map(
+                          (alignment) => `
+                            <span class="curriculum-alignment-chip">
+                              SO ${escapeHTML(alignment.studentOutcome)}: ${escapeHTML(formatCurriculumAlignmentLevel(alignment.level))}
+                            </span>
+                          `,
+                        )
+                        .join("")
+                    : `<span class="muted-text">No SO alignment</span>`
+                }
+              </td>
+              <td>${escapeHTML(course.description || "")}</td>
+              <td>
+                <button class="btn secondary compact-btn" type="button" onclick="editCurriculumCourse('${course._id}')">
+                  Edit
+                </button>
+                <button class="btn danger compact-btn" type="button" onclick="deleteCurriculumCourse('${course._id}')">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-table-cell">No curriculum map courses saved yet.</td></tr>`;
+}
+
+async function downloadCurriculumMapExcel() {
+  try {
+    const res = await fetch("/api/obe/curriculum-map-courses/export", {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.message || "Curriculum map download failed.");
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const fileName =
+      res
+        .headers
+        .get("Content-Disposition")
+        ?.match(/filename="([^"]+)"/)?.[1] || "curriculum-map.xlsx";
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    setMessage("curriculumCourseMessage", "Curriculum map Excel downloaded.", false);
+  } catch (error) {
+    setMessage("curriculumCourseMessage", getObeRouteErrorMessage(error));
+  }
+}
+
+function renderPerformanceIndicatorOptions(selectedId = "") {
+  const select = document.getElementById("performanceIndicatorOutcome");
+  if (!select) return;
+
+  select.innerHTML = studentOutcomes.length
+    ? studentOutcomes
+        .map(
+          (outcome) => `
+            <option value="${escapeHTML(outcome._id)}" ${outcome._id === selectedId ? "selected" : ""}>
+              ${escapeHTML(outcome.department)} - ${escapeHTML(outcome.code)}
+            </option>
+          `,
+        )
+        .join("")
+    : `<option value="">Add Student Outcomes first</option>`;
+  renderPerformanceIndicatorEditor();
+  renderPerformanceIndicatorSummary();
+}
+
+function getSelectedPerformanceIndicatorOutcome() {
+  const selectedId =
+    document.getElementById("performanceIndicatorOutcome")?.value || "";
+
+  return studentOutcomes.find((outcome) => outcome._id === selectedId) || null;
+}
+
+function renderPerformanceIndicatorEditor() {
+  const body = document.getElementById("performanceIndicatorRows");
+  if (!body) return;
+
+  const outcome = getSelectedPerformanceIndicatorOutcome();
+  const rows =
+    outcome?.performanceIndicatorRows?.length > 0
+      ? outcome.performanceIndicatorRows
+      : [{ piNumber: 1, description: "", weight: 1 }];
+
+  body.innerHTML = rows.map(renderPerformanceIndicatorEditRow).join("");
+}
+
+function renderPerformanceIndicatorEditRow(row = {}) {
+  return `
+    <tr>
+      <td>
+        <input class="pi-number-input" type="number" min="1" step="1" value="${escapeHTML(row.piNumber || 1)}" />
+      </td>
+      <td>
+        <input class="pi-description-input" required value="${escapeHTML(row.description || "")}" placeholder="Performance indicator description" />
+      </td>
+      <td>
+        <input class="pi-weight-input" type="number" min="0" step="0.01" value="${escapeHTML(row.weight || 1)}" />
+      </td>
+      <td>
+        <button class="btn danger compact-btn" type="button" onclick="removePerformanceIndicatorRow(this)">
+          Remove
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
+function normalizePerformanceIndicatorRow(row = {}, index = 0) {
+  return {
+    piNumber: Number(row.piNumber || index + 1) || index + 1,
+    description: String(row.description || "").trim(),
+    weight: Number(row.weight || 1) || 0,
+    label: `PI ${Number(row.piNumber || index + 1) || index + 1}`,
+  };
+}
+
+function addPerformanceIndicatorRow(row = {}) {
+  const body = document.getElementById("performanceIndicatorRows");
+  if (!body) return;
+
+  const nextNumber =
+    body.querySelectorAll("tr").length + 1;
+  body.insertAdjacentHTML(
+    "beforeend",
+    renderPerformanceIndicatorEditRow({
+      piNumber: row.piNumber || nextNumber,
+      description: row.description || "",
+      weight: row.weight || 1,
+    }),
+  );
+}
+
+function removePerformanceIndicatorRow(button) {
+  const body = document.getElementById("performanceIndicatorRows");
+  const row = button?.closest("tr");
+  if (!body || !row) return;
+
+  row.remove();
+
+  if (body.querySelectorAll("tr").length === 0) {
+    addPerformanceIndicatorRow();
+  }
+}
+
+function getPerformanceIndicatorRows() {
+  return Array.from(document.querySelectorAll("#performanceIndicatorRows tr"))
+    .map((row, index) =>
+      normalizePerformanceIndicatorRow(
+        {
+          piNumber: row.querySelector(".pi-number-input")?.value,
+          description: row.querySelector(".pi-description-input")?.value,
+          weight: row.querySelector(".pi-weight-input")?.value,
+        },
+        index,
+      ),
+    )
+    .filter((row) => row.description);
+}
+
+function renderPerformanceIndicatorSummary() {
+  const body = document.getElementById("performanceIndicatorSummaryBody");
+  if (!body) return;
+  const keyword = String(
+    document.getElementById("performanceIndicatorSearch")?.value || "",
+  )
+    .trim()
+    .toLowerCase();
+  const visibleOutcomes = studentOutcomes.filter((outcome) => {
+    const indicatorText = (outcome.performanceIndicatorRows || [])
+      .map((row) => `${row.piNumber} ${row.description} ${row.weight}`)
+      .join(" ");
+
+    return [
+      outcome.code,
+      outcome.department,
+      outcome.description,
+      outcome.performanceIndicators,
+      indicatorText,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(keyword);
+  });
+
+  body.innerHTML = visibleOutcomes.length
+    ? visibleOutcomes
+        .map((outcome) => {
+          const rows = outcome.performanceIndicatorRows || [];
+
+          return `
+            <tr>
+              <td>
+                <strong>${escapeHTML(outcome.code)}</strong>
+                <small>${escapeHTML(outcome.department || "")}</small>
+              </td>
+              <td>${escapeHTML(outcome.description || "")}</td>
+              <td>
+                ${
+                  rows.length
+                    ? rows
+                        .map(
+                          (row) => `
+                            <small>
+                              <strong>PI ${escapeHTML(row.piNumber)}:</strong>
+                              ${escapeHTML(row.description)}
+                              <span class="muted-text">Weight: ${escapeHTML(row.weight || 0)}</span>
+                            </small>
+                          `,
+                        )
+                        .join("")
+                    : `<span class="muted-text">No PI rows saved</span>`
+                }
+              </td>
+              <td>
+                <button class="btn secondary compact-btn" type="button" onclick="selectPerformanceIndicatorOutcome('${outcome._id}')">
+                  Edit PI
+                </button>
+              </td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="4" class="empty-table-cell">${
+        studentOutcomes.length
+          ? "No performance indicators match your keyword."
+          : "No Student Outcomes saved yet."
+      }</td></tr>`;
+}
+
+function selectPerformanceIndicatorOutcome(id) {
+  const select = document.getElementById("performanceIndicatorOutcome");
+  if (!select) return;
+
+  select.value = id;
+  renderPerformanceIndicatorEditor();
+  document.getElementById("performanceIndicatorForm").scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
 }
 
 function renderCurriculumMap() {
@@ -1090,7 +1462,7 @@ function renderCurriculumMap() {
 
   document.getElementById("curriculumMapBody").innerHTML = rows.length
     ? pageRows.map(renderCurriculumMapRow).join("")
-    : `<tr><td colspan="7" class="empty-table-cell">No curriculum map rows found.</td></tr>`;
+    : `<tr><td colspan="7" class="empty-table-cell">No OBE alignment and assessment traceability rows found.</td></tr>`;
   renderCurriculumMapPagination(rows.length, totalPages);
 
   document.getElementById("unmappedStudentOutcomeList").innerHTML =
@@ -1129,7 +1501,7 @@ function renderCurriculumMapPagination(totalItems, totalPages) {
 
   pagination.innerHTML = `
     <span class="pagination-summary">
-      Showing ${firstItem}-${lastItem} of ${totalItems} curriculum map rows
+      Showing ${firstItem}-${lastItem} of ${totalItems} OBE alignment and assessment traceability rows
     </span>
     <div class="pagination-actions">
       <button class="btn secondary" type="button" onclick="goToCurriculumMapPage(${curriculumMapPage - 1})" ${curriculumMapPage <= 1 ? "disabled" : ""}>
@@ -1240,6 +1612,99 @@ document
     }
   });
 
+document
+  .getElementById("curriculumCourseForm")
+  ?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const body = {
+      department: document.getElementById("curriculumCourseDepartment").value.trim(),
+      courseCode: document.getElementById("curriculumCourseCode").value.trim(),
+      subject: document.getElementById("curriculumCourseSubject").value.trim(),
+      units: document.getElementById("curriculumCourseUnits").value,
+      description: document
+        .getElementById("curriculumCourseDescription")
+        .value.trim(),
+      alignments: getCurriculumCourseAlignments(),
+    };
+
+    try {
+      const data = await apiRequest("/obe/curriculum-map-courses", "POST", body);
+      setMessage("curriculumCourseMessage", data.message, false);
+      document.getElementById("curriculumCourseForm").reset();
+      renderCurriculumAlignmentEditor();
+      await loadCurriculumMapCourses();
+    } catch (error) {
+      setMessage("curriculumCourseMessage", getObeRouteErrorMessage(error));
+    }
+  });
+
+document
+  .getElementById("curriculumCourseDepartment")
+  ?.addEventListener("input", () => {
+    renderCurriculumAlignmentEditor();
+  });
+
+document
+  .getElementById("performanceIndicatorOutcome")
+  ?.addEventListener("change", renderPerformanceIndicatorEditor);
+
+document
+  .getElementById("performanceIndicatorForm")
+  ?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const outcome = getSelectedPerformanceIndicatorOutcome();
+
+    if (!outcome) {
+      setMessage("performanceIndicatorMessage", "Select a Student Outcome first.");
+      return;
+    }
+
+    const performanceIndicatorDetails = getPerformanceIndicatorRows();
+
+    if (performanceIndicatorDetails.length === 0) {
+      setMessage(
+        "performanceIndicatorMessage",
+        "Enter at least one PI description before saving.",
+      );
+      return;
+    }
+
+    try {
+      const data = await apiRequest(
+        `/obe/student-outcomes/${outcome._id}/performance-indicators`,
+        "PUT",
+        { performanceIndicatorDetails },
+      );
+      setMessage("performanceIndicatorMessage", data.message, false);
+      const selectedId = outcome._id;
+      const savedRows = performanceIndicatorDetails.map((row, index) =>
+        normalizePerformanceIndicatorRow(row, index),
+      );
+
+      studentOutcomes = studentOutcomes.map((item) =>
+        item._id === selectedId
+          ? {
+              ...item,
+              performanceIndicators: savedRows
+                .map((row) => `${row.piNumber}. ${row.description}`)
+                .join("\n"),
+              performanceIndicatorRows: savedRows,
+            }
+          : item,
+      );
+      renderPerformanceIndicatorOptions(selectedId);
+      await loadOutcomes();
+      renderPerformanceIndicatorOptions(selectedId);
+    } catch (error) {
+      setMessage(
+        "performanceIndicatorMessage",
+        getObeRouteErrorMessage(error),
+      );
+    }
+  });
+
 function renderOutcomeOptions() {
   const departments = [
     ...new Set(
@@ -1272,6 +1737,10 @@ function renderOutcomeOptions() {
         )
         .join("")
     : `<span class="muted-text">Add PEO records first.</span>`;
+  renderCurriculumAlignmentEditor();
+  renderPerformanceIndicatorOptions(
+    document.getElementById("performanceIndicatorOutcome")?.value || "",
+  );
 }
 
 function renderPeos() {
@@ -1747,11 +2216,18 @@ document
     renderStudentOutcomes();
   });
 document
+  .getElementById("performanceIndicatorSearch")
+  ?.addEventListener("input", renderPerformanceIndicatorSummary);
+document
   .getElementById("curriculumDepartmentFilter")
-  ?.addEventListener("change", loadCurriculumMap);
+  ?.addEventListener("change", () => {
+    loadCurriculumMap();
+  });
 document
   .getElementById("curriculumSubjectFilter")
-  ?.addEventListener("change", loadCurriculumMap);
+  ?.addEventListener("change", () => {
+    loadCurriculumMap();
+  });
 document.querySelectorAll("[data-obe-tab]").forEach((tab) => {
   tab.addEventListener("click", () => {
     showObeSubpage(tab.getAttribute("data-obe-tab"));
@@ -1797,6 +2273,40 @@ function editOutcome(id) {
     behavior: "smooth",
     block: "start",
   });
+}
+
+function editCurriculumCourse(id) {
+  const course = curriculumCourses.find((item) => item._id === id);
+
+  if (!course) {
+    setMessage("curriculumCourseMessage", "Curriculum map course not found.");
+    return;
+  }
+
+  document.getElementById("curriculumCourseDepartment").value =
+    course.department || "";
+  document.getElementById("curriculumCourseCode").value = course.courseCode || "";
+  document.getElementById("curriculumCourseSubject").value = course.subject || "";
+  document.getElementById("curriculumCourseUnits").value = course.units || "";
+  document.getElementById("curriculumCourseDescription").value =
+    course.description || "";
+  renderCurriculumAlignmentEditor(course.alignments || []);
+  document.getElementById("curriculumCourseForm").scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
+async function deleteCurriculumCourse(id) {
+  if (!confirm("Delete this curriculum map course?")) return;
+
+  try {
+    const data = await apiRequest(`/obe/curriculum-map-courses/${id}`, "DELETE");
+    setMessage("curriculumCourseMessage", data.message, false);
+    await loadCurriculumMapCourses();
+  } catch (error) {
+    setMessage("curriculumCourseMessage", getObeRouteErrorMessage(error));
+  }
 }
 
 function resetOutcomeForm() {

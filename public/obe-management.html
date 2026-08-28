@@ -83,9 +83,11 @@
 
         <nav class="obe-subpage-tabs" aria-label="OBE Management sections">
           <a href="#curriculum-map" data-obe-tab="curriculum-map">Curriculum Map</a>
+          <a href="#obe-traceability-matrix" data-obe-tab="obe-traceability-matrix">OBE Alignment and Assessment Traceability Matrix</a>
           <a href="#live-attainment" data-obe-tab="live-attainment">Live Attainment</a>
           <a href="#peos" data-obe-tab="peos">PEO</a>
           <a href="#student-outcomes" data-obe-tab="student-outcomes">Student Outcomes</a>
+          <a href="#performance-indicator" data-obe-tab="performance-indicator">Performance Indicator</a>
           <a href="#course-outcomes" data-obe-tab="course-outcomes">CO/CLO</a>
           <a href="#rubrics" data-obe-tab="rubrics">Rubrics</a>
           <a href="#evidence" data-obe-tab="evidence">Evidence</a>
@@ -93,10 +95,94 @@
         </nav>
 
         <div class="obe-subpage" data-obe-page="curriculum-map">
-        <section class="card curriculum-map-card">
+        <section class="card curriculum-course-card">
           <div class="section-heading">
             <div>
               <h2>Curriculum Map</h2>
+              <p class="muted-text">
+                Add course subjects and mark their SO alignment as I, E, or D.
+              </p>
+            </div>
+            <div class="form-actions">
+              <button class="btn secondary" type="button" onclick="loadCurriculumMapCourses()">
+                Refresh
+              </button>
+              <button class="btn" type="button" onclick="downloadCurriculumMapExcel()">
+                Download Excel
+              </button>
+            </div>
+          </div>
+
+          <form id="curriculumCourseForm" class="curriculum-course-form">
+            <div class="section-heading compact-heading">
+              <div>
+                <h3>Add Curriculum Map Course</h3>
+                <p class="muted-text">
+                  Save a course subject and mark its SO alignment as I, E, or D.
+                </p>
+              </div>
+            </div>
+            <div class="field-grid two">
+              <label>
+                <span class="field-label">Department</span>
+                <input
+                  id="curriculumCourseDepartment"
+                  placeholder="Electronics Engineering"
+                  list="departmentOptions"
+                />
+              </label>
+              <label>
+                <span class="field-label">Course Code</span>
+                <input id="curriculumCourseCode" placeholder="ECE 101" />
+              </label>
+              <label>
+                <span class="field-label">Course Subject</span>
+                <input id="curriculumCourseSubject" required placeholder="Circuits 1" />
+              </label>
+              <label>
+                <span class="field-label">Units</span>
+                <input id="curriculumCourseUnits" type="number" min="0" step="0.5" placeholder="3" />
+              </label>
+              <label>
+                <span class="field-label">Notes</span>
+                <input id="curriculumCourseDescription" placeholder="Optional course notes" />
+              </label>
+            </div>
+            <div class="curriculum-alignment-editor">
+              <div class="curriculum-alignment-legend">
+                <span><strong>I</strong> Introductory</span>
+                <span><strong>E</strong> Enabling</span>
+                <span><strong>D</strong> Demonstrative</span>
+              </div>
+              <div id="curriculumCourseAlignments"></div>
+            </div>
+            <button class="btn" type="submit">Save Course Alignment</button>
+            <p class="message" id="curriculumCourseMessage"></p>
+          </form>
+
+          <div class="table-wrap curriculum-course-wrap">
+            <table class="curriculum-course-table">
+              <thead>
+                <tr>
+                  <th>Course Subject</th>
+                  <th>Department</th>
+                  <th>Units</th>
+                  <th>SO Alignment</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="curriculumCourseBody"></tbody>
+            </table>
+          </div>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="obe-traceability-matrix">
+        <section class="card curriculum-map-card">
+          <div class="section-heading">
+            <div>
+              <h2>OBE Alignment and Assessment Traceability Matrix</h2>
               <p class="muted-text">
                 PEO links, SO coverage, CO/CLO mapping, and question-bank evidence.
               </p>
@@ -512,6 +598,73 @@
             </table>
           </div>
           <div class="pagination-bar" id="studentOutcomePagination"></div>
+        </section>
+        </div>
+
+        <div class="obe-subpage" data-obe-page="performance-indicator">
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Performance Indicator</h2>
+              <p class="muted-text">
+                Add PI rows for each Student Outcome.
+              </p>
+            </div>
+          </div>
+          <form id="performanceIndicatorForm" class="performance-indicator-form">
+            <label>
+              <span class="field-label">Student Outcome</span>
+              <select id="performanceIndicatorOutcome" required></select>
+            </label>
+            <div class="table-wrap performance-indicator-editor">
+              <table>
+                <thead>
+                  <tr>
+                    <th>PI No.</th>
+                    <th>Description</th>
+                    <th>Weight</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="performanceIndicatorRows"></tbody>
+              </table>
+            </div>
+            <div class="form-actions">
+              <button class="btn secondary" type="button" onclick="addPerformanceIndicatorRow()">
+                Add PI
+              </button>
+              <button class="btn" type="submit">Save Performance Indicators</button>
+            </div>
+            <p class="message" id="performanceIndicatorMessage"></p>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <h2>Saved Performance Indicators</h2>
+            <div class="form-actions">
+              <label class="search-box">
+                <span>Keyword</span>
+                <input id="performanceIndicatorSearch" placeholder="Search SO, department, PI..." />
+              </label>
+              <button class="btn secondary" type="button" onclick="loadOutcomes()">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap performance-indicator-summary-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SO</th>
+                  <th>Description</th>
+                  <th>Performance Indicators</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="performanceIndicatorSummaryBody"></tbody>
+            </table>
+          </div>
         </section>
         </div>
 

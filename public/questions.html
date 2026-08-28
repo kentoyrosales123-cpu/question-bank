@@ -40,25 +40,25 @@
           </div>
         </div>
 
-        <div class="card">
-          <div class="grid grid-4">
+        <div class="card question-filter-card">
+          <div class="question-filter-grid">
             <input id="filterSubject" placeholder="Filter subject" />
 
             <input id="filterTopic" placeholder="Filter topic" />
 
+            <select id="filterQuestionType">
+              <option value="">All Question Types</option>
+              <option value="Multiple Choice">Multiple Choice</option>
+              <option value="Problem Solving">Problem Solving</option>
+            </select>
+
             <select id="filterDifficulty">
               <option value="">All Difficulty</option>
-
               <option value="Easy">Easy</option>
-
               <option value="Average">Average</option>
-
               <option value="Difficult">Difficult</option>
             </select>
 
-            <button class="btn" onclick="filterQuestions()">Filter</button>
-          </div>
-          <div class="grid grid-4 obe-filter-row">
             <input id="filterCourseOutcome" placeholder="Filter CLO" />
             <input id="filterProgramOutcome" placeholder="Filter SO" />
             <input id="filterStudentLearningOutcome" placeholder="Filter SLO" />
@@ -71,6 +71,9 @@
               <option value="Evaluate">Evaluate</option>
               <option value="Create">Create</option>
             </select>
+          </div>
+          <div class="question-filter-actions">
+            <button class="btn" onclick="filterQuestions()">Filter</button>
             <button class="btn secondary" onclick="loadQuestions()">Clear</button>
           </div>
         </div>
@@ -84,6 +87,7 @@
                 <th>Subject</th>
                 <th>Program</th>
                 <th>Topic</th>
+                <th>Type</th>
                 <th>Question</th>
                 <th>Difficulty</th>
                 <th>CEP</th>
