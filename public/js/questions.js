@@ -15,6 +15,19 @@ const normalizeSoCode = (value = "") =>
     .trim()
     .toLowerCase();
 
+const normalizeText = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const PROGRAM_DEPARTMENT_LABELS = {
+  GE: "General Engineering",
+  ECE: "Electronics Engineering",
+  CE: "Civil Engineering",
+  EE: "Electrical Engineering",
+  ME: "Mechanical Engineering",
+  CpE: "Computer Engineering",
+  CHE: "Chemical Engineering",
+};
+
 const isProblemSolvingQuestion = (question) =>
   question?.questionType === "Problem Solving";
 
@@ -210,11 +223,32 @@ function formatObeTag(question) {
   return `${clo} / ${so} / ${pi} / ${slo}`;
 }
 
-function renderPerformanceIndicatorOptions(soCode, selected = "") {
+function getProgramDepartmentLabel(program = "") {
+  return PROGRAM_DEPARTMENT_LABELS[String(program || "").trim()] || "";
+}
+
+function findStudentOutcomeForQuestion(program = "", soCode = "") {
   const normalizedSo = normalizeSoCode(soCode);
-  const outcome = studentOutcomeRows.find(
-    (row) => normalizeSoCode(row.code) === normalizedSo,
+  const department = normalizeText(getProgramDepartmentLabel(program));
+
+  if (!normalizedSo) return null;
+
+  return (
+    studentOutcomeRows.find(
+      (row) =>
+        normalizeSoCode(row.code) === normalizedSo &&
+        department &&
+        normalizeText(row.department) === department,
+    ) ||
+    studentOutcomeRows.find(
+      (row) => normalizeSoCode(row.code) === normalizedSo,
+    ) ||
+    null
   );
+}
+
+function renderPerformanceIndicatorOptions(program, soCode, selected = "") {
+  const outcome = findStudentOutcomeForQuestion(program, soCode);
   const indicators = outcome?.performanceIndicatorRows || [];
 
   return [
@@ -598,7 +632,7 @@ async function editQuestion(id) {
         <label>
           <span class="field-label">Performance Indicator</span>
           <select id="editPerformanceIndicator">
-            ${renderPerformanceIndicatorOptions(question.programOutcome, question.performanceIndicator)}
+            ${renderPerformanceIndicatorOptions(question.engineeringProgram, question.programOutcome, question.performanceIndicator)}
           </select>
         </label>
 
@@ -661,15 +695,24 @@ async function editQuestion(id) {
     document
       .getElementById("editQuestionType")
       ?.addEventListener("change", updateEditQuestionTypeFields);
+
+    const refreshEditPerformanceIndicators = () => {
+      const select = document.getElementById("editPerformanceIndicator");
+      if (!select) return;
+
+      select.innerHTML = renderPerformanceIndicatorOptions(
+        document.getElementById("editEngineeringProgram").value,
+        document.getElementById("editProgramOutcome").value,
+        select.value,
+      );
+    };
+
+    document
+      .getElementById("editEngineeringProgram")
+      ?.addEventListener("change", refreshEditPerformanceIndicators);
     document
       .getElementById("editProgramOutcome")
-      ?.addEventListener("input", () => {
-        document.getElementById("editPerformanceIndicator").innerHTML =
-          renderPerformanceIndicatorOptions(
-            document.getElementById("editProgramOutcome").value,
-            document.getElementById("editPerformanceIndicator").value,
-          );
-      });
+      ?.addEventListener("input", refreshEditPerformanceIndicators);
 
     updateEditQuestionTypeFields();
     document.getElementById("questionModal").classList.remove("hidden");
