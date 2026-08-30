@@ -29,11 +29,20 @@ const {
 const {
   weightedPhaseAttainment,
 } = require("../utils/phaseAttainment");
+const {
+  normalizePerformanceIndicators,
+} = require("../utils/obeValidation");
 
 const EXAM_TYPES = ["Multiple Choice", "Problem Solving"];
 
 const normalizeExamType = (value) =>
   EXAM_TYPES.includes(value) ? value : "Multiple Choice";
+
+const getPerformanceIndicatorKeys = (item = {}) =>
+  normalizePerformanceIndicators(
+    item.performanceIndicators,
+    item.performanceIndicator,
+  ).filter(Boolean);
 
 const getQuestionTypeFilter = (examType) =>
   normalizeExamType(examType) === "Problem Solving"
@@ -203,7 +212,7 @@ const buildExamAttainmentReport = async (exam) => {
     const answer = answerByQuestionId.get(questionId);
     const weight = Math.max(0, Number(question.outcomeWeight || 1));
     const studentOutcomeCode = question.programOutcome || "Unmapped SO";
-    const performanceIndicator = question.performanceIndicator || "";
+    const performanceIndicators = getPerformanceIndicatorKeys(question);
     const outcomePairs = [
       {
         map: courseOutcomes,
@@ -253,7 +262,7 @@ const buildExamAttainmentReport = async (exam) => {
       }
     }
 
-    if (performanceIndicator) {
+    performanceIndicators.forEach((performanceIndicator) => {
       const soBucket = ensureAttainmentBucket(
         studentOutcomes,
         studentOutcomeCode,
@@ -269,11 +278,11 @@ const buildExamAttainmentReport = async (exam) => {
 
       if (answer) {
         piBucket.assessedItems += 1;
-        piBucket.totalWeight += weight;
+        piBucket.totalWeight += weight / performanceIndicators.length;
 
         if (answer.isCorrect) {
           piBucket.correctItems += 1;
-          piBucket.earnedWeight += weight;
+          piBucket.earnedWeight += weight / performanceIndicators.length;
         }
         const phaseBucket = ensureAttainmentBucket(
           piBucket.phaseBuckets,
@@ -282,13 +291,13 @@ const buildExamAttainmentReport = async (exam) => {
         );
 
         phaseBucket.assessedItems += 1;
-        phaseBucket.totalWeight += weight;
+        phaseBucket.totalWeight += weight / performanceIndicators.length;
         if (answer.isCorrect) {
           phaseBucket.correctItems += 1;
-          phaseBucket.earnedWeight += weight;
+          phaseBucket.earnedWeight += weight / performanceIndicators.length;
         }
       }
-    }
+    });
   });
 
   const studentOutcomeRows = await attachStudentOutcomeIndicators(

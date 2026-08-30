@@ -3,12 +3,121 @@ contentManagerPage();
 
 const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
 let studentOutcomeRows = [];
+let questionTypeTouched = false;
 
 const normalizeSoCode = (value = "") =>
   String(value || "")
     .replace(/^SO[-\s]*/i, "")
     .trim()
     .toLowerCase();
+
+function normalizePerformanceIndicators(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeProgramOutcomes(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n\s]+/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) =>
+      String(item || "")
+        .replace(/^SO[-\s]*/i, "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function detectQuestionTypeFromForm() {
+  const questionText = document.getElementById("questionText")?.value || "";
+  const solutionAnswer = document.getElementById("solutionAnswer")?.value || "";
+  const choices = ["choiceA", "choiceB", "choiceC", "choiceD"]
+    .map((id) => document.getElementById(id)?.value.trim() || "")
+    .filter(Boolean);
+
+  if (choices.length >= 2) return "Multiple Choice";
+
+  const text = [questionText, solutionAnswer]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) return "Multiple Choice";
+
+  let score = 0;
+  const terms = [
+    "calculate",
+    "compute",
+    "determine",
+    "derive",
+    "evaluate",
+    "find",
+    "solve",
+    "simplify",
+    "prove",
+    "design",
+    "analyze",
+    "what is the value",
+    "how many",
+  ];
+
+  if (solutionAnswer) score += 3;
+  if (terms.some((term) => text.includes(term))) score += 2;
+  if (/(?:[a-z]\s*=|\d+\s*[+\-*/^]\s*\d+|[a-z]\^[\-\d]+|=)/i.test(text)) {
+    score += 2;
+  }
+  if (/\b(?:v|a|ohm|w|kw|hz|n|pa|j|c|f|h|m|cm|mm|kg|s|rad|rpm)\b/i.test(text)) {
+    score += 1;
+  }
+
+  const numbers = text.match(/\d+(?:\.\d+)?\s*(?:%|[a-z]+)?/gi) || [];
+  if (numbers.length >= 2) score += 1;
+  if (numbers.length >= 4) score += 1;
+
+  return score >= 3 ? "Problem Solving" : "Multiple Choice";
+}
+
+function autoDetectQuestionType() {
+  if (questionTypeTouched) return;
+
+  const questionType = document.getElementById("questionType");
+  const detectedType = detectQuestionTypeFromForm();
+
+  if (questionType && questionType.value !== detectedType) {
+    questionType.value = detectedType;
+    updateQuestionTypeFields();
+  }
+}
 
 function updatePerformanceIndicatorOptions() {
   const soInput = document.getElementById("programOutcome");
@@ -104,7 +213,13 @@ document
   ?.addEventListener("input", updatePerformanceIndicatorOptions);
 document
   .getElementById("questionType")
-  ?.addEventListener("change", updateQuestionTypeFields);
+  ?.addEventListener("change", () => {
+    questionTypeTouched = true;
+    updateQuestionTypeFields();
+  });
+["questionText", "solutionAnswer", "choiceA", "choiceB", "choiceC", "choiceD"].forEach(
+  (id) => document.getElementById(id)?.addEventListener("input", autoDetectQuestionType),
+);
 updateQuestionTypeFields();
 
 document
@@ -152,8 +267,22 @@ document
       document.getElementById("programOutcome").value,
     );
     form.append(
+      "programOutcomes",
+      normalizeProgramOutcomes(
+        document.getElementById("programOutcomes").value,
+        document.getElementById("programOutcome").value,
+      ).join(", "),
+    );
+    form.append(
       "performanceIndicator",
       document.getElementById("performanceIndicator").value,
+    );
+    form.append(
+      "performanceIndicators",
+      normalizePerformanceIndicators(
+        document.getElementById("performanceIndicators").value,
+        document.getElementById("performanceIndicator").value,
+      ).join(", "),
     );
     form.append(
       "studentLearningOutcome",
@@ -178,6 +307,7 @@ document
       document.getElementById("message").textContent =
         "Question saved successfully.";
       document.getElementById("questionForm").reset();
+      questionTypeTouched = false;
       updateQuestionTypeFields();
       updatePerformanceIndicatorOptions();
     } catch (error) {

@@ -71,6 +71,15 @@ const itemAnalysisExamSchema = new mongoose.Schema(
         courseOutcome: { type: String, default: "", trim: true },
         programOutcome: { type: String, default: "", trim: true },
         performanceIndicator: { type: String, default: "", trim: true },
+        performanceIndicators: [
+          {
+            so: { type: String, default: "", trim: true },
+            label: { type: String, default: "", trim: true },
+            description: { type: String, default: "", trim: true },
+            confidence: { type: Number, default: 0, min: 0, max: 100 },
+            primary: { type: Boolean, default: false },
+          },
+        ],
         bloomLevel: { type: String, default: "", trim: true },
         maxScore: { type: Number, default: 0, min: 0 },
       },

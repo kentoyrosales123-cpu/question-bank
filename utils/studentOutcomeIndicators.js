@@ -137,6 +137,7 @@ const attachStudentOutcomeIndicators = async (rows = [], codeKey = "code") => {
 module.exports = {
   attachStudentOutcomeIndicators,
   buildStudentOutcomeIndicatorMap,
+  normalizeIndicatorRows,
   normalizePerformanceIndicator,
   normalizeSoCode,
   parsePerformanceIndicators,

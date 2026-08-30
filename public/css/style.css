@@ -4541,6 +4541,10 @@ body.dark .activity-monitor-card .section-heading h2 {
   min-width: 720px;
 }
 
+.pi-attainment-table {
+  min-width: 980px;
+}
+
 .obe-attainment-table th,
 .obe-attainment-table td {
   vertical-align: middle;
@@ -4712,6 +4716,85 @@ body.dark .activity-monitor-card .section-heading h2 {
 
 .curriculum-map-table {
   min-width: 980px;
+}
+
+.rubric-template-editor-wrap {
+  overflow: auto;
+  max-height: 500px;
+  margin-top: 6px;
+  border-color: rgba(134, 0, 18, 0.18);
+  box-shadow: none;
+}
+
+.rubric-template-editor-table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+.rubric-template-editor-table th,
+.rubric-template-editor-table td {
+  padding: 10px;
+  vertical-align: top;
+}
+
+.rubric-template-editor-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card-soft);
+  border-bottom: 1px solid rgba(134, 0, 18, 0.18);
+}
+
+.rubric-template-editor-table th:nth-child(1),
+.rubric-template-editor-table td:nth-child(1) {
+  width: 190px;
+}
+
+.rubric-template-editor-table th:nth-child(2),
+.rubric-template-editor-table td:nth-child(2),
+.rubric-template-editor-table th:nth-child(3),
+.rubric-template-editor-table td:nth-child(3),
+.rubric-template-editor-table th:nth-child(4),
+.rubric-template-editor-table td:nth-child(4),
+.rubric-template-editor-table th:nth-child(5),
+.rubric-template-editor-table td:nth-child(5) {
+  width: 205px;
+}
+
+.rubric-template-editor-table th:nth-child(6),
+.rubric-template-editor-table td:nth-child(6) {
+  width: 90px;
+}
+
+.rubric-template-editor-table th:nth-child(7),
+.rubric-template-editor-table td:nth-child(7) {
+  width: 98px;
+}
+
+.rubric-template-editor-table input,
+.rubric-template-editor-table textarea {
+  min-height: 40px;
+  margin-bottom: 0;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.rubric-template-editor-table textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+
+.rubric-template-editor-table input[type="number"] {
+  text-align: center;
+}
+
+.rubric-template-editor-table .compact-btn {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
 }
 
 .curriculum-course-form {

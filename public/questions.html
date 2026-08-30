@@ -80,10 +80,28 @@
 
         <br />
 
+        <div class="card" id="bulkQuestionActions" hidden>
+          <div class="action-row">
+            <span id="selectedQuestionCount">0 selected</span>
+            <button
+              class="btn danger"
+              id="bulkDeleteQuestionsButton"
+              type="button"
+              disabled
+            >
+              Delete Selected
+            </button>
+          </div>
+          <p class="message" id="bulkQuestionMessage"></p>
+        </div>
+
+        <br />
+
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th id="questionSelectHeader"></th>
                 <th>Subject</th>
                 <th>Program</th>
                 <th>Topic</th>

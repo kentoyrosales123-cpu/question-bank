@@ -48,7 +48,7 @@ function renderObeAttainment(obeAttainment = {}) {
       "Link this item analysis to a generated exam to compute CO/SO attainment.";
   } else {
     message.textContent =
-      "CO/SO/Bloom attainment computed from actual uploaded student responses.";
+      "CO/SO/PI/Bloom attainment computed from actual uploaded student responses.";
   }
 
   renderAttainmentTable(
@@ -64,6 +64,12 @@ function renderObeAttainment(obeAttainment = {}) {
     "SO",
   );
   renderAttainmentTable(
+    "piAttainmentBody",
+    obeAttainment.performanceIndicators || [],
+    "PI",
+    "PI",
+  );
+  renderAttainmentTable(
     "bloomAttainmentBody",
     obeAttainment.bloomLevels || [],
     "Bloom",
@@ -76,7 +82,8 @@ function renderAttainmentTable(bodyId, rows, label, outcomeType) {
 
   if (!body) return;
 
-  const emptyColspan = outcomeType === "Bloom" ? 8 : outcomeType === "SO" ? 10 : 9;
+  const emptyColspan =
+    outcomeType === "Bloom" ? 8 : outcomeType === "SO" || outcomeType === "PI" ? 10 : 9;
 
   body.innerHTML = rows.length
     ? rows.map((row) => renderAttainmentRow(row, outcomeType)).join("")
@@ -95,7 +102,7 @@ function renderAttainmentRow(row, outcomeType) {
   const statusClass = row.status === "Attained" ? "easy" : "difficult";
   const cqiKey = `${outcomeType}:${row.code}`;
 
-  if (outcomeType === "CO" || outcomeType === "SO") {
+  if (outcomeType === "CO" || outcomeType === "SO" || outcomeType === "PI") {
     attainmentRowsByKey.set(cqiKey, row);
   }
 
@@ -103,6 +110,7 @@ function renderAttainmentRow(row, outcomeType) {
     <tr>
       <td><strong>${escapeHTML(row.code)}</strong></td>
       ${outcomeType === "SO" ? `<td>${renderPerformanceIndicators(row)}</td>` : ""}
+      ${outcomeType === "PI" ? `<td>${escapeHTML(row.studentOutcome || "Unmapped SO")}</td>` : ""}
       <td>${row.itemCount || 0}</td>
       <td>${row.responseCount || 0}</td>
       <td>${row.correctCount || 0}</td>
@@ -111,7 +119,7 @@ function renderAttainmentRow(row, outcomeType) {
       <td><span class="badge ${getAttainmentClass(row.attainmentRate, row.targetRate)}">${row.attainmentRate || 0}%</span></td>
       <td><span class="badge ${statusClass}">${escapeHTML(row.status || "Not assessed")}</span></td>
       ${
-        outcomeType === "CO" || outcomeType === "SO"
+        outcomeType === "CO" || outcomeType === "SO" || outcomeType === "PI"
           ? `<td>${renderCqiAction(row, outcomeType)}</td>`
           : ""
       }
@@ -442,10 +450,21 @@ document.getElementById("cqiPlanForm")?.addEventListener("submit", async (event)
 });
 
 function renderAnalysisRow(item) {
+  const performanceIndicators = Array.isArray(item.performanceIndicators)
+    ? item.performanceIndicators
+    : String(item.performanceIndicator || "")
+        .split(/[,;\n]/)
+        .map((indicator) => indicator.trim())
+        .filter(Boolean);
+
   return `
     <tr>
       <td>${item.itemNo}</td>
+      <td>${escapeHTML(item.courseOutcome || "Unmapped")}</td>
+      <td>${escapeHTML(item.programOutcome || "Unmapped")}</td>
+      <td>${escapeHTML(performanceIndicators.join(", ") || "Unmapped")}</td>
       <td>${item.averageScore || 0} / ${item.maxScore || 1}</td>
+      <td><span class="badge ${getAttainmentClass(item.performanceScore || 0)}">${item.performanceScore || 0}%</span></td>
       <td>${item.correctCount}</td>
       <td>${item.incorrectCount}</td>
       <td>${item.difficultyIndex}</td>

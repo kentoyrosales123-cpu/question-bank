@@ -7,10 +7,14 @@ const {
 const {
   formatObeMappingError,
   getMissingObeMappingFields,
+  normalizePerformanceIndicatorMappings,
+  normalizePerformanceIndicators,
+  normalizeProgramOutcomes,
 } = require("../utils/obeValidation");
 const {
   classifyComplexEngineeringProblem,
 } = require("../utils/complexEngineeringProblem");
+const { detectQuestionType } = require("../utils/questionTypeDetection");
 const {
   getQuestionProgramMatch,
   isValidEngineeringProgram,
@@ -26,6 +30,22 @@ const QUESTION_TYPES = ["Multiple Choice", "Problem Solving"];
 
 const normalizeQuestionType = (value) =>
   QUESTION_TYPES.includes(value) ? value : "Multiple Choice";
+
+const normalizeQuestionTypeFromBody = (body = {}, fallback = "Multiple Choice") =>
+  QUESTION_TYPES.includes(body.questionType)
+    ? body.questionType
+    : detectQuestionType({
+        questionText: body.questionText,
+        choices: {
+          A: body.choiceA || body.choices?.A,
+          B: body.choiceB || body.choices?.B,
+          C: body.choiceC || body.choices?.C,
+          D: body.choiceD || body.choices?.D,
+        },
+        correctAnswer: body.correctAnswer,
+        solutionAnswer: body.solutionAnswer,
+        explanation: body.explanation,
+      }) || fallback;
 
 const isProblemSolvingQuestion = (value) =>
   normalizeQuestionType(value) === "Problem Solving";
@@ -47,7 +67,16 @@ const getQuestionSnapshot = (question) => ({
   difficulty: question.difficulty,
   courseOutcome: question.courseOutcome || "",
   programOutcome: question.programOutcome || "",
+  programOutcomes: normalizeProgramOutcomes(
+    question.programOutcomes,
+    question.programOutcome,
+  ),
   performanceIndicator: question.performanceIndicator || "",
+  performanceIndicators: normalizePerformanceIndicatorMappings(
+    question.performanceIndicators,
+    question.performanceIndicator,
+    question.programOutcome,
+  ),
   studentLearningOutcome: question.studentLearningOutcome || "",
   bloomLevel: question.bloomLevel || "",
   outcomeWeight: Number(question.outcomeWeight || 1),
@@ -122,7 +151,9 @@ exports.createQuestion = async (req, res) => {
       difficulty,
       courseOutcome,
       programOutcome,
+      programOutcomes,
       performanceIndicator,
+      performanceIndicators,
       studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
@@ -132,7 +163,7 @@ exports.createQuestion = async (req, res) => {
       tables,
     } = req.body;
 
-    const normalizedQuestionType = normalizeQuestionType(questionType);
+    const normalizedQuestionType = normalizeQuestionTypeFromBody(req.body);
     const isProblemSolving = isProblemSolvingQuestion(normalizedQuestionType);
 
     if (
@@ -176,7 +207,13 @@ exports.createQuestion = async (req, res) => {
       engineeringProgram,
       courseOutcome,
       programOutcome,
+      programOutcomes: normalizeProgramOutcomes(programOutcomes, programOutcome),
       performanceIndicator,
+      performanceIndicators: normalizePerformanceIndicatorMappings(
+        performanceIndicators,
+        performanceIndicator,
+        programOutcome,
+      ),
       studentLearningOutcome,
       bloomLevel,
       outcomeWeight,
@@ -378,8 +415,20 @@ exports.updateQuestion = async (req, res) => {
       ),
       topic: getBodyValue("topic", question.topic),
       questionText: getBodyValue("questionText", question.questionText),
-      questionType: normalizeQuestionType(
-        getBodyValue("questionType", question.questionType),
+      questionType: normalizeQuestionTypeFromBody(
+        {
+          ...req.body,
+          questionType: getBodyValue("questionType", question.questionType),
+          questionText: getBodyValue("questionText", question.questionText),
+          choiceA: getBodyValue("choiceA", question.choices.A),
+          choiceB: getBodyValue("choiceB", question.choices.B),
+          choiceC: getBodyValue("choiceC", question.choices.C),
+          choiceD: getBodyValue("choiceD", question.choices.D),
+          correctAnswer: getBodyValue("correctAnswer", question.correctAnswer),
+          solutionAnswer: getBodyValue("solutionAnswer", question.solutionAnswer),
+          explanation: getBodyValue("explanation", question.explanation),
+        },
+        question.questionType,
       ),
       choices: {
         A: getBodyValue("choiceA", question.choices.A),
@@ -392,9 +441,18 @@ exports.updateQuestion = async (req, res) => {
       difficulty: getBodyValue("difficulty", question.difficulty),
       courseOutcome: getBodyValue("courseOutcome", question.courseOutcome),
       programOutcome: getBodyValue("programOutcome", question.programOutcome),
+      programOutcomes: normalizeProgramOutcomes(
+        getBodyValue("programOutcomes", question.programOutcomes),
+        getBodyValue("programOutcome", question.programOutcome),
+      ),
       performanceIndicator: getBodyValue(
         "performanceIndicator",
         question.performanceIndicator,
+      ),
+      performanceIndicators: normalizePerformanceIndicatorMappings(
+        getBodyValue("performanceIndicators", question.performanceIndicators),
+        getBodyValue("performanceIndicator", question.performanceIndicator),
+        getBodyValue("programOutcome", question.programOutcome),
       ),
       studentLearningOutcome: getBodyValue(
         "studentLearningOutcome",

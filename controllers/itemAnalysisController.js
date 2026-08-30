@@ -35,6 +35,10 @@ const {
 const {
   weightedPhaseAttainment,
 } = require("../utils/phaseAttainment");
+const {
+  normalizePerformanceIndicatorMappings,
+  normalizePerformanceIndicators,
+} = require("../utils/obeValidation");
 const { isAdmin } = require("../utils/roles");
 
 const normalizeHeader = (value) =>
@@ -44,6 +48,12 @@ const normalizeHeader = (value) =>
     .replace(/\s+/g, " ");
 
 const normalizeValue = (value) => String(value ?? "").trim();
+
+const getPerformanceIndicatorKeys = (item = {}) =>
+  normalizePerformanceIndicators(
+    item.performanceIndicators,
+    item.performanceIndicator,
+  ).filter(Boolean);
 
 const normalizeStudentOutcomeLink = (value = "") =>
   String(value || "")
@@ -826,7 +836,16 @@ const parseResultRows = async (
       itemNo,
       courseOutcome: mappedParts?.[1] || "",
       programOutcome: normalizeStudentOutcomeLink(mappedParts?.[2] || ""),
-      performanceIndicator: hasPiColumn ? mappedParts?.[3] || "" : "",
+      performanceIndicator: hasPiColumn
+        ? normalizePerformanceIndicators(mappedParts?.[3] || "")[0] || ""
+        : "",
+      performanceIndicators: hasPiColumn
+        ? normalizePerformanceIndicatorMappings(
+            mappedParts?.[3] || "",
+            "",
+            mappedParts?.[2] || "",
+          )
+        : [],
       bloomLevel: mappedParts?.[hasPiColumn ? 4 : 3] || "",
       maxScore: Math.max(
         0,
@@ -1029,9 +1048,27 @@ const getExamMaxScores = (exam) => {
   );
 };
 
+const getExamItemMappings = (exam) => {
+  const mappings = Array.isArray(exam?.itemMappings) ? exam.itemMappings : [];
+
+  return new Map(
+    mappings.map((mapping, index) => [
+      Number(mapping.itemNo || index + 1),
+      {
+        courseOutcome: mapping.courseOutcome || "",
+        programOutcome: mapping.programOutcome || "",
+        performanceIndicator: mapping.performanceIndicator || "",
+        performanceIndicators: getPerformanceIndicatorKeys(mapping),
+        bloomLevel: mapping.bloomLevel || "",
+      },
+    ]),
+  );
+};
+
 const computeAnalysis = (exam, results) => {
   const totalStudents = results.length;
   const maxScores = getExamMaxScores(exam);
+  const itemMappings = getExamItemMappings(exam);
   const possibleScore = maxScores.reduce((sum, score) => sum + score, 0);
   const scores = results.map((result) => result.totalScore);
   const averageScore =
@@ -1050,9 +1087,16 @@ const computeAnalysis = (exam, results) => {
   const items = Array.from({ length: exam.numberOfItems }, (_, index) => {
     const itemNo = index + 1;
     const maxScore = maxScores[index] || 1;
+    const mapping = itemMappings.get(itemNo) || {};
     const itemScores = results.map((result) =>
       Math.max(0, Number(result.itemResults[index]?.score || 0)),
     );
+    const averageScore =
+      totalStudents > 0
+        ? itemScores.reduce((sum, score) => sum + score, 0) / totalStudents
+        : 0;
+    const performanceScore =
+      maxScore > 0 ? Math.round((averageScore / maxScore) * 1000) / 10 : 0;
     const correctCount = results.filter(
       (result) => {
         const item = result.itemResults[index];
@@ -1096,11 +1140,15 @@ const computeAnalysis = (exam, results) => {
     return {
       itemNo,
       maxScore,
-      averageScore: roundMetric(
-        totalStudents > 0
-          ? itemScores.reduce((sum, score) => sum + score, 0) / totalStudents
-          : 0,
-      ),
+      courseOutcome: mapping.courseOutcome || "",
+      programOutcome: mapping.programOutcome || "",
+      performanceIndicators: mapping.performanceIndicators || [],
+      performanceIndicator:
+        mapping.performanceIndicator ||
+        (mapping.performanceIndicators || [])[0] ||
+        "",
+      averageScore: roundMetric(averageScore),
+      performanceScore,
       correctCount,
       incorrectCount,
       difficultyIndex: roundMetric(difficultyIndex),
@@ -1363,6 +1411,7 @@ const buildObeAttainment = async (exam, results) => {
         "CO/SO attainment is available only when item analysis is linked to a generated exam or uploaded with rubric headers containing CO/SO/PI mappings.",
       courseOutcomes: [],
       studentOutcomes: [],
+      performanceIndicators: [],
       bloomLevels: [],
     };
   }
@@ -1371,7 +1420,7 @@ const buildObeAttainment = async (exam, results) => {
     ? await Exam.findById(exam.generatedExamId).populate({
         path: "questions",
         select:
-          "courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight questionText questionType",
+          "courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight questionText questionType",
       })
     : null;
 
@@ -1382,6 +1431,7 @@ const buildObeAttainment = async (exam, results) => {
       message: "Linked generated exam was not found.",
       courseOutcomes: [],
       studentOutcomes: [],
+      performanceIndicators: [],
       bloomLevels: [],
     };
   }
@@ -1392,6 +1442,7 @@ const buildObeAttainment = async (exam, results) => {
         courseOutcome: question.courseOutcome,
         programOutcome: question.programOutcome,
         performanceIndicator: question.performanceIndicator,
+        performanceIndicators: getPerformanceIndicatorKeys(question),
         bloomLevel: question.bloomLevel,
         outcomeWeight: question.outcomeWeight,
       }))
@@ -1410,7 +1461,7 @@ const buildObeAttainment = async (exam, results) => {
     );
     const studentOutcome =
       normalizeStudentOutcomeLink(mapping.programOutcome) || "Unmapped SO";
-    const performanceIndicator = mapping.performanceIndicator || "";
+    const performanceIndicators = getPerformanceIndicatorKeys(mapping);
     const bloomLevel = mapping.bloomLevel || "Unmapped Bloom";
 
     ensureObeBucket(
@@ -1423,13 +1474,13 @@ const buildObeAttainment = async (exam, results) => {
       studentOutcome,
       settings.studentOutcomeTarget,
     ).itemCount += 1;
-    if (performanceIndicator) {
+    performanceIndicators.forEach((performanceIndicator) => {
       ensureObeBucket(
         studentOutcomes.get(studentOutcome).piBuckets,
         performanceIndicator,
         settings.studentOutcomeTarget,
       ).itemCount += 1;
-    }
+    });
     ensureObeBucket(
       bloomLevels,
       bloomLevel,
@@ -1456,14 +1507,16 @@ const buildObeAttainment = async (exam, results) => {
         settings.studentOutcomeTarget,
         assessmentPhase,
       );
-      addPiResponse(
-        studentOutcomes.get(studentOutcome),
-        performanceIndicator,
-        itemResult,
-        weight,
-        settings.studentOutcomeTarget,
-        assessmentPhase,
-      );
+      performanceIndicators.forEach((performanceIndicator) => {
+        addPiResponse(
+          studentOutcomes.get(studentOutcome),
+          performanceIndicator,
+          itemResult,
+          weight / performanceIndicators.length,
+          settings.studentOutcomeTarget,
+          assessmentPhase,
+        );
+      });
       addOutcomeResponse(
         bloomLevels,
         bloomLevel,
@@ -1485,6 +1538,18 @@ const buildObeAttainment = async (exam, results) => {
       "SO",
     ),
   );
+  const performanceIndicatorRows = attachCqiPlans(
+    studentOutcomeRows.flatMap((studentOutcome) =>
+      (studentOutcome.piBreakdown || []).map((pi) => ({
+        ...pi,
+        code: `${studentOutcome.code} - ${pi.code}`,
+        studentOutcome: studentOutcome.code,
+        performanceIndicator: pi.code,
+      })),
+    ),
+    cqiPlans,
+    "PI",
+  );
 
   return {
     available: true,
@@ -1496,6 +1561,7 @@ const buildObeAttainment = async (exam, results) => {
       "CO",
     ),
     studentOutcomes: studentOutcomeRows,
+    performanceIndicators: performanceIndicatorRows,
     bloomLevels: Array.from(bloomLevels.values()).map(finalizeObeBucket),
   };
 };
@@ -1783,7 +1849,7 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
 
     const generatedExam = await Exam.findOne(generatedExamQuery).populate(
       "questions",
-      "correctAnswer solutionAnswer questionType courseOutcome programOutcome performanceIndicator bloomLevel",
+      "correctAnswer solutionAnswer questionType courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel",
     );
 
     if (!generatedExam) {
@@ -1853,6 +1919,11 @@ exports.createItemAnalysisFromGeneratedExam = async (req, res) => {
       courseOutcome: normalizeValue(question.courseOutcome),
       programOutcome: normalizeStudentOutcomeLink(question.programOutcome),
       performanceIndicator: normalizeValue(question.performanceIndicator),
+      performanceIndicators: normalizePerformanceIndicatorMappings(
+        question.performanceIndicators,
+        question.performanceIndicator,
+        question.programOutcome,
+      ),
       bloomLevel: normalizeValue(question.bloomLevel),
       maxScore: answerKey[index]?.maxScore || 0,
     }));
@@ -2118,7 +2189,7 @@ exports.uploadItemAnalysis = async (req, res) => {
 
       linkedGeneratedExam = await Exam.findOne(generatedExamQuery).populate(
         "questions",
-        "correctAnswer solutionAnswer questionType outcomeWeight courseOutcome programOutcome performanceIndicator bloomLevel",
+        "correctAnswer solutionAnswer questionType outcomeWeight courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel",
       );
 
       if (!linkedGeneratedExam) {
@@ -2194,6 +2265,11 @@ exports.uploadItemAnalysis = async (req, res) => {
           courseOutcome: normalizeValue(question.courseOutcome),
           programOutcome: normalizeStudentOutcomeLink(question.programOutcome),
           performanceIndicator: normalizeValue(question.performanceIndicator),
+          performanceIndicators: normalizePerformanceIndicatorMappings(
+            question.performanceIndicators,
+            question.performanceIndicator,
+            question.programOutcome,
+          ),
           bloomLevel: normalizeValue(question.bloomLevel),
           maxScore: finalAnswerKey[index]?.maxScore || 0,
         }))
@@ -2596,6 +2672,7 @@ exports.exportItemAnalysis = async (req, res) => {
     const perStudentSheet = workbook.addWorksheet("Per Student Analysis");
     const coSheet = workbook.addWorksheet("CO Attainment");
     const soSheet = workbook.addWorksheet("SO Attainment");
+    const piSheet = workbook.addWorksheet("PI Attainment");
     const bloomSheet = workbook.addWorksheet("Bloom Attainment");
 
     summarySheet.addRows([
@@ -2615,7 +2692,11 @@ exports.exportItemAnalysis = async (req, res) => {
 
     itemSheet.columns = [
       { header: "Item No.", key: "itemNo", width: 12 },
+      { header: "CO/CLO", key: "courseOutcome", width: 20 },
+      { header: "SO", key: "programOutcome", width: 14 },
+      { header: "Performance Indicators", key: "performanceIndicatorsText", width: 36 },
       { header: "Average Score", key: "averageScore", width: 16 },
+      { header: "PI Performance %", key: "performanceScore", width: 18 },
       { header: "Max Score", key: "maxScore", width: 14 },
       { header: "Correct Count", key: "correctCount", width: 16 },
       { header: "Incorrect Count", key: "incorrectCount", width: 18 },
@@ -2638,7 +2719,12 @@ exports.exportItemAnalysis = async (req, res) => {
       },
       { header: "Recommendation", key: "recommendation", width: 20 },
     ];
-    itemSheet.addRows(analysis.items);
+    itemSheet.addRows(
+      analysis.items.map((item) => ({
+        ...item,
+        performanceIndicatorsText: (item.performanceIndicators || []).join(", "),
+      })),
+    );
 
     scoreSheet.columns = [
       { header: "Student Name", key: "studentName", width: 24 },
@@ -2748,12 +2834,24 @@ exports.exportItemAnalysis = async (req, res) => {
       { header: "PI Attainment Breakdown", key: "piBreakdownText", width: 46 },
       ...attainmentColumns.slice(1),
     ];
+    const piAttainmentColumns = [
+      { header: "PI", key: "code", width: 24 },
+      { header: "SO", key: "studentOutcome", width: 12 },
+      { header: "Performance Indicator", key: "performanceIndicator", width: 26 },
+      ...attainmentColumns.slice(1),
+    ];
     [
       [coSheet, analysis.obeAttainment.courseOutcomes],
       [soSheet, analysis.obeAttainment.studentOutcomes],
+      [piSheet, analysis.obeAttainment.performanceIndicators],
       [bloomSheet, analysis.obeAttainment.bloomLevels],
     ].forEach(([sheet, rows]) => {
-      sheet.columns = sheet === soSheet ? soAttainmentColumns : attainmentColumns;
+      sheet.columns =
+        sheet === soSheet
+          ? soAttainmentColumns
+          : sheet === piSheet
+            ? piAttainmentColumns
+            : attainmentColumns;
       sheet.addRows(
         (rows || []).map((row) => ({
           ...row,
@@ -2801,6 +2899,7 @@ exports.exportItemAnalysis = async (req, res) => {
       perStudentSheet,
       coSheet,
       soSheet,
+      piSheet,
       bloomSheet,
     ].forEach((sheet) => {
       sheet.getRow(1).font = { bold: true };

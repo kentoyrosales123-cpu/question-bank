@@ -6,6 +6,7 @@ const AdmZip = require("adm-zip");
 const { createWorker } = require("tesseract.js");
 
 const Upload = require("../models/Upload");
+const CourseOutcome = require("../models/CourseOutcome");
 const Question = require("../models/Question");
 const ParsedQuestion = require("../models/ParsedQuestion");
 const { suggestCourseOutcomes } = require("../services/obeSuggestionService");
@@ -18,10 +19,17 @@ const {
 const {
   formatObeMappingError,
   getMissingObeMappingFields,
+  normalizePerformanceIndicatorMappings,
+  normalizePerformanceIndicators,
+  normalizeProgramOutcomes,
 } = require("../utils/obeValidation");
 const {
   classifyComplexEngineeringProblem,
 } = require("../utils/complexEngineeringProblem");
+const {
+  detectQuestionType,
+  isDetectedProblemSolvingQuestion,
+} = require("../utils/questionTypeDetection");
 const { isValidEngineeringProgram } = require("../utils/engineeringPrograms");
 
 const isAdminUser = (user) => isAdmin(user);
@@ -84,7 +92,9 @@ const getParsedQuestionUpdates = (body = {}) => {
     "difficulty",
     "courseOutcome",
     "programOutcome",
+    "programOutcomes",
     "performanceIndicator",
+    "performanceIndicators",
     "studentLearningOutcome",
     "bloomLevel",
     "isComplexEngineeringProblem",
@@ -108,6 +118,21 @@ const getParsedQuestionUpdates = (body = {}) => {
 
   if (body.outcomeWeight !== undefined) {
     updates.outcomeWeight = Number(body.outcomeWeight || 1);
+  }
+
+  if (
+    body.performanceIndicators !== undefined ||
+    body.performanceIndicator !== undefined
+  ) {
+    updates.programOutcomes = normalizeProgramOutcomes(
+      body.programOutcomes,
+      updates.programOutcome,
+    );
+    updates.performanceIndicators = normalizePerformanceIndicatorMappings(
+      body.performanceIndicators,
+      updates.performanceIndicator,
+      updates.programOutcome,
+    );
   }
 
   if (body.complexityScore !== undefined) {
@@ -682,9 +707,19 @@ function parseQuestionsFromText(text) {
       .trim();
 
     const hasMcqChoices = Boolean(choiceA && choiceB);
-    const isProblemSolving =
-      !hasMcqChoices &&
-      Boolean(questionOnly && (problemAnswer || solution || /problem/i.test(lines[0])));
+    const detectedQuestionType = detectQuestionType({
+      questionText: questionOnly,
+      choices: {
+        A: choiceA ? choiceA[1].trim() : "",
+        B: choiceB ? choiceB[1].trim() : "",
+        C: choiceC ? choiceC[1].trim() : "",
+        D: choiceD ? choiceD[1].trim() : "",
+      },
+      correctAnswer: answer ? answer[1].toUpperCase() : "",
+      solutionAnswer: problemAnswer ? problemAnswer[1].trim() : "",
+      explanation: solution ? solution[1].trim() : "",
+    });
+    const isProblemSolving = detectedQuestionType === "Problem Solving";
 
     if (!questionOnly || (!hasMcqChoices && !isProblemSolving)) {
       continue;
@@ -740,6 +775,10 @@ function parseDocxQuestions(filePath) {
   let currentQuestion = null;
 
   const saveCurrentQuestion = () => {
+    if (currentQuestion && choiceCount(currentQuestion) === 0) {
+      currentQuestion.questionType = detectQuestionType(currentQuestion);
+    }
+
     if (shouldSaveParsedQuestion(currentQuestion)) {
       parsed.push(currentQuestion);
     }
@@ -856,6 +895,9 @@ function parseDocxQuestions(filePath) {
 
     if (currentQuestion && choiceCount(currentQuestion) === 0) {
       currentQuestion.questionText = `${currentQuestion.questionText}\n${block.text}`;
+      if (isDetectedProblemSolvingQuestion(currentQuestion)) {
+        currentQuestion.questionType = "Problem Solving";
+      }
       currentQuestion.difficulty = detectDifficulty(
         currentQuestion.questionText,
       );
@@ -892,6 +934,7 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
     const selectedEngineeringProgram = String(
       engineeringProgram || "",
     ).trim();
+    const selectedSubject = String(subject || "").trim();
 
     if (!selectedEngineeringProgram) {
       return res.status(400).json({
@@ -907,10 +950,29 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
       });
     }
 
-    if (!canAccessSubject(req.user, subject)) {
+    if (!selectedSubject) {
+      return res.status(400).json({
+        success: false,
+        message: "Select a CO/CLO subject before parsing.",
+      });
+    }
+
+    if (!canAccessSubject(req.user, selectedSubject)) {
       return res.status(403).json({
         success: false,
         message: "You do not have access to parse questions for this subject.",
+      });
+    }
+
+    const courseOutcomeSubject = await CourseOutcome.exists({
+      subject: new RegExp(`^${selectedSubject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    });
+
+    if (!courseOutcomeSubject) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Select a subject saved under OBE Management CO/CLO before parsing.",
       });
     }
 
@@ -1005,14 +1067,14 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
 
         const complexity = classifyComplexEngineeringProblem({
           ...q,
-          subject,
+          subject: selectedSubject,
           topic,
         });
 
         return {
           upload: upload._id,
           engineeringProgram: selectedEngineeringProgram,
-          subject,
+          subject: selectedSubject,
           topic,
           questionText: q.questionText,
           questionType: normalizeQuestionType(q.questionType),
@@ -1022,7 +1084,16 @@ exports.parseUploadedQuestionnaire = async (req, res) => {
           difficulty: q.difficulty,
           courseOutcome: q.courseOutcome || "",
           programOutcome: q.programOutcome || "",
+          programOutcomes: normalizeProgramOutcomes(
+            q.programOutcomes,
+            q.programOutcome,
+          ),
           performanceIndicator: q.performanceIndicator || "",
+          performanceIndicators: normalizePerformanceIndicatorMappings(
+            q.performanceIndicators,
+            q.performanceIndicator,
+            q.programOutcome,
+          ),
           studentLearningOutcome: q.studentLearningOutcome || "",
           bloomLevel: q.bloomLevel || "",
           outcomeWeight: Number(q.outcomeWeight || 1),
@@ -1237,7 +1308,16 @@ exports.approveParsedQuestion = async (req, res) => {
       difficulty: parsed.difficulty,
       courseOutcome: parsed.courseOutcome,
       programOutcome: parsed.programOutcome,
+      programOutcomes: normalizeProgramOutcomes(
+        parsed.programOutcomes,
+        parsed.programOutcome,
+      ),
       performanceIndicator: parsed.performanceIndicator,
+      performanceIndicators: normalizePerformanceIndicatorMappings(
+        parsed.performanceIndicators,
+        parsed.performanceIndicator,
+        parsed.programOutcome,
+      ),
       studentLearningOutcome: parsed.studentLearningOutcome,
       bloomLevel: parsed.bloomLevel,
       outcomeWeight: Number(parsed.outcomeWeight || 1),

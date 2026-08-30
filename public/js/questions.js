@@ -7,7 +7,11 @@ let currentQuestionsPage = 1;
 let currentQuestionsTotal = 0;
 let currentQuestionsTotalPages = 1;
 let studentOutcomeRows = [];
+const selectedQuestionIds = new Set();
 const questionsPerPage = 20;
+
+const canManageQuestions = () =>
+  isAdminRole(getUser()) || isCeeCacCoordinatorRole(getUser());
 
 const normalizeSoCode = (value = "") =>
   String(value || "")
@@ -50,6 +54,7 @@ async function loadQuestions(endpoint = "/questions", page = 1) {
     currentQuestions = data.questions || [];
     currentQuestionsTotal = Number(data.count ?? currentQuestions.length);
     currentQuestionsTotalPages = Number(data.totalPages || 1);
+    selectedQuestionIds.clear();
 
     renderQuestionsPage();
   } catch (error) {
@@ -73,6 +78,9 @@ function renderQuestionsPage() {
     Math.max(1, Number(currentQuestionsPage) || 1),
   );
 
+  renderQuestionSelectionHeader();
+  syncBulkQuestionControls();
+
   document.getElementById("questionsBody").innerHTML = currentQuestions.length
     ? currentQuestions
         .map(
@@ -82,6 +90,7 @@ function renderQuestionsPage() {
 
             return `
       <tr>
+        ${renderQuestionSelectionCell(q)}
         <td>${escapeHTML(q.subject)}</td>
         <td>${escapeHTML(q.engineeringProgram || "Not set")}</td>
         <td>${escapeHTML(q.topic)}</td>
@@ -132,9 +141,104 @@ Delete
           },
         )
         .join("")
-    : `<tr><td colspan="10" class="muted-text">No questions found.</td></tr>`;
+    : `<tr><td colspan="${canManageQuestions() ? 11 : 10}" class="muted-text">No questions found.</td></tr>`;
 
+  syncBulkQuestionControls();
   renderQuestionsPagination();
+}
+
+function renderQuestionSelectionHeader() {
+  const header = document.getElementById("questionSelectHeader");
+
+  if (!header) return;
+
+  header.hidden = !canManageQuestions();
+  header.innerHTML = canManageQuestions()
+    ? `<input id="selectAllQuestions" type="checkbox" aria-label="Select all visible questions" />`
+    : "";
+
+  document
+    .getElementById("selectAllQuestions")
+    ?.addEventListener("change", (event) => {
+      toggleVisibleQuestionSelection(event.target.checked);
+    });
+}
+
+function renderQuestionSelectionCell(question) {
+  if (!canManageQuestions()) return "";
+
+  return `
+    <td>
+      <input
+        class="question-select-checkbox"
+        type="checkbox"
+        value="${escapeHTML(question._id)}"
+        ${selectedQuestionIds.has(question._id) ? "checked" : ""}
+        aria-label="Select question"
+        onchange="toggleQuestionSelection('${question._id}', this.checked)"
+      />
+    </td>
+  `;
+}
+
+function getVisibleQuestionIds() {
+  return currentQuestions.map((question) => question._id);
+}
+
+function getVisibleSelectedQuestionIds() {
+  const visibleIds = new Set(getVisibleQuestionIds());
+
+  return Array.from(selectedQuestionIds).filter((id) => visibleIds.has(id));
+}
+
+function syncBulkQuestionControls() {
+  const bulkActions = document.getElementById("bulkQuestionActions");
+  const count = document.getElementById("selectedQuestionCount");
+  const deleteButton = document.getElementById("bulkDeleteQuestionsButton");
+  const selectAll = document.getElementById("selectAllQuestions");
+
+  if (!bulkActions || !count || !deleteButton) return;
+
+  const visibleIds = getVisibleQuestionIds();
+  const selectedIds = getVisibleSelectedQuestionIds();
+
+  bulkActions.hidden = !canManageQuestions();
+  count.textContent = `${selectedIds.length} selected`;
+  deleteButton.disabled = selectedIds.length === 0;
+
+  if (selectAll) {
+    selectAll.disabled = visibleIds.length === 0;
+    selectAll.checked =
+      visibleIds.length > 0 && selectedIds.length === visibleIds.length;
+    selectAll.indeterminate =
+      selectedIds.length > 0 && selectedIds.length < visibleIds.length;
+  }
+}
+
+function toggleQuestionSelection(id, isSelected) {
+  if (isSelected) {
+    selectedQuestionIds.add(id);
+  } else {
+    selectedQuestionIds.delete(id);
+  }
+
+  syncBulkQuestionControls();
+}
+
+function toggleVisibleQuestionSelection(isSelected) {
+  getVisibleQuestionIds().forEach((id) => {
+    if (isSelected) {
+      selectedQuestionIds.add(id);
+    } else {
+      selectedQuestionIds.delete(id);
+    }
+  });
+
+  document.querySelectorAll(".question-select-checkbox").forEach((input) => {
+    input.checked = isSelected;
+  });
+
+  syncBulkQuestionControls();
 }
 
 function renderQuestionsPagination() {
@@ -216,11 +320,64 @@ function renderSubjectEditControl(question) {
 
 function formatObeTag(question) {
   const clo = question.courseOutcome || "No CLO";
-  const so = question.programOutcome || "No SO";
-  const pi = question.performanceIndicator || "No PI";
+  const soValues = normalizeProgramOutcomes(
+    question.programOutcomes,
+    question.programOutcome,
+  );
+  const so = soValues.length > 0 ? soValues.join(", ") : "No SO";
+  const piValues = normalizePerformanceIndicators(
+    question.performanceIndicators,
+    question.performanceIndicator,
+  );
+  const pi = piValues.length > 0 ? piValues.join(", ") : "No PI";
   const slo = question.studentLearningOutcome || "No SLO";
 
   return `${clo} / ${so} / ${pi} / ${slo}`;
+}
+
+function normalizePerformanceIndicators(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) => String(item?.label || item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeProgramOutcomes(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n\s]+/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) =>
+      String(item || "")
+        .replace(/^SO[-\s]*/i, "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function getProgramDepartmentLabel(program = "") {
@@ -625,15 +782,36 @@ async function editQuestion(id) {
         </div>
 
         <label>
+          <span class="field-label">Additional Student Outcomes</span>
+          <input id="editProgramOutcomes" value="${escapeAttribute(
+            normalizeProgramOutcomes(question.programOutcomes, question.programOutcome)
+              .filter((item) => item !== question.programOutcome)
+              .join(", "),
+          )}" placeholder="b, c" />
+        </label>
+
+        <label>
           <span class="field-label">Student Learning Outcome</span>
           <input id="editStudentLearningOutcome" value="${escapeAttribute(question.studentLearningOutcome || "")}" placeholder="SLO1" required />
         </label>
 
         <label>
-          <span class="field-label">Performance Indicator</span>
+          <span class="field-label">Primary Performance Indicator</span>
           <select id="editPerformanceIndicator">
             ${renderPerformanceIndicatorOptions(question.engineeringProgram, question.programOutcome, question.performanceIndicator)}
           </select>
+        </label>
+
+        <label>
+          <span class="field-label">Additional Performance Indicators</span>
+          <input id="editPerformanceIndicators" value="${escapeAttribute(
+            normalizePerformanceIndicators(
+              question.performanceIndicators,
+              question.performanceIndicator,
+            )
+              .filter((item) => item !== question.performanceIndicator)
+              .join(", "),
+          )}" placeholder="PI 2, PI 3" />
         </label>
 
         <div class="field-grid two">
@@ -788,8 +966,22 @@ async function saveQuestionEdits(event, id) {
     document.getElementById("editProgramOutcome").value,
   );
   form.append(
+    "programOutcomes",
+    normalizeProgramOutcomes(
+      document.getElementById("editProgramOutcomes").value,
+      document.getElementById("editProgramOutcome").value,
+    ).join(", "),
+  );
+  form.append(
     "performanceIndicator",
     document.getElementById("editPerformanceIndicator").value,
+  );
+  form.append(
+    "performanceIndicators",
+    normalizePerformanceIndicators(
+      document.getElementById("editPerformanceIndicators").value,
+      document.getElementById("editPerformanceIndicator").value,
+    ).join(", "),
   );
   form.append(
     "studentLearningOutcome",
@@ -843,6 +1035,54 @@ async function deleteQuestion(id) {
   }
 }
 
+async function deleteSelectedQuestions() {
+  const ids = getVisibleSelectedQuestionIds();
+  const message = document.getElementById("bulkQuestionMessage");
+  const deleteButton = document.getElementById("bulkDeleteQuestionsButton");
+
+  if (ids.length === 0) {
+    return;
+  }
+
+  if (!confirm(`Delete ${ids.length} selected question${ids.length === 1 ? "" : "s"}?`)) {
+    return;
+  }
+
+  if (deleteButton) deleteButton.disabled = true;
+  if (message) {
+    message.textContent = `Deleting ${ids.length} question${ids.length === 1 ? "" : "s"}...`;
+    message.classList.remove("wrong");
+    message.classList.add("correct");
+  }
+
+  let deletedCount = 0;
+
+  for (const id of ids) {
+    try {
+      await apiRequest(`/questions/${id}`, "DELETE");
+      deletedCount++;
+      selectedQuestionIds.delete(id);
+    } catch (error) {
+      if (message) {
+        message.textContent = `${deletedCount} deleted before an error occurred: ${error.message}`;
+        message.classList.remove("correct");
+        message.classList.add("wrong");
+      }
+      syncBulkQuestionControls();
+      await loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
+      return;
+    }
+  }
+
+  if (message) {
+    message.textContent = `${deletedCount} question${deletedCount === 1 ? "" : "s"} deleted.`;
+    message.classList.remove("wrong");
+    message.classList.add("correct");
+  }
+
+  await loadQuestions(currentQuestionsEndpoint, currentQuestionsPage);
+}
+
 function renderQuestionTables(tables) {
   if (!Array.isArray(tables) || tables.length === 0) {
     return "";
@@ -874,5 +1114,9 @@ function renderQuestionTables(tables) {
 }
 
 if (canLoadQuestionsPage) {
+  document
+    .getElementById("bulkDeleteQuestionsButton")
+    ?.addEventListener("click", deleteSelectedQuestions);
+
   loadStudentOutcomePis().finally(() => loadQuestions());
 }

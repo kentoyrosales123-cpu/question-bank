@@ -239,7 +239,11 @@ function renderParsedCard(q, index) {
             ${renderField("Student Outcome", `programOutcome_${q._id}`, appliedOutcome.programOutcome)}
           </div>
 
-          ${renderField("Performance Indicator", `performanceIndicator_${q._id}`, appliedOutcome.performanceIndicator)}
+          ${renderField("Additional Student Outcomes", `programOutcomes_${q._id}`, formatAdditionalProgramOutcomes(appliedOutcome))}
+
+          ${renderField("Primary Performance Indicator", `performanceIndicator_${q._id}`, appliedOutcome.performanceIndicator)}
+
+          ${renderField("Additional Performance Indicators", `performanceIndicators_${q._id}`, formatAdditionalPerformanceIndicators(appliedOutcome))}
 
           ${renderField("Student Learning Outcome", `studentLearningOutcome_${q._id}`, appliedOutcome.studentLearningOutcome)}
 
@@ -281,16 +285,125 @@ function renderParsedCard(q, index) {
 
 function getAutoAppliedOutcomeValues(q) {
   const suggestion = q.suggestedCourseOutcome || {};
+  const suggestedIndicators = Array.isArray(suggestion.performanceIndicators)
+    ? suggestion.performanceIndicators
+        .map((item) => item.label || item)
+        .filter(Boolean)
+    : [];
+  const savedIndicators = normalizePerformanceIndicators(
+    q.performanceIndicators,
+    q.performanceIndicator,
+  );
+  const performanceIndicators =
+    savedIndicators.length > 0
+      ? savedIndicators
+      : normalizePerformanceIndicators(
+          suggestedIndicators,
+          suggestion.performanceIndicator,
+        );
+  const programOutcomes = normalizeProgramOutcomes(
+    q.programOutcomes || suggestion.programOutcomes,
+    q.programOutcome || suggestion.programOutcome,
+  );
 
   return {
     courseOutcome: q.courseOutcome || suggestion.code || "",
-    programOutcome: q.programOutcome || suggestion.programOutcome || "",
+    programOutcome: q.programOutcome || programOutcomes[0] || "",
+    programOutcomes,
     performanceIndicator:
-      q.performanceIndicator || suggestion.performanceIndicator || "",
+      q.performanceIndicator || performanceIndicators[0] || "",
+    performanceIndicators,
     studentLearningOutcome:
       q.studentLearningOutcome || suggestion.studentLearningOutcome || "",
     bloomLevel: q.bloomLevel || suggestion.bloomLevel || "",
   };
+}
+
+function normalizePerformanceIndicators(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) => String(item?.label || item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeProgramOutcomes(value, primary = "") {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n\s]+/)
+        .map((item) => item.trim());
+  const seen = new Set();
+
+  return [primary, ...rawItems]
+    .map((item) =>
+      String(item || "")
+        .replace(/^SO[-\s]*/i, "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatAdditionalProgramOutcomes(appliedOutcome) {
+  return appliedOutcome.programOutcomes
+    .filter((item) => item !== appliedOutcome.programOutcome)
+    .join(", ");
+}
+
+function formatAdditionalPerformanceIndicators(appliedOutcome) {
+  return appliedOutcome.performanceIndicators
+    .filter((item) => item !== appliedOutcome.performanceIndicator)
+    .join(", ");
+}
+
+function buildPerformanceIndicatorMappings(id) {
+  const question = pendingQuestions.find((item) => item._id === id) || {};
+  const suggestion = question.suggestedCourseOutcome || {};
+  const suggestedMappings = Array.isArray(suggestion.performanceIndicators)
+    ? suggestion.performanceIndicators
+    : [];
+  const primarySo = document.getElementById(`programOutcome_${id}`).value.trim();
+  const primaryPi = document
+    .getElementById(`performanceIndicator_${id}`)
+    .value.trim();
+  const additionalPis = normalizePerformanceIndicators(
+    document.getElementById(`performanceIndicators_${id}`).value,
+  );
+  const labels = normalizePerformanceIndicators(additionalPis, primaryPi);
+
+  return labels.map((label, index) => {
+    const suggestionMatch = suggestedMappings.find(
+      (item) => String(item.label || "").toLowerCase() === label.toLowerCase(),
+    );
+
+    return {
+      so: suggestionMatch?.so || primarySo,
+      label,
+      description: suggestionMatch?.description || "",
+      confidence: Number(suggestionMatch?.confidence || 0),
+      primary: index === 0,
+    };
+  });
 }
 
 function renderDuplicateWarning(candidates) {
@@ -325,6 +438,25 @@ function renderOutcomeSuggestion(q) {
   const outcomeTitle = suggestion.code
     ? `${escapeHTML(suggestion.code)} - ${escapeHTML(suggestion.description)}`
     : escapeHTML(suggestion.description || "No CO/CLO match");
+  const piText = suggestion.performanceIndicator
+    ? `${suggestion.performanceIndicator} - ${
+        suggestion.performanceIndicatorDescription || "Performance indicator"
+      }`
+    : suggestion.performanceIndicatorMessage || "No confident PI match";
+  const piCandidates = Array.isArray(suggestion.performanceIndicators)
+    ? suggestion.performanceIndicators
+    : [];
+  const piCandidateText =
+    piCandidates.length > 0
+      ? piCandidates
+          .map(
+            (item) =>
+              `${item.label || item} (${item.confidence || 0}%${
+                item.primary ? ", primary" : ""
+              })`,
+          )
+          .join(" | ")
+      : "";
 
   return `
     <div class="obe-suggestion">
@@ -332,6 +464,13 @@ function renderOutcomeSuggestion(q) {
       <strong>${outcomeTitle}</strong>
       <span>
         ${escapeHTML(suggestion.programOutcome || "No SO mapped")}
+        | ${escapeHTML(piText)}
+        ${
+          Number(suggestion.performanceIndicatorConfidence || 0) > 0
+            ? `(${escapeHTML(suggestion.performanceIndicatorConfidence)}% PI confidence)`
+            : ""
+        }
+        ${piCandidateText ? ` | ${escapeHTML(piCandidateText)}` : ""}
         ${suggestion.studentLearningOutcome
           ? ` | ${escapeHTML(suggestion.studentLearningOutcome)}`
           : ""}
@@ -356,6 +495,19 @@ function applyOutcomeSuggestion(id) {
   document.getElementById(`courseOutcome_${id}`).value = suggestion.code || "";
   document.getElementById(`programOutcome_${id}`).value =
     suggestion.programOutcome || "";
+  document.getElementById(`programOutcomes_${id}`).value =
+    (suggestion.programOutcomes || [])
+      .filter((item) => item !== suggestion.programOutcome)
+      .join(", ");
+  document.getElementById(`performanceIndicator_${id}`).value =
+    suggestion.performanceIndicator || "";
+  document.getElementById(`performanceIndicators_${id}`).value =
+    (Array.isArray(suggestion.performanceIndicators)
+      ? suggestion.performanceIndicators
+          .map((item) => item.label || item)
+          .filter((item) => item && item !== suggestion.performanceIndicator)
+      : []
+    ).join(", ");
   document.getElementById(`studentLearningOutcome_${id}`).value =
     suggestion.studentLearningOutcome || "";
   document.getElementById(`bloomLevel_${id}`).value = suggestion.bloomLevel || "";
@@ -465,6 +617,7 @@ function toggleParsedQuestionType(id) {
 
 function getQuestionWarnings(q) {
   const warnings = [];
+  const appliedOutcome = getAutoAppliedOutcomeValues(q);
   const isProblemSolving = q.questionType === "Problem Solving";
   const filledChoices = ["A", "B", "C", "D"].filter(
     (letter) => q.choices && q.choices[letter],
@@ -480,11 +633,10 @@ function getQuestionWarnings(q) {
   if (!q.subject) warnings.push("Missing subject");
   if (!q.engineeringProgram) warnings.push("Missing program");
   if (!q.topic) warnings.push("Missing topic");
-  if (!q.courseOutcome) warnings.push("Missing CO/CLO");
-  if (!q.programOutcome) warnings.push("Missing SO");
-  if (!q.performanceIndicator) warnings.push("Missing PI");
-  if (!q.studentLearningOutcome) warnings.push("Missing SLO");
-  if (!q.bloomLevel) warnings.push("Missing Bloom level");
+  if (!appliedOutcome.courseOutcome) warnings.push("Missing CO/CLO");
+  if (!appliedOutcome.programOutcome) warnings.push("Missing SO");
+  if (!appliedOutcome.studentLearningOutcome) warnings.push("Missing SLO");
+  if (!appliedOutcome.bloomLevel) warnings.push("Missing Bloom level");
   if (!Number.isFinite(Number(q.outcomeWeight)) || Number(q.outcomeWeight) <= 0) {
     warnings.push("Missing outcome weight");
   }
@@ -549,13 +701,12 @@ function getParsedQuestionApprovalError(body) {
   if (
     !body.courseOutcome ||
     !body.programOutcome ||
-    !body.performanceIndicator ||
     !body.studentLearningOutcome ||
     !body.bloomLevel ||
     !Number.isFinite(Number(body.outcomeWeight)) ||
     Number(body.outcomeWeight) <= 0
   ) {
-    return "Complete CO/CLO, SO, PI, SLO, Bloom level, and positive outcome weight before approving.";
+    return "Complete CO/CLO, SO, SLO, Bloom level, and positive outcome weight before approving.";
   }
 
   return "";
@@ -862,9 +1013,14 @@ function getParsedFormBody(id) {
     ).checked,
     courseOutcome: document.getElementById(`courseOutcome_${id}`).value.trim(),
     programOutcome: document.getElementById(`programOutcome_${id}`).value.trim(),
+    programOutcomes: normalizeProgramOutcomes(
+      document.getElementById(`programOutcomes_${id}`).value,
+      document.getElementById(`programOutcome_${id}`).value,
+    ),
     performanceIndicator: document
       .getElementById(`performanceIndicator_${id}`)
       .value.trim(),
+    performanceIndicators: buildPerformanceIndicatorMappings(id),
     studentLearningOutcome: document
       .getElementById(`studentLearningOutcome_${id}`)
       .value.trim(),

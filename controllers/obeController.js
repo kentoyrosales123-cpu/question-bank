@@ -25,7 +25,7 @@ const {
 const {
   weightedPhaseAttainment,
 } = require("../utils/phaseAttainment");
-const { isSuperAdmin } = require("../utils/roles");
+const { getSubjectAccessFilter, isSuperAdmin } = require("../utils/roles");
 
 const BLOOM_LEVELS = [
   "Remember",
@@ -939,6 +939,26 @@ exports.getCourseOutcomes = async (req, res) => {
     res.json({
       success: true,
       outcomes,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getCourseOutcomeSubjects = async (req, res) => {
+  try {
+    const subjects = await CourseOutcome.distinct("subject", getSubjectAccessFilter(req.user));
+    const visibleSubjects = subjects
+      .map((subject) => String(subject || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    res.json({
+      success: true,
+      subjects: visibleSubjects,
     });
   } catch (error) {
     res.status(500).json({

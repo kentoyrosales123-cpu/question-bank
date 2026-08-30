@@ -26,6 +26,9 @@ const {
 const {
   weightedPhaseAttainment,
 } = require("../utils/phaseAttainment");
+const {
+  normalizePerformanceIndicators,
+} = require("../utils/obeValidation");
 
 const OBE_SUBMISSION_ROLES = Object.freeze([
   "super_admin",
@@ -211,6 +214,13 @@ const addRowsWorksheet = (workbook, title, columns, rows) => {
 };
 
 const toOutcomeKey = (value, fallback) => String(value || fallback).trim();
+const getPerformanceIndicatorKeys = (item = {}) =>
+  normalizePerformanceIndicators(
+    item.performanceIndicators,
+    item.performanceIndicator,
+  )
+    .map((indicator) => toOutcomeKey(indicator, ""))
+    .filter(Boolean);
 const MIN_OUTCOME_QUESTION_COVERAGE = 3;
 
 const normalizeOutcomeCode = (value = "") =>
@@ -773,13 +783,13 @@ const calculateObeReport = async (filters = {}) => {
     getObeSettings(),
     Question.find()
       .where(questionFilter)
-      .select("engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel")
+      .select("engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel")
       .lean(),
     Exam.find(submittedExamFilter)
       .select("title subject section semester schoolYear assessmentMethod assessmentPhase answers questions user")
       .populate({
         path: "questions",
-        select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+        select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
       })
         .lean(),
     ItemAnalysisExam.find({
@@ -794,7 +804,7 @@ const calculateObeReport = async (filters = {}) => {
         populate: {
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+            "subject engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         },
       })
       .lean(),
@@ -825,10 +835,7 @@ const calculateObeReport = async (filters = {}) => {
   questions.forEach((question) => {
     const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
     const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
-    const performanceIndicator = toOutcomeKey(
-      question.performanceIndicator,
-      "",
-    );
+    const performanceIndicators = getPerformanceIndicatorKeys(question);
     const bloomLevel = toOutcomeKey(question.bloomLevel, "Unmapped Bloom");
     const cepLevel = getQuestionCepLevel(question);
 
@@ -866,13 +873,13 @@ const calculateObeReport = async (filters = {}) => {
       cepAttainment.get(cepLevel)?.programs.add(question.engineeringProgram);
     }
     programOutcomes.get(programOutcome).questionCount++;
-    if (performanceIndicator) {
+    performanceIndicators.forEach((performanceIndicator) => {
       ensureOutcomeBucket(
         soBucket.piBuckets,
         performanceIndicator,
         settings.studentOutcomeTarget,
       ).questionCount++;
-    }
+    });
     bloomLevels.get(bloomLevel).questionCount++;
     cepAttainment.get(cepLevel).questionCount++;
   });
@@ -893,10 +900,7 @@ const calculateObeReport = async (filters = {}) => {
 
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
-      const performanceIndicator = toOutcomeKey(
-        question.performanceIndicator,
-        "",
-      );
+      const performanceIndicators = getPerformanceIndicatorKeys(question);
       const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const studentKey = `exam:${exam.user || exam._id}`;
@@ -943,19 +947,19 @@ const calculateObeReport = async (filters = {}) => {
           }
         },
       );
-      if (performanceIndicator) {
+      performanceIndicators.forEach((performanceIndicator) => {
         recordOutcomeResponse(
           ensureOutcomeBucket(
             soBucket.piBuckets,
             performanceIndicator,
-              settings.studentOutcomeTarget,
-            ),
-            answer,
-            weight,
-            studentKey,
-            assessmentPhase,
-          );
-      }
+            settings.studentOutcomeTarget,
+          ),
+          answer,
+          weight / performanceIndicators.length,
+          studentKey,
+          assessmentPhase,
+        );
+      });
       recordOutcomeResponse(
         cepAttainment.get(cepLevel),
         answer,
@@ -975,10 +979,7 @@ const calculateObeReport = async (filters = {}) => {
       const itemNo = index + 1;
       const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
       const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
-      const performanceIndicator = toOutcomeKey(
-        question.performanceIndicator,
-        "",
-      );
+      const performanceIndicators = getPerformanceIndicatorKeys(question);
       const cepLevel = getQuestionCepLevel(question);
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const assessmentPhase =
@@ -1041,7 +1042,7 @@ const calculateObeReport = async (filters = {}) => {
             }
           },
         );
-        if (performanceIndicator) {
+        performanceIndicators.forEach((performanceIndicator) => {
           recordOutcomeResponse(
             ensureOutcomeBucket(
               soBucket.piBuckets,
@@ -1049,11 +1050,11 @@ const calculateObeReport = async (filters = {}) => {
               settings.studentOutcomeTarget,
             ),
             itemResult,
-            weight,
+            weight / performanceIndicators.length,
             studentKey,
             assessmentPhase,
           );
-        }
+        });
         recordOutcomeResponse(
           cepAttainment.get(cepLevel),
           itemResult,
@@ -1541,7 +1542,7 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
         select: "engineeringProgram subject questions",
         populate: {
           path: "questions",
-          select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator outcomeWeight",
+          select: "subject engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators outcomeWeight",
         },
       })
       .sort({ updatedAt: -1 })
@@ -1592,9 +1593,13 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
       const weight = Math.max(0, Number(question.outcomeWeight || 1));
       const courseOutcome = question.courseOutcome || "Unmapped CLO";
       const studentOutcome = question.programOutcome || "Unmapped SO";
-      const performanceIndicator = question.performanceIndicator
-        ? `${studentOutcome} - ${question.performanceIndicator}`
-        : "";
+      const questionPerformanceIndicators = getPerformanceIndicatorKeys(question).map(
+        (indicator) => `${studentOutcome} - ${indicator}`,
+      );
+      const piWeight =
+        questionPerformanceIndicators.length > 0
+          ? weight / questionPerformanceIndicators.length
+          : weight;
 
       ensureCqiBucket(
         courseOutcomes,
@@ -1606,13 +1611,13 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
         studentOutcome,
         settings.studentOutcomeTarget,
       ).itemCount += 1;
-      if (performanceIndicator) {
+      questionPerformanceIndicators.forEach((performanceIndicator) => {
         ensureCqiBucket(
           performanceIndicators,
           performanceIndicator,
           settings.studentOutcomeTarget,
         ).itemCount += 1;
-      }
+      });
 
       examResults.forEach((result) => {
         const itemResult =
@@ -1632,15 +1637,21 @@ const calculateCqiMonitoringReport = async (filters = {}) => {
           ),
         ];
 
-        if (performanceIndicator) {
-          buckets.push(
-            ensureCqiBucket(
-              performanceIndicators,
-              performanceIndicator,
-              settings.studentOutcomeTarget,
-            ),
+        questionPerformanceIndicators.forEach((performanceIndicator) => {
+          const bucket = ensureCqiBucket(
+            performanceIndicators,
+            performanceIndicator,
+            settings.studentOutcomeTarget,
           );
-        }
+
+          bucket.responseCount += 1;
+          bucket.totalWeight += piWeight;
+
+          if (itemResult?.isCorrect) {
+            bucket.correctCount += 1;
+            bucket.earnedWeight += piWeight;
+          }
+        });
 
         buckets.forEach((bucket) => {
           bucket.responseCount += 1;
@@ -2737,7 +2748,7 @@ exports.getMyObeDashboard = async (req, res) => {
         .populate({
           path: "questions",
           select:
-            "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+            "subject engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
         })
         .lean(),
       ItemAnalysisExam.find({
@@ -2752,7 +2763,7 @@ exports.getMyObeDashboard = async (req, res) => {
           populate: {
             path: "questions",
             select:
-              "subject engineeringProgram courseOutcome programOutcome performanceIndicator bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
+              "subject engineeringProgram courseOutcome programOutcome performanceIndicator performanceIndicators bloomLevel outcomeWeight isComplexEngineeringProblem complexityLevel",
           },
         })
         .lean(),
@@ -2805,10 +2816,7 @@ exports.getMyObeDashboard = async (req, res) => {
         const itemNo = index + 1;
         const courseOutcome = toOutcomeKey(question.courseOutcome, "Unmapped CLO");
         const programOutcome = toOutcomeKey(question.programOutcome, "Unmapped SO");
-        const performanceIndicator = toOutcomeKey(
-          question.performanceIndicator,
-          "",
-        );
+        const performanceIndicators = getPerformanceIndicatorKeys(question);
         const cepLevel = getQuestionCepLevel(question);
         const weight = Math.max(0, Number(question.outcomeWeight || 1));
         const assessmentPhase =
@@ -2852,7 +2860,7 @@ exports.getMyObeDashboard = async (req, res) => {
             studentKey,
             assessmentPhase,
           );
-          if (performanceIndicator) {
+          performanceIndicators.forEach((performanceIndicator) => {
             recordOutcomeResponse(
               ensureOutcomeBucket(
                 soBucket.piBuckets,
@@ -2860,11 +2868,11 @@ exports.getMyObeDashboard = async (req, res) => {
                 settings.studentOutcomeTarget,
               ),
               itemResult,
-              weight,
+              weight / performanceIndicators.length,
               studentKey,
               assessmentPhase,
             );
-          }
+          });
           recordOutcomeResponse(
             cepAttainment.get(cepLevel),
             itemResult,

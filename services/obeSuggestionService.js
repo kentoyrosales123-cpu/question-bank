@@ -1,4 +1,13 @@
 const CourseOutcome = require("../models/CourseOutcome");
+const StudentOutcome = require("../models/StudentOutcome");
+const { getProgramDepartmentLabel } = require("../utils/engineeringPrograms");
+const {
+  normalizeIndicatorRows,
+  normalizeSoCode,
+} = require("../utils/studentOutcomeIndicators");
+const {
+  normalizeProgramOutcomes,
+} = require("../utils/obeValidation");
 
 const STOPWORDS = new Set([
   "the",
@@ -20,13 +29,19 @@ const STOPWORDS = new Set([
   "answer",
 ]);
 const MIN_AUTO_APPLY_CONFIDENCE = 60;
+const MIN_PI_CONFIDENCE = 50;
 const TOKEN_ALIASES = {
+  algebra: ["math", "mathematics"],
   index: ["indices", "exponent", "exponents", "power", "powers"],
   indices: ["index", "exponent", "exponents", "power", "powers"],
   exponent: ["index", "indices", "exponents", "power", "powers"],
   exponents: ["index", "indices", "exponent", "power", "powers"],
+  functions: ["math", "mathematics"],
   law: ["laws", "rule", "rules"],
   laws: ["law", "rule", "rules"],
+  math: ["mathematics"],
+  mathematics: ["math"],
+  trigonometry: ["math", "mathematics"],
   simplify: ["simplification"],
   simplification: ["simplify"],
 };
@@ -144,11 +159,18 @@ const suggestStudentLearningOutcome = (question = {}, bloomLevel = "") => {
   return `${verb} ${focus} in an engineering problem.`;
 };
 
+const exactTextRegex = (value = "") =>
+  new RegExp(`^${String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+
 const scoreOutcome = (question, outcome) => {
   const questionTokens = tokenize(
     [
       question.subject,
       question.topic,
+      question.courseOutcome,
+      question.courseOutcomeDescription,
+      question.programOutcome,
+      question.studentOutcomeDescription,
       question.questionText,
       Object.values(question.choices || {}).join(" "),
     ].join(" "),
@@ -160,6 +182,14 @@ const scoreOutcome = (question, outcome) => {
   const subjectMatches =
     normalize(question.subject) &&
     normalize(question.subject) === normalize(outcome.subject);
+  const programDepartment = getProgramDepartmentLabel(question.engineeringProgram);
+  const departmentMatches =
+    programDepartment &&
+    normalize(programDepartment) === normalize(outcome.department);
+  const departmentConflicts =
+    programDepartment &&
+    outcome.department &&
+    normalize(programDepartment) !== normalize(outcome.department);
   const topicTokens = tokenize(question.topic);
   const bloomHint = getBloomHint(question.questionText);
   const topicOverlap = intersectionSize(topicTokens, outcomeTokens);
@@ -168,6 +198,8 @@ const scoreOutcome = (question, outcome) => {
   let score = 0;
 
   if (subjectMatches) score += 15;
+  if (departmentMatches) score += 25;
+  if (departmentConflicts) score -= 15;
   score += Math.min(30, questionOutcomeOverlap * 8);
   score += Math.min(25, keywordOverlap * 10);
   score += Math.min(20, topicOverlap * 10);
@@ -184,6 +216,135 @@ const scoreOutcome = (question, outcome) => {
   };
 };
 
+const scorePerformanceIndicator = (question, indicator) => {
+  const questionTokens = tokenize(
+    [
+      question.subject,
+      question.topic,
+      question.questionText,
+      Object.values(question.choices || {}).join(" "),
+    ].join(" "),
+  );
+  const indicatorTokens = tokenize(
+    [indicator.label, indicator.description].join(" "),
+  );
+  const topicTokens = tokenize(question.topic);
+  const topicOverlap = intersectionSize(topicTokens, indicatorTokens);
+  const indicatorOverlap = intersectionSize(questionTokens, indicatorTokens);
+  let score = 0;
+
+  score += Math.min(55, indicatorOverlap * 11);
+  score += Math.min(30, topicOverlap * 15);
+
+  if (indicator.weight > 0) {
+    score += Math.min(10, Math.round(Number(indicator.normalizedWeight || 0) * 10));
+  }
+
+  return {
+    confidence: Math.min(100, score),
+    hasSemanticOverlap: topicOverlap > 0 || indicatorOverlap > 0,
+    overlapCount: topicOverlap + indicatorOverlap,
+  };
+};
+
+const findStudentOutcomeForQuestion = async (question, programOutcome = "") => {
+  const code = normalizeSoCode(programOutcome);
+  const department = getProgramDepartmentLabel(question.engineeringProgram);
+
+  if (!code) return null;
+
+  const departmentCandidates = department
+    ? await StudentOutcome.find({ department: exactTextRegex(department) }).lean()
+    : [];
+  let outcome = departmentCandidates.find(
+    (item) => normalizeSoCode(item.code) === code,
+  );
+
+  if (!outcome) {
+    const candidates = await StudentOutcome.find().lean();
+    outcome = candidates.find((item) => normalizeSoCode(item.code) === code);
+  }
+
+  return outcome;
+};
+
+const suggestPerformanceIndicator = async (question, programOutcome = "") => {
+  const fallback = {
+    performanceIndicator: "",
+    performanceIndicators: [],
+    performanceIndicatorDescription: "",
+    performanceIndicatorConfidence: 0,
+    performanceIndicatorMessage:
+      "No Student Outcome PI rows found for this Engineering Program and SO.",
+  };
+
+  const outcomeCodes = normalizeProgramOutcomes(programOutcome);
+  const outcomeRows = (
+    await Promise.all(
+      outcomeCodes.map((code) => findStudentOutcomeForQuestion(question, code)),
+    )
+  ).filter(Boolean);
+
+  if (outcomeRows.length === 0) return fallback;
+
+  const scoredIndicators = outcomeRows.flatMap((outcome) => {
+    const so = normalizeSoCode(outcome.code);
+
+    return normalizeIndicatorRows(outcome).map((indicator) => ({
+      so,
+      outcome,
+      indicator,
+      match: scorePerformanceIndicator(
+        {
+          ...question,
+          studentOutcomeDescription: outcome.description,
+        },
+        indicator,
+      ),
+    }));
+  });
+
+  if (scoredIndicators.length === 0) {
+    return {
+      ...fallback,
+      performanceIndicatorMessage:
+        "The matched Student Outcome has no encoded Performance Indicators yet.",
+    };
+  }
+
+  const ranked = scoredIndicators.sort((a, b) => b.match.confidence - a.match.confidence);
+  const confidentRanked = ranked.filter(
+    (item) =>
+      item.match.hasSemanticOverlap &&
+      item.match.confidence > MIN_PI_CONFIDENCE,
+  );
+  const topIndicators = confidentRanked.slice(0, 3).map(({ so, indicator, match }, index) => ({
+    so,
+    label: indicator.label,
+    description: indicator.description,
+    confidence: match.confidence,
+    primary: index === 0,
+  }));
+
+  if (confidentRanked.length === 0) {
+    return {
+      ...fallback,
+      performanceIndicatorMessage:
+        "No PI exceeded the 50% confidence threshold.",
+    };
+  }
+
+  const best = confidentRanked[0];
+
+  return {
+    performanceIndicator: best.indicator.label,
+    performanceIndicators: topIndicators,
+    performanceIndicatorDescription: best.indicator.description,
+    performanceIndicatorConfidence: best.match.confidence,
+    performanceIndicatorMessage: "",
+  };
+};
+
 const suggestCourseOutcome = async (question) => {
   const subject = String(question.subject || "").trim();
   const department = String(question.department || "").trim();
@@ -194,6 +355,12 @@ const suggestCourseOutcome = async (question) => {
     description: "No CO/CLO match",
     subject,
     programOutcome: "",
+    programOutcomes: [],
+    performanceIndicator: "",
+    performanceIndicators: [],
+    performanceIndicatorDescription: "",
+    performanceIndicatorConfidence: 0,
+    performanceIndicatorMessage: "",
     bloomLevel: fallbackBloomLevel || "",
     studentLearningOutcome: suggestStudentLearningOutcome(
       question,
@@ -210,7 +377,7 @@ const suggestCourseOutcome = async (question) => {
   }
 
   if (department) {
-    query.department = new RegExp(`^${department.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    query.department = exactTextRegex(department);
   }
   const outcomes = await CourseOutcome.find(query).lean();
 
@@ -236,12 +403,28 @@ const suggestCourseOutcome = async (question) => {
 
   const best = ranked[0];
   const bloomLevel = best.outcome.bloomLevel || getBloomHint(question.questionText);
+  const programOutcomes = normalizeProgramOutcomes(best.outcome.programOutcome);
+  const piSuggestion = await suggestPerformanceIndicator(
+    {
+      ...question,
+      courseOutcome: best.outcome.code,
+      courseOutcomeDescription: best.outcome.description,
+      programOutcome: best.outcome.programOutcome,
+    },
+    best.outcome.programOutcome,
+  );
 
   return {
     code: best.outcome.code,
     description: best.outcome.description,
     subject: best.outcome.subject,
-    programOutcome: best.outcome.programOutcome || "",
+    programOutcome:
+      piSuggestion.performanceIndicators.find((item) => item.primary)?.so ||
+      programOutcomes[0] ||
+      best.outcome.programOutcome ||
+      "",
+    programOutcomes,
+    ...piSuggestion,
     bloomLevel: bloomLevel || "",
     studentLearningOutcome: suggestStudentLearningOutcome(question, bloomLevel),
     confidence: best.match.confidence,

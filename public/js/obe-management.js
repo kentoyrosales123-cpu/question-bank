@@ -532,23 +532,150 @@ function formatRubricTemplateCriteria(criteria = []) {
     .join("\n");
 }
 
-function parseRubricTemplateCriteriaInput() {
-  return String(document.getElementById("rubricTemplateCriteria")?.value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split("|").map((part) => part.trim());
+function escapeAttribute(value) {
+  return escapeHTML(value).replaceAll("'", "&#039;");
+}
 
-      return {
-        criterion: parts[0] || "",
-        excellent: parts[1] || "",
-        good: parts[2] || "",
-        fair: parts[3] || "",
-        needsImprovement: parts[4] || "",
-        maxPoints: Number(parts[5] || 0),
-      };
-    });
+function renderRubricTemplateCriteriaTable(criteria = []) {
+  const body = document.getElementById("rubricTemplateCriteriaBody");
+
+  if (!body) return;
+
+  const rows = criteria.length
+    ? criteria
+    : [
+        {
+          criterion: "",
+          excellent: "",
+          good: "",
+          fair: "",
+          needsImprovement: "",
+          maxPoints: 0,
+        },
+      ];
+
+  body.innerHTML = rows
+    .map(
+      (criterion, index) => `
+        <tr>
+          <td>
+            <input
+              data-rubric-template-field="criterion"
+              value="${escapeAttribute(criterion.criterion || "")}"
+              placeholder="Understanding of the Problem"
+            />
+          </td>
+          <td>
+            <textarea
+              data-rubric-template-field="excellent"
+              rows="3"
+              placeholder="Clearly identifies all given information"
+            >${escapeHTML(criterion.excellent || "")}</textarea>
+          </td>
+          <td>
+            <textarea
+              data-rubric-template-field="good"
+              rows="3"
+              placeholder="Identifies most relevant information"
+            >${escapeHTML(criterion.good || "")}</textarea>
+          </td>
+          <td>
+            <textarea
+              data-rubric-template-field="fair"
+              rows="3"
+              placeholder="Shows partial understanding"
+            >${escapeHTML(criterion.fair || "")}</textarea>
+          </td>
+          <td>
+            <textarea
+              data-rubric-template-field="needsImprovement"
+              rows="3"
+              placeholder="Misinterprets key information"
+            >${escapeHTML(criterion.needsImprovement || "")}</textarea>
+          </td>
+          <td>
+            <input
+              data-rubric-template-field="maxPoints"
+              type="number"
+              min="0"
+              step="0.5"
+              value="${escapeAttribute(criterion.maxPoints || 0)}"
+            />
+          </td>
+          <td>
+            <button
+              class="btn danger compact-btn"
+              type="button"
+              onclick="removeRubricTemplateCriteriaRow(${index})"
+            >
+              Remove
+            </button>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  syncRubricTemplateCriteriaText();
+}
+
+function getRubricTemplateCriteriaTableRows() {
+  return Array.from(
+    document.querySelectorAll("#rubricTemplateCriteriaBody tr"),
+  ).map((row) => {
+    const getValue = (field) =>
+      row
+        .querySelector(`[data-rubric-template-field="${field}"]`)
+        ?.value.trim() || "";
+
+    return {
+      criterion: getValue("criterion"),
+      excellent: getValue("excellent"),
+      good: getValue("good"),
+      fair: getValue("fair"),
+      needsImprovement: getValue("needsImprovement"),
+      maxPoints: Number(getValue("maxPoints") || 0),
+    };
+  });
+}
+
+function syncRubricTemplateCriteriaText() {
+  const criteriaInput = document.getElementById("rubricTemplateCriteria");
+
+  if (!criteriaInput) return;
+
+  criteriaInput.value = formatRubricTemplateCriteria(
+    getRubricTemplateCriteriaTableRows(),
+  );
+}
+
+function addRubricTemplateCriteriaRow() {
+  const rows = getRubricTemplateCriteriaTableRows();
+
+  rows.push({
+    criterion: "",
+    excellent: "",
+    good: "",
+    fair: "",
+    needsImprovement: "",
+    maxPoints: 0,
+  });
+  renderRubricTemplateCriteriaTable(rows);
+}
+
+function removeRubricTemplateCriteriaRow(index) {
+  const rows = getRubricTemplateCriteriaTableRows();
+
+  rows.splice(index, 1);
+  renderRubricTemplateCriteriaTable(rows);
+}
+
+function parseRubricTemplateCriteriaInput() {
+  syncRubricTemplateCriteriaText();
+
+  return getRubricTemplateCriteriaTableRows().filter(
+    (criterion) => criterion.criterion || Number(criterion.maxPoints || 0) > 0,
+  );
 }
 
 function getSelectedRubricTemplate() {
@@ -565,6 +692,7 @@ function renderRubricTemplateOptions() {
   if (rubricTemplates.length === 0) {
     select.innerHTML = `<option value="">No rubric templates found</option>`;
     criteriaInput.value = "";
+    renderRubricTemplateCriteriaTable([]);
     return;
   }
 
@@ -582,6 +710,7 @@ function renderRubricTemplateOptions() {
   const template = getSelectedRubricTemplate() || rubricTemplates[0];
   select.value = template._id;
   criteriaInput.value = formatRubricTemplateCriteria(template.criteria || []);
+  renderRubricTemplateCriteriaTable(template.criteria || []);
 }
 
 async function loadRubricTemplates() {
@@ -835,6 +964,10 @@ document
 document
   .getElementById("rubricTemplateType")
   ?.addEventListener("change", renderRubricTemplateOptions);
+
+document
+  .getElementById("rubricTemplateCriteriaBody")
+  ?.addEventListener("input", syncRubricTemplateCriteriaText);
 
 document
   .getElementById("rubricTemplateExam")

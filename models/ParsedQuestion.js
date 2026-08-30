@@ -47,7 +47,17 @@ const parsedQuestionSchema = new mongoose.Schema(
     },
     courseOutcome: { type: String, default: "", trim: true },
     programOutcome: { type: String, default: "", trim: true },
+    programOutcomes: { type: [String], default: [] },
     performanceIndicator: { type: String, default: "", trim: true },
+    performanceIndicators: [
+      {
+        so: { type: String, default: "", trim: true },
+        label: { type: String, default: "", trim: true },
+        description: { type: String, default: "", trim: true },
+        confidence: { type: Number, default: 0, min: 0, max: 100 },
+        primary: { type: Boolean, default: false },
+      },
+    ],
     studentLearningOutcome: { type: String, default: "", trim: true },
     bloomLevel: {
       type: String,

@@ -898,13 +898,32 @@
             </div>
             <label>
               <span class="field-label">Editable Rubric Scoring</span>
-              <textarea
-                id="rubricTemplateCriteria"
-                rows="9"
-                placeholder="Criterion | Excellent | Good | Fair | Needs Improvement | Max Points"
-              ></textarea>
+              <textarea id="rubricTemplateCriteria" hidden></textarea>
             </label>
+            <div class="table-wrap rubric-template-editor-wrap">
+              <table class="rubric-template-editor-table">
+                <thead>
+                  <tr>
+                    <th>Criterion</th>
+                    <th>Excellent</th>
+                    <th>Good</th>
+                    <th>Fair</th>
+                    <th>Needs Improvement</th>
+                    <th>Max Points</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="rubricTemplateCriteriaBody"></tbody>
+              </table>
+            </div>
             <div class="form-actions">
+              <button
+                class="btn secondary"
+                type="button"
+                onclick="addRubricTemplateCriteriaRow()"
+              >
+                Add Row
+              </button>
               <button
                 class="btn secondary"
                 type="button"

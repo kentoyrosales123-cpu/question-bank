@@ -1,3 +1,103 @@
+const normalizeProgramOutcomes = (value, primary = "") => {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n\s]+/)
+        .map((item) => item.trim());
+  const primaryValue = String(primary || "").trim();
+  const seen = new Set();
+
+  return [primaryValue, ...rawItems]
+    .map((item) =>
+      String(item || "")
+        .replace(/^SO[-\s]*/i, "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const normalizePerformanceIndicators = (value, primary = "") => {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+  const primaryValue = String(primary || "").trim();
+  const seen = new Set();
+
+  return [primaryValue, ...rawItems]
+    .map((item) => String(item?.label || item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const normalizePerformanceIndicatorMappings = (
+  value,
+  primary = "",
+  primarySo = "",
+) => {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+  const primaryValue = String(primary || "").trim();
+  const primarySoValue = normalizeProgramOutcomes("", primarySo)[0] || "";
+  const seen = new Set();
+  const rows = [
+    primaryValue
+      ? { so: primarySoValue, label: primaryValue, primary: true }
+      : null,
+    ...rawItems,
+  ].filter(Boolean);
+
+  return rows
+    .map((item) => {
+      if (typeof item === "object") {
+        const so = normalizeProgramOutcomes("", item.so || item.programOutcome)[0] || "";
+        const label = String(item.label || item.performanceIndicator || "").trim();
+
+        return {
+          so,
+          label,
+          description: String(item.description || "").trim(),
+          confidence: Math.max(0, Math.min(100, Number(item.confidence || 0))),
+          primary: Boolean(item.primary),
+        };
+      }
+
+      return {
+        so: primarySoValue,
+        label: String(item || "").trim(),
+        description: "",
+        confidence: 0,
+        primary: false,
+      };
+    })
+    .filter((item) => item.label)
+    .filter((item) => {
+      const key = `${item.so.toLowerCase()}|||${item.label.toLowerCase()}`;
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
 const getMissingObeMappingFields = (item = {}) => {
   const missing = [];
 
@@ -9,9 +109,6 @@ const getMissingObeMappingFields = (item = {}) => {
   }
   if (!String(item.programOutcome || "").trim()) {
     missing.push("SO");
-  }
-  if (!String(item.performanceIndicator || "").trim()) {
-    missing.push("PI");
   }
   if (!String(item.studentLearningOutcome || "").trim()) {
     missing.push("SLO");
@@ -36,4 +133,7 @@ module.exports = {
   formatObeMappingError,
   getMissingObeMappingFields,
   hasCompleteObeMapping,
+  normalizePerformanceIndicatorMappings,
+  normalizePerformanceIndicators,
+  normalizeProgramOutcomes,
 };

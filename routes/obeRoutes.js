@@ -24,6 +24,7 @@ const {
   listRubricAssessments,
   listRubricTemplates,
   getCourseOutcomes,
+  getCourseOutcomeSubjects,
   getCurriculumMap,
   getProgramEducationalObjectives,
   getSettings,
@@ -96,6 +97,7 @@ router.delete(
   deleteProgramEducationalObjective,
 );
 
+router.get("/course-outcomes/subjects", protect, getCourseOutcomeSubjects);
 router.get("/course-outcomes", protect, superAdminOnly, getCourseOutcomes);
 router.post("/course-outcomes", protect, superAdminOnly, createCourseOutcome);
 router.put(

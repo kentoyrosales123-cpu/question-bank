@@ -7,6 +7,7 @@ if (uploadUser && !canCreateContentRole(uploadUser)) {
 }
 
 const CEE_CAC_SUBJECTS = ["CEE 601", "CEE 602", "CEE 603", "CEE 604"];
+let courseOutcomeSubjects = [];
 
 function canUseSubject(subject) {
   const user = getUser();
@@ -20,18 +21,30 @@ function canUseSubject(subject) {
 }
 
 function renderSubjectControl(uploadId) {
-  if (isCeeCacCoordinatorRole(getUser())) {
+  const options = courseOutcomeSubjects.filter(canUseSubject);
+
+  if (options.length === 0) {
     return `
-      <select id="subject_${uploadId}" required>
-        <option value="">Select subject</option>
-        ${CEE_CAC_SUBJECTS.map(
-          (subject) => `<option value="${subject}">${subject}</option>`,
-        ).join("")}
+      <select id="subject_${uploadId}" required disabled>
+        <option value="">No CO/CLO subjects encoded yet</option>
       </select>
+      <p class="muted-text">Add subjects in OBE Management under the CO/CLO tab first.</p>
     `;
   }
 
-  return `<input id="subject_${uploadId}" placeholder="Subject e.g. Electronics Engineering">`;
+  return `
+    <select id="subject_${uploadId}" required>
+      <option value="">Select CO/CLO subject</option>
+      ${options
+        .map((subject) => `<option value="${escapeHTML(subject)}">${escapeHTML(subject)}</option>`)
+        .join("")}
+    </select>
+  `;
+}
+
+async function loadCourseOutcomeSubjects() {
+  const data = await apiRequest("/obe/course-outcomes/subjects");
+  courseOutcomeSubjects = Array.isArray(data.subjects) ? data.subjects : [];
 }
 
 document.getElementById("uploadForm").addEventListener("submit", async (e) => {
@@ -61,6 +74,10 @@ document.getElementById("uploadForm").addEventListener("submit", async (e) => {
 
 async function loadUploads() {
   try {
+    if (courseOutcomeSubjects.length === 0) {
+      await loadCourseOutcomeSubjects();
+    }
+
     const user = getUser();
     const isAdmin = isAdminRole(user);
     const data = await apiRequest("/uploads");
@@ -111,7 +128,12 @@ async function parseUpload(uploadId) {
   const topic = document.getElementById(`topic_${uploadId}`).value;
 
   if (!engineeringProgram || !subject || !topic) {
-    alert("Please select program, subject, and topic before parsing.");
+    alert("Please select program, CO/CLO subject, and topic before parsing.");
+    return;
+  }
+
+  if (!courseOutcomeSubjects.includes(subject)) {
+    alert("Please select a subject encoded under OBE Management CO/CLO.");
     return;
   }
 
@@ -144,7 +166,15 @@ async function parseUpload(uploadId) {
   }
 }
 
-loadUploads();
+async function initUploadPage() {
+  try {
+    await loadCourseOutcomeSubjects();
+  } finally {
+    loadUploads();
+  }
+}
+
+initUploadPage();
 
 async function deleteUpload(uploadId) {
   if (!confirm("Are you sure you want to delete this uploaded file?")) {

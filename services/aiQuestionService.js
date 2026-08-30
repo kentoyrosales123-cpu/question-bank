@@ -415,8 +415,14 @@ const applyOutcomeSuggestions = async (questions) => {
       ...question,
       courseOutcome: question.courseOutcome || suggestion.code || "",
       programOutcome: question.programOutcome || suggestion.programOutcome || "",
+      programOutcomes:
+        question.programOutcomes || suggestion.programOutcomes || [],
       performanceIndicator:
         question.performanceIndicator || suggestion.performanceIndicator || "",
+      performanceIndicators:
+        question.performanceIndicators ||
+        suggestion.performanceIndicators ||
+        [],
       studentLearningOutcome:
         question.studentLearningOutcome ||
         suggestion.studentLearningOutcome ||
